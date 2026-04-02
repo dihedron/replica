@@ -1,4 +1,4 @@
-package workflow
+package step
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 )
 
 // FetchFromURL retrieves the data at the given URL by running a GET request.
-func FetchURL(url string) dbos.Step[Result[[]byte]] {
+func FetchFromURL(url string) dbos.Step[Result[[]byte]] {
 	// the closure captures the 'url' from the defining function
 	return func(ctx context.Context) (Result[[]byte], error) {
 		resp, err := http.Get(url)
@@ -48,14 +48,5 @@ func FetchURL(url string) dbos.Step[Result[[]byte]] {
 
 		slog.Debug("all data successfully read", "count", len(body), "data", body)
 		return Result[[]byte]{Data: body}, nil
-	}
-}
-
-func SendWelcomeEmail(name string, email string) dbos.Step[Result[string]] {
-	// The closure captures 'name' and 'email' from the outer workflow scope
-	return func(ctx context.Context) (Result[string], error) {
-		// ... simulate an external API call ...
-		fmt.Printf("Sending email to %s (ID: %s)...\n", email, name)
-		return Result[string]{Data: "Email sent successfully"}, nil
 	}
 }
