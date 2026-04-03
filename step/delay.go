@@ -6,12 +6,13 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/dihedron/replica/workflow"
 )
 
 // DelayedPrint is a step that prints a message one or more times after a delay.
-func DelayedPrint(text string, delay time.Duration, iterations int) dbos.Step[Result[string]] {
+func DelayedPrint(ctx context.Context, text string, delay time.Duration, iterations int) dbos.Step[workflow.Result[string]] {
 	// The closure captures 'text', 'delay' and 'count' from the outer workflow scope
-	return func(ctx context.Context) (Result[string], error) {
+	return func(ctx context.Context) (workflow.Result[string], error) {
 		if iterations <= 0 {
 			iterations = 1
 		}
@@ -19,6 +20,6 @@ func DelayedPrint(text string, delay time.Duration, iterations int) dbos.Step[Re
 			time.Sleep(delay)
 			fmt.Printf("%d: %s\n", i, text)
 		}
-		return Result[string]{Data: fmt.Sprintf("Completed %d iterations of %s", iterations, text)}, nil
+		return workflow.Result[string]{Value: fmt.Sprintf("Completed %d iterations of %s", iterations, text)}, nil
 	}
 }
