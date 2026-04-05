@@ -12,9 +12,11 @@ import (
 )
 
 func FetchFromURL(ctx dbos.DBOSContext, url string, opts ...dbos.StepOption) ([]byte, error) {
+	slog.Debug("Starting FetchFromURL", "url", url, "options", opts)
 	result, err := dbos.RunAsStep(
 		ctx,
 		func(ctx context.Context) (workflow.Result[[]byte], error) {
+			slog.Debug("Fetching from URL", "url", url)
 			resp, err := http.Get(url)
 
 			// SCENARIO A: Transient Network Error: return error to trigger retry

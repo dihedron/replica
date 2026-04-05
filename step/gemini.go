@@ -2,7 +2,6 @@ package step // SimpleDelayedPrint is a simple workflow task that prints a messa
 
 import (
 	"fmt"
-	"log/slog"
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
@@ -56,25 +55,3 @@ func ExecuteGeminiWorkflow(dburl string, appl string, args []string) error {
 	return nil
 }
 */
-
-// Workflows orchestrate steps. They take a special dbos.DBOSContext.
-func GeminiWorkflow(ctx dbos.DBOSContext, input string) (string, error) {
-	fmt.Printf("Starting workflow with input: %s\n", input)
-
-	var result int
-
-	if r, err := FetchFromURL(ctx, "https://www.google.com", dbos.WithStepName("sendEmail"), dbos.WithStepMaxRetries(3)); err != nil {
-		slog.Error("Failed to get resource", "url", "https://www.google.com")
-	} else {
-		slog.Debug("Successfully retrieved resource", "url", "https://www.google.com", "count", len(r.Value))
-		result = len(r.Value)
-	}
-
-	if r, err := SendWelcomeEmail(ctx, "developer", "developer@example.com", dbos.WithStepName("sendEmail"), dbos.WithStepMaxRetries(3)); err != nil {
-		slog.Error("Failed to get resource", "url", "https://www.google.com")
-	} else {
-		slog.Debug("Successfully retrieved resource", "url", "https://www.google.com", "count", len(r))
-	}
-
-	return fmt.Sprintf("Workflow finished successfully. Data length: %d", len(r.Value)), nil
-}
