@@ -3,7 +3,7 @@ module github.com/dihedron/replica
 go 1.26.1
 
 require (
-	github.com/dbos-inc/dbos-transact-golang v0.11.0
+	github.com/dbos-inc/dbos-transact-golang v0.12.0
 	github.com/dihedron/overlay v0.0.2
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/joho/godotenv v1.5.1

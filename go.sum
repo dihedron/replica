@@ -1,8 +1,8 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/dbos-inc/dbos-transact-golang v0.11.0 h1:aq/qsAi+1Mlljx7Kx6XT5QaT3dO41Q7J0fIuwmNp4Cw=
-github.com/dbos-inc/dbos-transact-golang v0.11.0/go.mod h1:F8nlf5OcI4gWQmtFtpBL65Pyn+/SjOQ8QMW6X7lbZc8=
+github.com/dbos-inc/dbos-transact-golang v0.12.0 h1:V3tR7kEKGavT8mbp5BnHwLFo4/X8CqcEP2PMAH4LMms=
+github.com/dbos-inc/dbos-transact-golang v0.12.0/go.mod h1:6n+ohXEPMwdJ6ati+/B9+IgStLXXaDCs2QcaLy4rGro=
 github.com/dihedron/overlay v0.0.2 h1:NucXOVy5DpWNzY8o3hu9mT1TSaal0hADd9DyFW9/Xk4=
 github.com/dihedron/overlay v0.0.2/go.mod h1:ce98ZhB3d/03FeUs/G6GoSNh+/EP9gUu1Mh9sJsue+0=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
