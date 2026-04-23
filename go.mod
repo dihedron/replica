@@ -3,7 +3,7 @@ module github.com/dihedron/replica
 go 1.26.1
 
 require (
-	github.com/dbos-inc/dbos-transact-golang v0.11.0
+	github.com/dbos-inc/dbos-transact-golang v0.13.0
 	github.com/dihedron/overlay v0.0.2
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/joho/godotenv v1.5.1
@@ -19,6 +19,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 )
