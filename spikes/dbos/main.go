@@ -74,6 +74,17 @@ func main() {
 		dbos.NewWorkflowQueue(ctx, "part", dbos.WithPartitionQueue(), dbos.WithGlobalConcurrency(1))
 		must(dbos.Launch(ctx))
 		ev("[%s] launched", execID)
+		if dead := os.Getenv("ADOPT"); dead != "" {
+			go func() {
+				time.Sleep(2 * time.Second)
+				wfs, err := dbos.ListWorkflows(ctx, dbos.WithExecutorIDs([]string{dead}), dbos.WithStatus([]dbos.WorkflowStatusType{dbos.WorkflowStatusPending}))
+				ev("[%s] adopt: list(%s) -> %d workflows err=%v", execID, dead, len(wfs), err)
+				for _, w := range wfs {
+					_, err := dbos.ResumeWorkflow[any](ctx, w.ID)
+					ev("[%s] adopt: ResumeWorkflow(%s) err=%v", execID, w.ID, err)
+				}
+			}()
+		}
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 		<-sig

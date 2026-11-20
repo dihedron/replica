@@ -110,7 +110,7 @@ as required by DBOS replay semantics.
 
 Facts established by the spike (08): DBOS queues are durable and any
 listening executor dequeues new work; **nothing detects a dead executor**;
-recovery is explicit, keyed on executor ID, resumes the *same workflow ID* from
+adoption is explicit (list by executor ID + `ResumeWorkflow`), resumes the *same workflow ID* from
 its last completed step on whichever executor performs the recovery; a paused
 ("zombie") executor is fenced by DBOS at its next checkpoint, but its in-flight
 step still finishes. Therefore:
@@ -119,13 +119,16 @@ step still finishes. Therefore:
    heartbeats into `executors(id, region, last_seen, app_version)` every 10 s.
 2. **Reconciler** (every node, every 30 s; idempotent, so no leader needed; an
    advisory lock MAY reduce duplicate work): for executors with
-   `last_seen` older than the lease TTL (default 60 s) it calls
-   `POST /dbos-workflow-recovery` `["<deadExecutorID>"]` on its own loopback
-   admin server. The recovering node then owns the workflows (queued ones return
-   to `ENQUEUED` and may be picked by any node). Also: enqueue outbox
-   (§3), expire deadlines, and detect `MAX_RECOVERY_ATTEMPTS_EXCEEDED`
-   workflows (set `WithMaxRetries` high, but handle the status: mark the transfer
-   `FAILED(Internal)` and alert).
+   `last_seen` older than the lease TTL (default 60 s) it lists that
+   executor's `PENDING` workflows (`ListWorkflows(WithExecutorIDs([dead]),
+   WithStatus(PENDING))`) and calls `ResumeWorkflow(id)` on each (public API,
+   verified in 08 VERIFY-2b; no admin server involved). The workflow returns to
+   the queue and any node picks it up. Fallback if that API changes:
+   `POST /dbos-workflow-recovery` on a loopback admin server. Caveats:
+   `ResumeWorkflow` resets DBOS's `recovery_attempts`, so the reconciler keeps
+   its own adoption counter per transfer (`transfers.adoptions`, cap e.g. 20 →
+   `FAILED(Internal)` + alert), and still handles
+   `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. Also: enqueue outbox (§3) and deadlines.
 3. **Fencing for side effects**: every state-changing write includes
    `fence = $mine`, where `fence` is incremented when a node takes the
    transfer (`acquire` step). DBOS does not fence the *in-flight step*, so a

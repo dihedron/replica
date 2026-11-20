@@ -33,9 +33,9 @@ parallelism / retry. Config is validated at startup; fail fast.
   directly with a multi-host DSN (`target_session_attrs=read-write`),
   verified to survive failover (08, VERIFY-4a).
 - Each node has a **unique, stable executor ID** (e.g. `region-host`), never
-  the DBOS default `local`, and runs the DBOS admin server **bound to
-  loopback only** (it is unauthenticated; the reconciler uses it for
-  recovery, 02 §6).
+  the DBOS default `local`. The DBOS admin server is **not needed** (adoption
+  uses the public API); if enabled (e.g. as a fallback) it MUST bind to
+  loopback only, as it is unauthenticated.
 - Rolling upgrades: schema migrations are forward-compatible
   (expand → migrate → contract). DBOS recovery and dequeue are filtered by
   `ApplicationVersion` (08, VERIFY-5): keep workflow code replay-compatible and
@@ -71,6 +71,7 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
 | AT-17 | Soak: 50 concurrent jobs, random node/DB kills (chaos) | All jobs eventually `SUCCEEDED`, zero duplicates/corruption |
 | AT-18 | WAN stability: 3 Patroni/etcd members with real inter-region RTT + jitter (Toxiproxy), 24 h idle + light load | No spurious etcd leader change, no Patroni demotion; otherwise fall back per 01 §3.3 (4) |
 | AT-19 | Poison pill: workflow that crashes the executor on every attempt | Workflow is parked by DBOS as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`; reconciler detects it, transfer marked `FAILED(Internal)`, alert raised |
+| AT-21 | Regression for DBOS behaviours we depend on (`ResumeWorkflow` on a `PENDING` orphan, zombie fencing, partitioned queues), run on every DBOS version bump | Same outcomes as 08 |
 | AT-20 | Rolling upgrade with in-flight transfers | Old-version work drains or is recovered by compatible executors; none stuck `PENDING` |
 
 ## 5. Test strategy

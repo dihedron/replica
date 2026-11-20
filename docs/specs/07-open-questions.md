@@ -8,7 +8,7 @@
 | 2 | Single-primary Postgres, synchronous quorum (`ANY 1`) to a remote region; Patroni + WAN-tuned 3-member etcd for failover, **gated by AT-18**; fallback = operator-approved cross-region failover (01 §3.3) | RPO=0 for a region loss; Raft only on the failover path, not on commits | Async replication (RPO>0); distributed SQL (same WAN quorum); pg_auto_failover (monitor SPOF) |
 | 3 | Consistency over availability (minority region refuses writes) | Never lose or fork job state | Active-active with conflict resolution |
 | 4 | Symmetric nodes; any node can accept or execute | Matches "A, A2, B or C will resume" | Per-region pinned executors |
-| 5 | Own executor registry + reconciler that triggers DBOS recovery by executor ID, plus fencing | Spike: OSS DBOS never detects dead executors (08) | Rely on DBOS Conductor (commercial) |
+| 5 | Own executor registry + reconciler that adopts orphans via `ListWorkflows`+`ResumeWorkflow`, plus fencing | Spike: OSS DBOS never detects dead executors (08) | Rely on DBOS Conductor (commercial) |
 | 6 | Part-level checkpointing; resumable where backend supports it | Large files; retry efficiency | Whole-object retry only |
 | 7 | Compiled-in plugins behind a transport-neutral interface | Simplest and type-safe; keeps gRPC door open | go-plugin/gRPC now; Go `plugin` pkg (rejected) |
 | 8 | Source URLs must match tenant-registered endpoints | SSRF and tenant isolation | Free-form URLs (rejected) |
@@ -18,7 +18,8 @@
 
 All six items are resolved in [08-spike-dbos.md](08-spike-dbos.md). Summary:
 no same-transaction enqueue (outbox is the design); no automatic dead-executor
-takeover but explicit by-executor-ID recovery works and resumes from the last
+takeover, but explicit adoption works through the public API
+(`ListWorkflows(WithExecutorIDs)` + `ResumeWorkflow`) and resumes from the last
 step; zombie is fenced at next checkpoint but in-flight side effects
 duplicate; partitioned queues give per-tenant limits; multi-host DSN survives
 Postgres failover; no transaction-mode pooler; recovery is
@@ -61,3 +62,5 @@ all partitions.
 - **Q-11 Existing scaffold.** `step/` (email, gemini, http, saga) and
   `workflow/` look like experiments. OK to replace them with the layout in
   01 §4, keeping `metadata`, logging init, and go-flags CLI?
+
+- **Q-13 DBOS version.** go.mod pins v0.11.0; v1.9.0 exists (API changes: `Client`-based `ResumeWorkflow`, `WithResumeQueue`, `WithMaxRecoveryAttempts`, Conductor-aware launch). Upgrade before implementing? The spike should be re-run on the chosen version (AT-21).
