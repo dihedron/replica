@@ -5,36 +5,35 @@
 | ADR | Decision | Rationale | Alternatives |
 |-----|----------|-----------|--------------|
 | 1 | DBOS Transact for Go on PostgreSQL as durable engine | Already scaffolded; only Postgres to operate; fits low concurrency | Temporal; custom outbox+leases; CockroachDB/Yugabyte |
-| 2 | Single-primary Postgres, Patroni + 3-member etcd across 3 regions, synchronous quorum (`ANY 1`) | RPO=0 for a region loss; standard tooling | Async replication (RPO>0); distributed SQL |
+| 2 | Single-primary Postgres, synchronous quorum (`ANY 1`) to a remote region; Patroni + WAN-tuned 3-member etcd for failover, **gated by AT-18**; fallback = operator-approved cross-region failover (01 §3.3) | RPO=0 for a region loss; Raft only on the failover path, not on commits | Async replication (RPO>0); distributed SQL (same WAN quorum); pg_auto_failover (monitor SPOF) |
 | 3 | Consistency over availability (minority region refuses writes) | Never lose or fork job state | Active-active with conflict resolution |
 | 4 | Symmetric nodes; any node can accept or execute | Matches "A, A2, B or C will resume" | Per-region pinned executors |
-| 5 | Own lease + fencing + reconciler, not relying on DBOS cross-executor recovery | OSS recovery semantics unconfirmed | Rely on DBOS Conductor |
+| 5 | Own executor registry + reconciler that triggers DBOS recovery by executor ID, plus fencing | Spike: OSS DBOS never detects dead executors (08) | Rely on DBOS Conductor (commercial) |
 | 6 | Part-level checkpointing; resumable where backend supports it | Large files; retry efficiency | Whole-object retry only |
 | 7 | Compiled-in plugins behind a transport-neutral interface | Simplest and type-safe; keeps gRPC door open | go-plugin/gRPC now; Go `plugin` pkg (rejected) |
 | 8 | Source URLs must match tenant-registered endpoints | SSRF and tenant isolation | Free-form URLs (rejected) |
 | 9 | Tenant isolation via RLS + tenant-scoped refs, single shared cluster | Simple ops | DB-per-tenant (heavier) |
 
-## B. Items to verify with a technical spike (blocking implementation)
+## B. DBOS spike — resolved
 
-1. **[VERIFY-1]** dbos-transact-golang v0.11.0: can a workflow be enqueued
-   inside an application SQL transaction? If not, use the outbox fallback
-   (02 §3).
-2. **[VERIFY-2]** Cross-executor recovery of `PENDING` workflows in the OSS
-   runtime; behaviour of re-starting an existing workflow ID on a different
-   executor; our lease/reconciler design (02 §6) assumes the worst case.
-3. **[VERIFY-3]** Queue features: concurrency limits, partition keys
-   (per-tenant fairness), rate limits, priority.
-4. **[VERIFY-4]** DBOS behaviour behind PgBouncer / with Patroni failover and
-   `target_session_attrs` multi-host DSN; reconnection semantics.
-5. **[VERIFY-5]** Workflow versioning/upgrade semantics for rolling deploys.
-6. **[VERIFY-6]** Step-timeout/retry primitives (can we use DBOS built-in
-   step retry with custom backoff, or implement retry in our own steps?).
+All six items are resolved in [08-spike-dbos.md](08-spike-dbos.md). Summary:
+no same-transaction enqueue (outbox is the design); no automatic dead-executor
+takeover but explicit by-executor-ID recovery works and resumes from the last
+step; zombie is fenced at next checkpoint but in-flight side effects
+duplicate; partitioned queues give per-tenant limits; multi-host DSN survives
+Postgres failover; no transaction-mode pooler; recovery is
+application-version-scoped; step retry exists but has no jitter/classification.
+Not yet exercised: rolling-upgrade behaviour end to end (AT-20), caps across
+all partitions.
 
 ## C. Questions for you
 
 - **Q-1 Source locality.** Is the source (e.g. the S3 bucket / Glance) always
   in region A, or can it be anywhere reachable? Is it readable from nodes in
   B and C (needed for failover execution and FR-10)?
+- **Q-12 WAN RTT.** What are the actual RTT and jitter between the three
+  sites? This decides whether WAN-tuned etcd (01 §3.3 option 1) is viable or we
+  start from the operator-approved failover fallback (option 4).
 - **Q-2 Regions & cloud.** Which regions/providers (cloud, on-prem,
   OpenStack)? RTT between them drives commit latency (NFR-4). Are three
   Postgres members with 1 sync standby acceptable, or must the system keep

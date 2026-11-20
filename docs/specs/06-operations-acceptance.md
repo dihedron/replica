@@ -28,11 +28,20 @@ parallelism / retry. Config is validated at startup; fail fast.
 ## 3. Deployment
 
 - Reference: 2 nodes per region (Kubernetes Deployment or systemd), Patroni
-  + etcd per region, PgBouncer optional (note: DBOS may use
-  LISTEN/NOTIFY and session features — pool in session mode **[VERIFY]**).
+  + etcd per region (tuned for WAN, 01 §3.3). **No transaction-mode
+  connection pooler**: DBOS holds a `LISTEN` session (08, VERIFY-4b); connect
+  directly with a multi-host DSN (`target_session_attrs=read-write`),
+  verified to survive failover (08, VERIFY-4a).
+- Each node has a **unique, stable executor ID** (e.g. `region-host`), never
+  the DBOS default `local`, and runs the DBOS admin server **bound to
+  loopback only** (it is unauthenticated; the reconciler uses it for
+  recovery, 02 §6).
 - Rolling upgrades: schema migrations are forward-compatible
-  (expand → migrate → contract); workflow code changes follow DBOS
-  versioning rules (new application version; old executors drain). **[VERIFY]**
+  (expand → migrate → contract). DBOS recovery and dequeue are filtered by
+  `ApplicationVersion` (08, VERIFY-5): keep workflow code replay-compatible and
+  the version stable across compatible releases; for incompatible releases,
+  start the new version, let old executors drain their `PENDING` work, and only
+  then stop them.
 - Graceful shutdown: stop dequeueing, finish or checkpoint current part,
   release leases (`dbos.Shutdown` with timeout).
 
@@ -60,6 +69,9 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
 | AT-15 | Quota exceeded | 429; running jobs unaffected |
 | AT-16 | Cancel mid-transfer | Uploads aborted, no object under final name, `CANCELLED` |
 | AT-17 | Soak: 50 concurrent jobs, random node/DB kills (chaos) | All jobs eventually `SUCCEEDED`, zero duplicates/corruption |
+| AT-18 | WAN stability: 3 Patroni/etcd members with real inter-region RTT + jitter (Toxiproxy), 24 h idle + light load | No spurious etcd leader change, no Patroni demotion; otherwise fall back per 01 §3.3 (4) |
+| AT-19 | Poison pill: workflow that crashes the executor on every attempt | Workflow is parked by DBOS as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`; reconciler detects it, transfer marked `FAILED(Internal)`, alert raised |
+| AT-20 | Rolling upgrade with in-flight transfers | Old-version work drains or is recovered by compatible executors; none stuck `PENDING` |
 
 ## 5. Test strategy
 

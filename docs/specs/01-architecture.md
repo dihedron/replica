@@ -36,7 +36,7 @@ infrastructure. This matches G7 and the low-concurrency target.
 Alternatives considered (see 07, ADR-1): Temporal (heavier to operate; strong
 fit but a second stateful system), a hand-rolled outbox + leases on Postgres
 (simple but re-implements DBOS), CockroachDB/YugabyteDB as multi-region store
-(attractive natively, but DBOS compatibility is unverified **[VERIFY]**).
+(DBOS Go has a CockroachDB code path, but it pays the same WAN quorum cost; see §3.3).
 
 ## 3. State store: PostgreSQL across three regions
 
@@ -54,10 +54,52 @@ fit but a second stateful system), a hand-rolled outbox + leases on Postgres
 - **Cost**: each commit waits one cross-region RTT. Acceptable at the target
   concurrency; the design therefore **batches progress writes** (per part, not
   per read) and never does per-chunk commits.
-- Region choice: the spec is region-agnostic. Reference deployment needs three
+- Region choice: the spec is region-agnostic (see §3.3 for latency limits). Reference deployment needs three
   regions with RTT ≤ 150 ms between any pair; see 07 Q-2.
 - Backups: continuous WAL archiving + PITR to object storage in a different
   region than the primary.
+
+### 3.3 Consensus over WAN latency (etcd/Raft concern)
+
+Raft-based stores degrade when members are far apart, and this is a real risk
+here. What it does and does not affect:
+
+- **Not affected: commit latency.** Job commits wait for the Postgres
+  *synchronous standby* (streaming replication, no Raft). etcd is touched only
+  for Patroni's leader key (a few small writes every `loop_wait`).
+- **Affected: failure detection and failover stability.** An etcd write needs
+  a majority round trip. With high RTT or jitter, default timeouts cause
+  spurious leader elections, and Patroni demotes the primary whenever it
+  cannot reach the DCS in time ⇒ needless failovers or flapping.
+
+Mitigations, in order of preference:
+
+1. **Tune for the WAN** (default posture). etcd: `heartbeat-interval` ≈ the
+   max inter-region RTT, `election-timeout` ≥ 10 × heartbeat (etcd tuning
+   guidance; defaults are 100 ms / 1000 ms and are too tight for RTT >
+   ~50 ms), snapshot/quota defaults unchanged. Patroni: raise `ttl`,
+   `loop_wait`, `retry_timeout` (must satisfy
+   `loop_wait + 2 × retry_timeout ≤ ttl`), e.g. 60 / 15 / 15 for RTT ~150 ms.
+   Cost: slower failover detection; this is why NFR-3 allows 5 minutes.
+2. **Place the third etcd member where RTT is lowest** (it can be a tiny
+   witness VM, no Postgres, in any site). Only a majority round trip matters,
+   so the closest pair of members dominates.
+3. **Keep etcd off the commit path and do not share it** with other
+   workloads; dedicated disks (fsync latency also matters).
+4. **Fallback if tuning proves insufficient:** Patroni *without* automatic
+   cross-region failover: automatic failover stays inside the primary's region
+   (local etcd, two local Postgres nodes, one synchronous), plus a synchronous
+   standby in a remote region for RPO = 0, and **operator-approved**
+   cross-region promotion (runbook + `patronictl failover`). RTO for region
+   loss becomes human-bound (NFR-3 relaxed for that case) but nothing can
+   flap over the WAN. Given low concurrency this is acceptable if mitigation 1
+   fails validation.
+5. Distributed SQL (CockroachDB, supported by DBOS Go) is **not** an escape:
+   it runs Raft per range and pays the same WAN quorum on every write.
+
+Gate: before committing to option 1, run acceptance test **AT-18** (06 §4):
+inject the real inter-region RTT + jitter for 24 h and count leader changes and
+Patroni demotions; pass criterion is zero spurious failovers.
 
 The DBOS system database and replica's application tables live in the same
 cluster (separate schemas), so job creation and workflow enqueue can occur in

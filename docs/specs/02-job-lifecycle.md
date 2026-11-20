@@ -50,16 +50,18 @@ API handler (any node):
   BEGIN
     INSERT jobs (…)               -- ON CONFLICT (tenant_id, idempotency_key) → return existing
     INSERT transfers (one per destination, state=PENDING)
-    enqueue DBOS workflow ReplicateJob  with workflowID = job.id   [VERIFY same-tx enqueue]
   COMMIT   -- synchronous cross-region commit (NFR-1)
+  enqueue DBOS workflow ReplicateJob with workflowID = job.id   -- separate tx, idempotent (outbox)
   return 202 { job_id }
 ```
 
-If DBOS cannot enqueue within the application transaction **[VERIFY]**, the
-fallback is: commit the job rows only; the `reconciler` enqueues any
-`ACCEPTED` job lacking a workflow (transactional outbox pattern). Because
-`workflowID = job.id`, enqueue is idempotent. The 202 is returned after the
-commit in both cases, so no accepted job can be lost.
+DBOS cannot enqueue inside an application transaction (08, VERIFY-1), so
+this is a **transactional outbox**: the job rows are committed first; the
+enqueue happens right after, and the `reconciler` enqueues any `ACCEPTED` job
+that has no DBOS workflow (crash between commit and enqueue). Enqueue is
+idempotent because `workflowID = job.id` (verified, 08 VERIFY-1b). The 202 is
+returned after the commit, so an accepted job cannot be lost; a crash before
+enqueue only delays the start until the next reconciler tick.
 
 ## 4. Workflows
 
@@ -106,32 +108,37 @@ as required by DBOS replay semantics.
 
 ## 6. Node failure, adoption and fencing
 
-DBOS queues are durable and any listening executor dequeues new work. For
-work already *started* by an executor that then dies, recovery behaviour of
-the open-source runtime must be confirmed **[VERIFY]** (recovery is keyed on
-executor ID; automatic takeover across executors may require DBOS Conductor).
-The spec therefore does not depend on it and defines its own mechanism:
+Facts established by the spike (08): DBOS queues are durable and any
+listening executor dequeues new work; **nothing detects a dead executor**;
+recovery is explicit, keyed on executor ID, resumes the *same workflow ID* from
+its last completed step on whichever executor performs the recovery; a paused
+("zombie") executor is fenced by DBOS at its next checkpoint, but its in-flight
+step still finishes. Therefore:
 
-1. **Lease**: while a node runs a transfer it renews `lease_expires_at`
-   (default TTL 60 s, renew every 15 s) in the same transaction as part
-   progress or by heartbeat.
-2. **Reconciler** (runs on every node, every 30 s; correctness does not
-   require a single leader because actions are idempotent, but a
-   `pg_try_advisory_lock` MAY be used to reduce redundant work): finds
-   non-terminal transfers with expired lease and re-enqueues the DBOS
-   workflow with the **same workflow ID**, tagged for any executor.
-   **[VERIFY]** re-start of an existing workflow ID by another executor;
-   if unsupported, the new execution is a fresh workflow with ID
-   `"{transferID}#{fence}"` which replays from DB state (`parts`,
-   `resume_token`) rather than DBOS checkpoints — design the steps so that
-   they are idempotent from table state alone.
-3. **Fencing**: every state-changing write includes `fence = $mine`. A zombie
-   node (paused, partitioned) whose lease was taken over fails its next write
-   (`0 rows affected`), aborts without touching the destination upload, and
-   exits. Plugin writes are idempotent by `(transfer, part_no)`, so a zombie's
-   in-flight part write is harmless (same bytes, same part number).
-4. **Self-fencing on partition**: if a node cannot renew its lease for
-   `TTL/2`, it stops reading/writing and drops the transfer.
+1. **Executor registry**: each node has a unique stable executor ID and
+   heartbeats into `executors(id, region, last_seen, app_version)` every 10 s.
+2. **Reconciler** (every node, every 30 s; idempotent, so no leader needed; an
+   advisory lock MAY reduce duplicate work): for executors with
+   `last_seen` older than the lease TTL (default 60 s) it calls
+   `POST /dbos-workflow-recovery` `["<deadExecutorID>"]` on its own loopback
+   admin server. The recovering node then owns the workflows (queued ones return
+   to `ENQUEUED` and may be picked by any node). Also: enqueue outbox
+   (§3), expire deadlines, and detect `MAX_RECOVERY_ATTEMPTS_EXCEEDED`
+   workflows (set `WithMaxRetries` high, but handle the status: mark the transfer
+   `FAILED(Internal)` and alert).
+3. **Fencing for side effects**: every state-changing write includes
+   `fence = $mine`, where `fence` is incremented when a node takes the
+   transfer (`acquire` step). DBOS does not fence the *in-flight step*, so a
+   zombie may still write a part after takeover; part writes are idempotent per
+   `(transfer, part_no)`, and the zombie's next table write fails
+   (`0 rows affected`) and aborts it.
+4. **Self-fencing on partition**: if a node cannot renew its heartbeat/lease
+   for `TTL/2`, it stops reading/writing and drops its transfers (bounding
+   the zombie window).
+5. **A live node wrongly declared dead** (e.g. GC pause) is just the zombie
+   case in 3.
+6. **Application version**: recovery only applies to workflows of the same
+   `ApplicationVersion` (08, VERIFY-5) — see 06 §3 for upgrades.
 
 ## 7. Error taxonomy and retry policy
 
@@ -148,6 +155,14 @@ Plugins classify errors (04). Core handles by class:
 Defaults (overridable in policy within tenant limits):
 `initial=2s, multiplier=2, max_interval=15m, jitter=±20%, deadline=7d`.
 
+Implementation note (08, VERIFY-6): DBOS step retry (`WithStepMaxRetries`,
+`WithBaseInterval`, `WithBackoffFactor`, `WithMaxInterval`) is in-process, has
+no jitter and retries *every* returned error. So steps wrap their own retry
+loop (backoff + jitter, deadline-bound, classification-aware) and return
+`Permanent`/`Integrity` outcomes **as values** (a result struct), returning an
+`error` only when the whole step should be retried by DBOS or the workflow
+recovered. A crash mid-retry is covered by workflow recovery (§6).
+
 Authentication failures first trigger a credential re-resolution (secret may
 have rotated) before being deemed permanent.
 
@@ -160,5 +175,8 @@ wrong (e.g. operator fixed bucket permissions).
 - Per-tenant `max_active_jobs` and `max_bytes_in_flight`: enforced at
   submission (reject `429`) and at transfer start (wait).
 - Queue concurrency: global limit per node and per cluster; per-tenant
-  fairness through round-robin / partitioned queues by `tenant_id`
-  **[VERIFY queue partitioning in dbos-transact-golang v0.11.0]**.
+  fairness through **partitioned queues keyed by `tenant_id`**
+  (`WithPartitionQueue()` + `WithGlobalConcurrency(n)`: the limit applies per
+  partition; verified in 08, VERIFY-3a). A per-node cap
+  (`WithWorkerConcurrency`) bounds total load. A cap across all partitions is
+  not verified; enforce it with our own counter if needed.
