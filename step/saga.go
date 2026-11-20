@@ -45,8 +45,8 @@ func DeleteBillingProfile(ctx context.Context, billingID string) (string, error)
 	return "Billing profile deleted", nil
 }
 
-// Workflows orchestrate steps. They take a special dbos.DBOSContext.
-func UserRegistrationSaga(ctx dbos.DBOSContext, email string) (string, error) {
+// Workflows orchestrate steps. They take a special dbos.Context.
+func UserRegistrationSaga(ctx dbos.Context, email string) (string, error) {
 	slog.Debug("Starting registration saga", "email", email)
 
 	// Step 1: Create User

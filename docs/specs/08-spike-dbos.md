@@ -1,49 +1,69 @@
-# 08 — Spike report: DBOS Go v0.11.0 (resolves VERIFY-1…6)
+# 08 — Spike report: DBOS Go (resolves VERIFY-1…6)
 
-Method: read the module source (`dbos-transact-golang@v0.11.0`) and ran the
-harness in `spikes/dbos/` against real PostgreSQL 16.15 (local, two instances
-for failover). Executors were separate OS processes with distinct executor IDs
-and the same application version. Timings are local-machine, so only
-ordering/behaviour matters, not absolute values.
+Two rounds. **Round 1** ran on v0.11.0 (the version first pinned in `go.mod`).
+**Round 2** re-ran everything on **v1.9.0**, which is now the pinned version
+(`go.mod` upgraded; the existing `step/`, `workflow/` and `command.go`
+scaffold was ported: `DBOSContext`→`Context`, `NewDBOSContext`→`NewContext`,
+`Shutdown(c, d)`). Round 2 supersedes round 1 wherever they differ.
 
-## Results
+Method: read the module source and ran the harness in `spikes/dbos/` against
+real PostgreSQL 16.15 (executors as separate OS processes with distinct
+executor IDs and the same application version; a second Postgres instance for
+failover). Timings are local, so only ordering/behaviour matters.
 
-| ID | Question | Result | Evidence |
-|----|----------|--------|----------|
-| VERIFY-1 | Enqueue inside an application SQL transaction? | **No.** `Client.Enqueue` / `RunWorkflow` use their own transaction; the transactional step helper (`runAsTxn`) is package-private. ⇒ the **outbox pattern is the design**, not a fallback. | source: `workflow.go` (`runAsTxn` lower-case), `client.go` |
-| VERIFY-1b | Is enqueue idempotent? | **Yes.** Enqueueing twice with the same workflow ID (`WithEnqueueWorkflowID`) ran the workflow once. | experiment E2 |
-| VERIFY-2a | Does another executor take over a dead executor's work automatically (OSS)? | **No.** Executor B sat idle with A's workflow `PENDING` (owner A). Nothing detects dead executors; recovery is explicit and keyed on **executor ID**. | E1 |
-| VERIFY-2b | Can another executor resume it on demand? | **Yes, via the public API (preferred; pointed out by the project owner).** `ListWorkflows(WithExecutorIDs([dead]), WithStatus(PENDING))` then `ResumeWorkflow(id)` on any live executor re-enqueues the workflow (`ENQUEUED`, internal queue); B picked it up and resumed after the last completed step (killed A mid part 3; B re-ran part 3 only). No admin server needed. Caveats: documented as "resume a cancelled workflow" but works on any non-terminal one, so semantics may change (pin the version + regression test, AT-21); it **resets `recovery_attempts` to 0**, defeating DBOS's poison-pill cap (reconciler keeps its own counter); in v1.x the signature takes a `Client` and has `WithResumeQueue`. Experiment E6. Earlier route (also works): `POST /dbos-workflow-recovery` with body `["exec-A"]` on B's admin server: B resumed `wf-1` from the last completed step (parts 0–3 not re-run; in-flight part 4 re-executed). `recovery_attempts` incremented. Queue-assigned workflows are simply reset to `ENQUEUED` and picked up by whichever executor dequeues next. | E1, `recovery.go` |
-| VERIFY-2c | Zombie (paused) executor after takeover? | DBOS **fences it at the next checkpoint**: the stopped executor completed its in-flight step (a real side effect, "part 3 end" logged after B had taken over), then did not continue; B finished the workflow. ⇒ in-flight side effects can duplicate; our idempotent part writes + fence (02 §6) remain mandatory. | E1b (SIGSTOP/SIGCONT); migration `7_add_owner_xid.sql` |
-| VERIFY-2d | Poison-pill limit | A workflow is recovered at most `WithMaxRetries` (default **100**) times, then parked as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. Reconciler must watch for that status. | source `workflow.go:472`, `system_database.go:681` |
-| VERIFY-3a | Queue partitioning for per-tenant fairness | **Works.** With `WithPartitionQueue()` + `WithGlobalConcurrency(1)` the limit is **per partition key**: tenant X jobs ran serially while tenant Y's job ran concurrently with X's first. | E3 |
-| VERIFY-3b | Other queue controls | Present: worker concurrency, global concurrency, priority, rate limiter, dedup ID. (A cap across *all* partitions at once was not tested.) | `queue.go` |
-| VERIFY-4a | Multi-host DSN / Postgres failover | **Works.** pgx DSN `host=a,b&target_session_attrs=read-write`; primary killed (`-m immediate`) + standby promoted mid-workflow: executor reconnected on its own, ~1.5 s stall, workflow completed with no step re-run lost. | E5 |
-| VERIFY-4b | PgBouncer | **Not tested; treat as unsupported.** DBOS opens a dedicated session with `LISTEN` for notifications/events (used by `Send/Recv/SetEvent/GetEvent`); transaction pooling breaks that. We do not use those APIs, but connect directly to be safe. | source `system_database.go:1836` |
-| VERIFY-5 | Versioning for rolling deploys | Recovery and dequeue filter on **application version** (`application_version = $x OR NULL`). A new-version executor will **not** recover old-version `PENDING` workflows. ⇒ old executors must drain, or we use a stable `ApplicationVersion` and keep workflow code replay-compatible. (Not exercised end-to-end.) | `recovery.go`, `system_database.go:2754` |
-| VERIFY-6 | Step retry/backoff | **Works:** `WithStepMaxRetries`, `WithBaseInterval`, `WithBackoffFactor`, `WithMaxInterval` (verified 200 ms→400→800→1 s cap, success on attempt 5). Limits: **no jitter, no error classification** (any returned error is retried; retries are in-process). ⇒ steps return *Permanent* failures as values, return `error` only for transient ones. | E4 |
-| extra | CockroachDB | DBOS Go has a CockroachDB code path (`isCockroachDB`, polling instead of LISTEN). Available as an alternative state store but does not remove the WAN-latency concern (see 01 §3.3). | source |
+## Results (v1.9.0 unless stated)
+
+| ID | Question | Result | Delta vs v0.11.0 |
+|----|----------|--------|------------------|
+| VERIFY-1 | Enqueue in the same SQL transaction as the app's own writes? | **Yes.** `dbos.WithEnqueueTransaction(tx)` (pgx.Tx, `*sql.Tx` or `dbos.Tx`) enqueues on the caller's transaction; the workflow exists only after the caller commits. Tested: insert + enqueue then **rollback** → 0 app rows, 0 workflows; **commit** → 1 and 1, and a running executor then executed it. Constraints: the tx must run on the DBOS system database (so app tables live in the same database); not usable inside a workflow; incompatible with `DeduplicationPolicyReturnExisting`; a failed enqueue leaves the tx aborted. | v0.11.0: **no**. Outbox was needed. |
+| VERIFY-1b | Is enqueue idempotent by workflow ID? | **Yes.** Two enqueues of `wf-dup` ran it once. | same |
+| VERIFY-2a | Automatic takeover of a dead executor's work (OSS)? | **No.** No executor heartbeat/liveness code exists in the module (source search); only Conductor (commercial) drives recovery, and `Launch` recovers only the **local** executor's PENDING work. | same |
+| VERIFY-2b | Explicit adoption by another executor | **Yes, public and now documented.** `ListWorkflows(ctx, WithFilterExecutorIDs(dead), WithFilterStatus(PENDING))` then `ResumeWorkflows[any](ctx, ids)`: "each workflow that exists and is not in a terminal state is re-enqueued"; `WithResumeQueue(q)` chooses the queue. Tested: A killed mid-part-3, B adopted and re-ran only part 3; status `SUCCESS` on B. | v0.11.0: worked but documented only for cancelled workflows; the admin HTTP server no longer exists |
+| VERIFY-2c | Zombie (SIGSTOP'd) executor after takeover | **Fenced at next checkpoint; in-flight step still completes.** After SIGCONT the old owner finished its current part, then stopped; exactly one extra execution of that part (15 begins for 14 parts). Our fence + idempotent part writes remain mandatory. | same |
+| VERIFY-2d | Poison-pill limit | `WithMaxRecoveryAttempts(n)` (default 100) → workflow parked as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. `ResumeWorkflows` **resets `recovery_attempts`** (source: `SET … recovery_attempts = …` in resume SQL), so adoption by resume bypasses the cap ⇒ reconciler keeps its own counter. | renamed from `WithMaxRetries` |
+| VERIFY-3a | Per-tenant fairness | **Works.** Partitioned queue with `WithPartitionConcurrency(1)`: tenant X's 3 jobs ran serially while tenant Y's job ran concurrently with X's first. `WithPartitionQueue()` is **deprecated** (setting both is an error); also `WithPartitionWorkerConcurrency`, `WithPartitionRateLimiter`. | v0.11.0: `WithPartitionQueue`+`WithGlobalConcurrency` |
+| VERIFY-3b | Queue model | Queues are now **registered in the system DB** (`RegisterQueue` returns `(Queue, error)`, `RetrieveQueue`, `DeleteQueue`), owned by an application name. | new |
+| VERIFY-4a | Postgres failover with multi-host DSN | **Works, no duplicate work.** DSN `host=a,b&target_session_attrs=read-write`; synchronous quorum standby (`ANY 1 (walreceiver)`, confirmed `quorum` in `pg_stat_replication`); primary killed with `-m immediate`, standby promoted mid-workflow: executor reconnected itself, ~3 s stall, all 18 parts executed exactly once, workflow `SUCCESS` on the new primary. | v0.11.0: ~1.5 s stall (async) |
+| VERIFY-4b | PgBouncer / transaction pooling | Not tested. `LISTEN`-based notification session still used (poller only on backends without LISTEN). Connect directly. | same |
+| VERIFY-5 | Versioning | Recovery/dequeue filter by application version; v1.9.0 adds `AutoUpgrade` (re-enqueue PENDING work from old versions) but it is a **Transact Enterprise** feature (needs a key) — not used. Rolling-upgrade behaviour not exercised end to end (AT-20). | enterprise-gated option added |
+| VERIFY-6 | Step retry | `WithStepMaxRetries`, `WithStepBaseInterval`, `WithStepBackoffFactor`, `WithStepMaxInterval` **and `WithStepRetryPredicate(func(error) bool)`**. Tested: a transient error retried 5 times (200 ms→400→800→1 s cap) and succeeded; an error the predicate rejects was attempted **once** and returned as a workflow error. Still **no jitter**. ⇒ classify via the predicate; add jitter ourselves if needed. | v0.11.0: no classification (renamed options too: `WithStepBackoffFactor` etc.) |
+
+Other v1.9.0 facts that matter:
+- `AppName` must match `^[a-z0-9-_]{3,256}$`.
+- Enterprise-key features (`AutoUpgrade`, `Sharding`, `SuspendMode`, Conductor)
+  **must stay disabled**; the design uses none of them.
+- Gob-encoded errors: custom error types returned by a workflow are persisted
+  by message only unless registered, so `errors.Is/As` will not survive a
+  read-back — carry the error *class* in the returned value, not the type.
+- CockroachDB is a supported backend (does not remove the WAN-latency concern,
+  01 §3.3).
+
+## Test-harness note (honesty)
+
+My first v1.9.0 failover attempt was **invalid**: the standby inherited a stale
+`primary_slot_name` and never streamed, so after promotion it lacked the
+workflow row and the executor stalled ("Workflow ID conflict … waiting").
+That was my setup error, not DBOS behaviour; it is, however, a live
+illustration of why asynchronous replication gives RPO > 0. After fixing the
+setup and verifying `sync_state = quorum`, the test passed (above).
 
 ## Consequences applied to the specs
 
-- 02 §3: outbox is the mechanism.
-- 02 §6: executor registry + reconciler that adopts orphaned work with
-  `ListWorkflows(WithExecutorIDs)` + `ResumeWorkflow` (public API); own
-  poison-pill counter; version policy.
-- 02 §7: error handling in steps.
-- 02 §8 and 07: fairness approach confirmed.
-- 06 §3: connect directly to Postgres (no transaction pooler).
-- 01 §3.3 and ADR-2: WAN consensus concern (separate from this spike).
+- 02 §3: acceptance is a **single transaction** (job rows + DBOS enqueue).
+- 02 §6: adoption via `ListWorkflows` + `ResumeWorkflows`; own adoption counter.
+- 02 §7: retry via `WithStepRetryPredicate`.
+- 02 §8: `WithPartitionConcurrency`.
+- 06: no admin server; AT-21 regression suite on each DBOS bump.
+- 07: ADR-5, Q-13 resolved.
 
 ## Reproduce
 
 ```
 go build -o /tmp/spike ./spikes/dbos
-spike worker <executorID> <adminPort> <dsn>      # executor with admin server
+spike worker <executorID> <dsn>                        # ADOPT=<deadID> adopts its PENDING work
 spike enqueue <dsn> <queue> <wfID> [partitionKey|-] [parts] [ms-per-part]
-spike retry <dsn>
-ADOPT=exec-A spike worker exec-B <port> <dsn>      # B lists A's PENDING workflows and ResumeWorkflow()s them
-curl -X POST localhost:<adminPort>/dbos-workflow-recovery -d '["exec-A"]'   # alternative route
+spike txenq <dsn> commit|rollback <wfID>               # transactional enqueue
+spike retry <dsn>                                      # retry predicate
 ```
-Events are appended to `/var/tmp/pgspike/events.log`.
-`spikes/` is disposable: delete it once implementation starts.
+Events are appended to `/var/tmp/pgspike/events.log`. `spikes/` is disposable:
+delete it once implementation starts.

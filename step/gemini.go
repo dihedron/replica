@@ -7,7 +7,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 )
 
-func SimpleDelayedPrint(ctx dbos.DBOSContext, i int) (int, error) {
+func SimpleDelayedPrint(ctx dbos.Context, i int) (int, error) {
 	dbos.Sleep(ctx, 5*time.Second)
 	fmt.Printf("SimpleDelayedPrint task %d completed\n", i)
 	return i, nil
@@ -15,7 +15,7 @@ func SimpleDelayedPrint(ctx dbos.DBOSContext, i int) (int, error) {
 
 /*
 func ExecuteGeminiWorkflow(dburl string, appl string, args []string) error {
-	ctx, err := dbos.NewDBOSContext(context.Background(), dbos.Config{
+	ctx, err := dbos.NewContext(context.Background(), dbos.Config{
 		AppName:     appl,
 		DatabaseURL: dburl,
 	})

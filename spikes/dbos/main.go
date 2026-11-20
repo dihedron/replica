@@ -1,9 +1,10 @@
 // Command spike is a throw-away harness used to resolve the [VERIFY] items in
-// docs/specs/07-open-questions.md against dbos-transact-golang v0.11.0.
+// docs/specs against dbos-transact-golang (re-run on v1.9.0).
 //
-//	spike worker  <executorID> <adminPort> <dsn> [parts]  run an executor
-//	spike enqueue <dsn> <queue> <wfID> [partitionKey] [parts]
-//	spike retry   <dsn>                                  step-retry experiment
+//	spike worker  <executorID> <dsn>            run an executor (ADOPT=<id> adopts that executor's PENDING work)
+//	spike enqueue <dsn> <queue> <wfID> [partitionKey|-] [parts] [ms]
+//	spike txenq   <dsn> <commit|rollback> <wfID> transactional enqueue test
+//	spike retry   <dsn>                         step retry predicate test
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Job struct {
@@ -35,7 +37,7 @@ func ev(format string, a ...any) {
 
 var execID string
 
-func Transfer(ctx dbos.DBOSContext, in Job) (string, error) {
+func Transfer(ctx dbos.Context, in Job) (string, error) {
 	ev("[%s] workflow %s start", execID, in.ID)
 	for i := 0; i < in.Parts; i++ {
 		_, err := dbos.RunAsStep(ctx, func(c context.Context) (int, error) {
@@ -52,36 +54,36 @@ func Transfer(ctx dbos.DBOSContext, in Job) (string, error) {
 	return "ok", nil
 }
 
+var quiet = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
 func main() {
 	switch os.Args[1] {
 	case "worker":
 		execID = os.Args[2]
-		port, _ := strconv.Atoi(os.Args[3])
-		dsn := os.Args[4]
-		sleep := 1000
-		if len(os.Args) > 5 {
-			sleep, _ = strconv.Atoi(os.Args[5])
-		}
-		_ = sleep
-		ctx, err := dbos.NewDBOSContext(context.Background(), dbos.Config{
-			AppName: "spike", DatabaseURL: dsn, ExecutorID: execID,
-			AdminServer: true, AdminServerPort: port, ApplicationVersion: "v1",
-			Logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		dsn := os.Args[3]
+		ctx, err := dbos.NewContext(context.Background(), dbos.Config{
+			AppName: "spike", DatabaseURL: dsn, ExecutorID: execID, ApplicationVersion: "v1", Logger: quiet,
 		})
 		must(err)
 		dbos.RegisterWorkflow(ctx, Transfer)
-		dbos.NewWorkflowQueue(ctx, "transfers")
-		dbos.NewWorkflowQueue(ctx, "part", dbos.WithPartitionQueue(), dbos.WithGlobalConcurrency(1))
+		_, err = dbos.RegisterQueue(ctx, "transfers")
+		must(err)
+		_, err = dbos.RegisterQueue(ctx, "part", dbos.WithPartitionConcurrency(1))
+		must(err)
 		must(dbos.Launch(ctx))
 		ev("[%s] launched", execID)
 		if dead := os.Getenv("ADOPT"); dead != "" {
 			go func() {
 				time.Sleep(2 * time.Second)
-				wfs, err := dbos.ListWorkflows(ctx, dbos.WithExecutorIDs([]string{dead}), dbos.WithStatus([]dbos.WorkflowStatusType{dbos.WorkflowStatusPending}))
+				wfs, err := dbos.ListWorkflows(ctx, dbos.WithFilterExecutorIDs(dead), dbos.WithFilterStatus(dbos.WorkflowStatusPending))
 				ev("[%s] adopt: list(%s) -> %d workflows err=%v", execID, dead, len(wfs), err)
+				ids := []string{}
 				for _, w := range wfs {
-					_, err := dbos.ResumeWorkflow[any](ctx, w.ID)
-					ev("[%s] adopt: ResumeWorkflow(%s) err=%v", execID, w.ID, err)
+					ids = append(ids, w.ID)
+				}
+				if len(ids) > 0 {
+					_, err := dbos.ResumeWorkflows[any](ctx, ids)
+					ev("[%s] adopt: ResumeWorkflows(%v) err=%v", execID, ids, err)
 				}
 			}()
 		}
@@ -89,12 +91,10 @@ func main() {
 		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 		<-sig
 		dbos.Shutdown(ctx, 5*time.Second)
-	case "retry":
-		runRetry(os.Args[2])
 	case "enqueue":
-		c, err := dbos.NewClient(context.Background(), dbos.ClientConfig{DatabaseURL: os.Args[2]})
+		c, err := dbos.NewClient(context.Background(), dbos.ClientConfig{DatabaseURL: os.Args[2], AppName: "spike", Logger: quiet})
 		must(err)
-		defer c.Shutdown(5 * time.Second)
+		defer dbos.Shutdown(c, 5*time.Second)
 		opts := []dbos.EnqueueOption{dbos.WithEnqueueWorkflowID(os.Args[4]), dbos.WithEnqueueApplicationVersion("v1")}
 		if len(os.Args) > 5 && os.Args[5] != "-" {
 			opts = append(opts, dbos.WithEnqueueQueuePartitionKey(os.Args[5]))
@@ -106,10 +106,20 @@ func main() {
 		if len(os.Args) > 7 {
 			sleep, _ = strconv.Atoi(os.Args[7])
 		}
-		h, err := dbos.Enqueue[Job, string](c.(any).(dbos.Client), os.Args[3], "main.Transfer", Job{ID: os.Args[4], Parts: parts, Sleep: sleep}, opts...)
+		h, err := dbos.Enqueue[string](c, os.Args[3], "main.Transfer", Job{ID: os.Args[4], Parts: parts, Sleep: sleep}, opts...)
 		must(err)
 		fmt.Println("enqueued", h.GetWorkflowID())
+	case "txenq":
+		runTxEnqueue(os.Args[2], os.Args[3], os.Args[4])
+	case "retry":
+		runRetry(os.Args[2])
 	}
+}
+
+func txPool(dsn string) *pgxpool.Pool {
+	p, err := pgxpool.New(context.Background(), dsn)
+	must(err)
+	return p
 }
 
 func must(err error) {

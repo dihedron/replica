@@ -11,7 +11,7 @@ import (
 
 // ctx is the global DBOS execution context.
 var (
-	ctx     dbos.DBOSContext
+	ctx     dbos.Context
 	started bool
 )
 
@@ -20,7 +20,7 @@ var (
 func Setup(application string, dburl string) error {
 	var err error
 	slog.Debug("Setting up DBOS context")
-	ctx, err = dbos.NewDBOSContext(context.Background(), dbos.Config{
+	ctx, err = dbos.NewContext(context.Background(), dbos.Config{
 		AppName:     application,
 		DatabaseURL: dburl,
 	})
@@ -113,7 +113,7 @@ func (r *Result[T]) IsFatalError(err error) bool {
 }
 
 /*
-func Enqueue[T any](ctx dbos.DBOSContext, queue dbos.WorkflowQueue, workflows []func(dbos.DBOSContext, T) (T, error), input T) ([]T, error) {
+func Enqueue[T any](ctx dbos.Context, queue dbos.WorkflowQueue, workflows []func(dbos.Context, T) (T, error), input T) ([]T, error) {
 	slog.Debug("Enqueuing workflows", "queue", queue.Name, "count", len(workflows))
 	handles := make([]dbos.WorkflowHandle[T], len(workflows))
 	for i, workflow := range workflows {

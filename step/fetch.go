@@ -55,8 +55,8 @@ func Fetch(ctx context.Context, url string, username string, password string) (w
 	return workflow.Result[[]byte]{Value: body}, nil
 }
 
-// Workflows orchestrate steps. They take a special dbos.DBOSContext.
-func FetchWorkflow(ctx dbos.DBOSContext, tasks FetchTask) (string, error) {
+// Workflows orchestrate steps. They take a special dbos.Context.
+func FetchWorkflow(ctx dbos.Context, tasks FetchTask) (string, error) {
 	slog.Debug("Starting fetch workflow", "username", tasks.Username, "password", tasks.Password)
 
 	for _, url := range tasks.URLs {

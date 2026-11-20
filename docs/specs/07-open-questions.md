@@ -4,28 +4,28 @@
 
 | ADR | Decision | Rationale | Alternatives |
 |-----|----------|-----------|--------------|
-| 1 | DBOS Transact for Go on PostgreSQL as durable engine | Already scaffolded; only Postgres to operate; fits low concurrency | Temporal; custom outbox+leases; CockroachDB/Yugabyte |
+| 1 | DBOS Transact for Go **v1.9.0** on PostgreSQL as durable engine (OSS features only) | Already scaffolded; only Postgres to operate; fits low concurrency | Temporal; custom outbox+leases; CockroachDB/Yugabyte |
 | 2 | Single-primary Postgres, synchronous quorum (`ANY 1`) to a remote region; Patroni + WAN-tuned 3-member etcd for failover, **gated by AT-18**; fallback = operator-approved cross-region failover (01 §3.3) | RPO=0 for a region loss; Raft only on the failover path, not on commits | Async replication (RPO>0); distributed SQL (same WAN quorum); pg_auto_failover (monitor SPOF) |
 | 3 | Consistency over availability (minority region refuses writes) | Never lose or fork job state | Active-active with conflict resolution |
 | 4 | Symmetric nodes; any node can accept or execute | Matches "A, A2, B or C will resume" | Per-region pinned executors |
-| 5 | Own executor registry + reconciler that adopts orphans via `ListWorkflows`+`ResumeWorkflow`, plus fencing | Spike: OSS DBOS never detects dead executors (08) | Rely on DBOS Conductor (commercial) |
+| 5 | Own executor registry + reconciler that adopts orphans via `ListWorkflows`+`ResumeWorkflows`, plus fencing | Spike: OSS DBOS never detects dead executors (08) | Rely on DBOS Conductor (commercial) |
 | 6 | Part-level checkpointing; resumable where backend supports it | Large files; retry efficiency | Whole-object retry only |
 | 7 | Compiled-in plugins behind a transport-neutral interface | Simplest and type-safe; keeps gRPC door open | go-plugin/gRPC now; Go `plugin` pkg (rejected) |
 | 8 | Source URLs must match tenant-registered endpoints | SSRF and tenant isolation | Free-form URLs (rejected) |
 | 9 | Tenant isolation via RLS + tenant-scoped refs, single shared cluster | Simple ops | DB-per-tenant (heavier) |
 
-## B. DBOS spike — resolved
+## B. DBOS spike — resolved (on v1.9.0)
 
-All six items are resolved in [08-spike-dbos.md](08-spike-dbos.md). Summary:
-no same-transaction enqueue (outbox is the design); no automatic dead-executor
-takeover, but explicit adoption works through the public API
-(`ListWorkflows(WithExecutorIDs)` + `ResumeWorkflow`) and resumes from the last
-step; zombie is fenced at next checkpoint but in-flight side effects
-duplicate; partitioned queues give per-tenant limits; multi-host DSN survives
-Postgres failover; no transaction-mode pooler; recovery is
-application-version-scoped; step retry exists but has no jitter/classification.
-Not yet exercised: rolling-upgrade behaviour end to end (AT-20), caps across
-all partitions.
+All items are resolved in [08-spike-dbos.md](08-spike-dbos.md). Summary:
+**transactional enqueue works** (job rows and workflow commit atomically, no
+outbox); no automatic dead-executor takeover, but explicit adoption works via
+the documented public API (`ListWorkflows(WithFilterExecutorIDs)` +
+`ResumeWorkflows`); zombie is fenced at next checkpoint but in-flight side
+effects duplicate; partitioned queues give per-tenant limits; multi-host DSN
+survives Postgres failover with a synchronous standby (no duplicate work);
+no transaction-mode pooler; step retry now supports a retry predicate (no
+jitter). Not yet exercised: rolling upgrades end to end (AT-20), a cap across
+all partitions at once.
 
 ## C. Questions for you
 
@@ -63,4 +63,4 @@ all partitions.
   `workflow/` look like experiments. OK to replace them with the layout in
   01 §4, keeping `metadata`, logging init, and go-flags CLI?
 
-- **Q-13 DBOS version.** go.mod pins v0.11.0; v1.9.0 exists (API changes: `Client`-based `ResumeWorkflow`, `WithResumeQueue`, `WithMaxRecoveryAttempts`, Conductor-aware launch). Upgrade before implementing? The spike should be re-run on the chosen version (AT-21).
+- **Q-13 DBOS version.** *Resolved*: upgraded to v1.9.0 and the spike re-run (08).

@@ -47,21 +47,24 @@ Transitions are written only inside DBOS steps or guarded SQL
 ```
 API handler (any node):
   authenticate, resolve tenant, validate, check quota
-  BEGIN
-    INSERT jobs (…)               -- ON CONFLICT (tenant_id, idempotency_key) → return existing
+  BEGIN                                   -- on the DBOS system database
+    INSERT jobs (…)                       -- ON CONFLICT (tenant_id, idempotency_key) → return existing
     INSERT transfers (one per destination, state=PENDING)
-  COMMIT   -- synchronous cross-region commit (NFR-1)
-  enqueue DBOS workflow ReplicateJob with workflowID = job.id   -- separate tx, idempotent (outbox)
+    dbos.Enqueue(queue "jobs", "ReplicateJob", {jobID},
+                 WithEnqueueWorkflowID(job.id), WithEnqueueTransaction(tx))
+  COMMIT   -- synchronous cross-region commit (NFR-1): job rows and workflow atomically
   return 202 { job_id }
 ```
 
-DBOS cannot enqueue inside an application transaction (08, VERIFY-1), so
-this is a **transactional outbox**: the job rows are committed first; the
-enqueue happens right after, and the `reconciler` enqueues any `ACCEPTED` job
-that has no DBOS workflow (crash between commit and enqueue). Enqueue is
-idempotent because `workflowID = job.id` (verified, 08 VERIFY-1b). The 202 is
-returned after the commit, so an accepted job cannot be lost; a crash before
-enqueue only delays the start until the next reconciler tick.
+Verified on DBOS Go v1.9.0 (08, VERIFY-1): the workflow exists only if the
+transaction commits, so there is no window in which a job exists without its
+workflow (no outbox needed). Requirements: application tables live in the
+same database as the DBOS system schema; `WithEnqueueTransaction` cannot be
+combined with `DeduplicationPolicyReturnExisting` (idempotency is provided by
+our `UNIQUE (tenant_id, idempotency_key)` instead); on error roll back the
+transaction rather than retrying on it. The reconciler still checks for
+`ACCEPTED` jobs without a workflow as a defensive invariant check (alert, then
+enqueue), but this is not an expected path.
 
 ## 4. Workflows
 
@@ -110,7 +113,7 @@ as required by DBOS replay semantics.
 
 Facts established by the spike (08): DBOS queues are durable and any
 listening executor dequeues new work; **nothing detects a dead executor**;
-adoption is explicit (list by executor ID + `ResumeWorkflow`), resumes the *same workflow ID* from
+adoption is explicit (list by executor ID + `ResumeWorkflows`), resumes the *same workflow ID* from
 its last completed step on whichever executor performs the recovery; a paused
 ("zombie") executor is fenced by DBOS at its next checkpoint, but its in-flight
 step still finishes. Therefore:
@@ -120,15 +123,14 @@ step still finishes. Therefore:
 2. **Reconciler** (every node, every 30 s; idempotent, so no leader needed; an
    advisory lock MAY reduce duplicate work): for executors with
    `last_seen` older than the lease TTL (default 60 s) it lists that
-   executor's `PENDING` workflows (`ListWorkflows(WithExecutorIDs([dead]),
-   WithStatus(PENDING))`) and calls `ResumeWorkflow(id)` on each (public API,
-   verified in 08 VERIFY-2b; no admin server involved). The workflow returns to
-   the queue and any node picks it up. Fallback if that API changes:
-   `POST /dbos-workflow-recovery` on a loopback admin server. Caveats:
-   `ResumeWorkflow` resets DBOS's `recovery_attempts`, so the reconciler keeps
+   executor's `PENDING` workflows (`ListWorkflows(WithFilterExecutorIDs(dead),
+   WithFilterStatus(PENDING))`) and calls `ResumeWorkflows(ids)` (public,
+   documented API; 08 VERIFY-2b). The workflows return to the queue and any node
+   picks them up. Caveat:
+   `ResumeWorkflows` resets DBOS's `recovery_attempts`, so the reconciler keeps
    its own adoption counter per transfer (`transfers.adoptions`, cap e.g. 20 →
    `FAILED(Internal)` + alert), and still handles
-   `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. Also: enqueue outbox (§3) and deadlines.
+   `MAX_RECOVERY_ATTEMPTS_EXCEEDED`. Also: the §3 invariant check and deadlines.
 3. **Fencing for side effects**: every state-changing write includes
    `fence = $mine`, where `fence` is incremented when a node takes the
    transfer (`acquire` step). DBOS does not fence the *in-flight step*, so a
@@ -158,13 +160,16 @@ Plugins classify errors (04). Core handles by class:
 Defaults (overridable in policy within tenant limits):
 `initial=2s, multiplier=2, max_interval=15m, jitter=±20%, deadline=7d`.
 
-Implementation note (08, VERIFY-6): DBOS step retry (`WithStepMaxRetries`,
-`WithBaseInterval`, `WithBackoffFactor`, `WithMaxInterval`) is in-process, has
-no jitter and retries *every* returned error. So steps wrap their own retry
-loop (backoff + jitter, deadline-bound, classification-aware) and return
-`Permanent`/`Integrity` outcomes **as values** (a result struct), returning an
-`error` only when the whole step should be retried by DBOS or the workflow
-recovered. A crash mid-retry is covered by workflow recovery (§6).
+Implementation note (08, VERIFY-6): DBOS v1.9.0 step retry
+(`WithStepMaxRetries`, `WithStepBaseInterval`, `WithStepBackoffFactor`,
+`WithStepMaxInterval`) is in-process and has no jitter, but supports
+classification through `WithStepRetryPredicate(func(error) bool)`: steps wrap
+plugin errors in typed errors and the predicate returns `false` for
+`Permanent`/`Integrity`, so DBOS stops retrying and the workflow handles the
+failure. Because custom error types do not survive persistence
+(gob-encoding, 08), the class is also carried in the step's result value and
+in `transfers.last_error`. Jitter, where wanted, is added inside the step.
+A crash mid-retry is covered by workflow recovery (§6).
 
 Authentication failures first trigger a credential re-resolution (secret may
 have rotated) before being deemed permanent.
@@ -179,7 +184,7 @@ wrong (e.g. operator fixed bucket permissions).
   submission (reject `429`) and at transfer start (wait).
 - Queue concurrency: global limit per node and per cluster; per-tenant
   fairness through **partitioned queues keyed by `tenant_id`**
-  (`WithPartitionQueue()` + `WithGlobalConcurrency(n)`: the limit applies per
-  partition; verified in 08, VERIFY-3a). A per-node cap
+  (`WithPartitionConcurrency(n)`: the limit applies per partition;
+  `WithPartitionQueue()` is deprecated; verified in 08, VERIFY-3a). A per-node cap
   (`WithWorkerConcurrency`) bounds total load. A cap across all partitions is
   not verified; enforce it with our own counter if needed.

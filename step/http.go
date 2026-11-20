@@ -11,7 +11,7 @@ import (
 	"github.com/dihedron/replica/workflow"
 )
 
-func FetchFromURL(ctx dbos.DBOSContext, url string, opts ...dbos.StepOption) ([]byte, error) {
+func FetchFromURL(ctx dbos.Context, url string, opts ...dbos.StepOption) ([]byte, error) {
 	slog.Debug("Starting FetchFromURL", "url", url, "options", opts)
 	result, err := dbos.RunAsStep(
 		ctx,

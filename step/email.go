@@ -9,7 +9,7 @@ import (
 	"github.com/dihedron/replica/workflow"
 )
 
-func SendEmail(ctx dbos.DBOSContext, name string, email string, opts ...dbos.StepOption) (string, error) {
+func SendEmail(ctx dbos.Context, name string, email string, opts ...dbos.StepOption) (string, error) {
 	slog.Debug("Sending email", "name", name, "email", email)
 	result, err := dbos.RunAsStep(
 		ctx,

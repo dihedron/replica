@@ -34,7 +34,7 @@ func (cmd *Command) Execute(args []string) error {
 	if dbURL == "" {
 		dbURL = "postgres://postgres:dbos@localhost:5432/postgres" // Default for `dbos postgres start`
 	}
-	runtime, err := dbos.NewDBOSContext(context.Background(), dbos.Config{
+	runtime, err := dbos.NewContext(context.Background(), dbos.Config{
 		AppName:     name,
 		DatabaseURL: dbURL,
 	})
@@ -44,7 +44,7 @@ func (cmd *Command) Execute(args []string) error {
 	}
 
 	// ensure graceful shutdown
-	defer runtime.Shutdown(5 * time.Second)
+	defer dbos.Shutdown(runtime, 5*time.Second)
 	slog.Info("DBOS Context created successfully")
 
 	// register workflows
