@@ -40,6 +40,8 @@ commands:
   wan heal                  remove every partition
   psql [--region X] [args]  psql as veho_migrator over TLS: the primary, or
                             the member of region X
+  schema-reset              drop and recreate the schema veho, empty, for a
+                            migration edited in place; the tests migrate it
   patronictl [args]         patronictl in db-b
   etcdctl [args]            etcdctl in db-b, against the three members
   garage X [args]           the garage CLI of region X
@@ -180,6 +182,7 @@ main() {
 	selftest) require_lab && selftest ;;
 	wan) cmd_wan "$@" ;;
 	psql) require_lab && db_psql "$@" ;;
+	schema-reset) require_lab && db_psql -c "drop schema veho cascade; create schema veho authorization veho_migrator" ;;
 	patronictl) require_lab && db_patronictl "$@" ;;
 	etcdctl) require_lab && db_etcdctl "$@" ;;
 	garage)

@@ -11,6 +11,7 @@ import (
 const minimal = `
 node: {id: veho-a1, region: region-a}
 secrets: {unwrap_key: "file:/etc/veho/unwrap.key"}
+api: {tls: {cert_file: /etc/veho/api.crt, key_file: /etc/veho/api.key}}
 `
 
 func TestDefaults(t *testing.T) {
@@ -43,7 +44,7 @@ func TestLoadHash(t *testing.T) {
 }
 
 func TestRefused(t *testing.T) {
-	const node, key = "node: {id: a, region: b}\n", "secrets: {unwrap_key: \"file:/k\"}\n"
+	const node, key = "node: {id: a, region: b}\n", "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}}\n"
 	zeros := strings.Repeat("0", 64)
 	for want, doc := range map[string]string{
 		"field nope":         node + key + "nope: 1\n",
@@ -57,6 +58,7 @@ func TestRefused(t *testing.T) {
 		"sha256 must be":     node + key + "plugins: [{name: s3, path: /usr/lib/veho/s3, sha256: abc}]\n",
 		"a name is required": node + key + "plugins: [{name: s3, path: /a, sha256: " + zeros + "}, {name: s3, path: /b, sha256: " + zeros + "}]\n",
 		"metrics.listen":     node + key + "metrics: {listen: nowhere}\n",
+		"api.tls":            node + "secrets: {unwrap_key: \"file:/k\"}\n",
 	} {
 		if _, err := Parse([]byte(doc)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v", want, err)

@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +29,8 @@ type Request struct {
 	SourcePath     string
 	// Policy is the policy document (veho-distribution-policy.md).
 	Policy []byte
+	// Labels are the client's own (veho-api-server.md §5).
+	Labels map[string]string
 }
 
 // JobInput is the input of ReplicateJob: IDs only (SEC-7, INV-5).
@@ -53,6 +57,17 @@ var (
 	ErrQuota = errors.New("quota exceeded")
 	// ErrSuspended: the tenant is suspended.
 	ErrSuspended = errors.New("tenant suspended")
+	// ErrIdempotencyReuse: the key was used for another request (409).
+	ErrIdempotencyReuse = errors.New("idempotency key used for another request")
+	// ErrInvalid: a request the engine refuses before the policy (400).
+	ErrInvalid = errors.New("invalid request")
+)
+
+// Label limits (veho-api-server.md §5).
+const (
+	maxLabels     = 16
+	maxLabelKey   = 63
+	maxLabelValue = 255
 )
 
 type quotas struct {
@@ -71,6 +86,13 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 	if err != nil {
 		return uuid.UUID{}, false, &policy.Error{Code: policy.CodeInvalidPolicy, Message: err.Error()}
 	}
+	if err := checkLabels(r.Labels); err != nil {
+		return uuid.UUID{}, false, err
+	}
+	sum, err := requestHash(r, p)
+	if err != nil {
+		return uuid.UUID{}, false, err
+	}
 	var (
 		job     uuid.UUID
 		created bool
@@ -87,9 +109,7 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 			return ErrSuspended
 		}
 		if r.IdempotencyKey != "" {
-			if err := tx.QueryRow(ctx, "select id from veho.jobs where idempotency_key = $1", r.IdempotencyKey).Scan(&job); err == nil {
-				return nil
-			} else if !errors.Is(err, pgx.ErrNoRows) {
+			if found, err := sameRequest(ctx, tx, r.IdempotencyKey, sum, &job); found || err != nil {
 				return err
 			}
 		}
@@ -139,15 +159,20 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 		if r.IdempotencyKey != "" {
 			key = &r.IdempotencyKey
 		}
-		tag, err := tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, idempotency_key, source_endpoint_id, source_path, policy, deadline_at)
-			values ($1, veho.current_tenant(), $2, $3, $4, $5, now() + $6 * interval '1 second')
+		labels, err := json.Marshal(cmpLabels(r.Labels))
+		if err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, idempotency_key, source_endpoint_id, source_path, policy, deadline_at, labels, request_sha256)
+			values ($1, veho.current_tenant(), $2, $3, $4, $5, now() + $6 * interval '1 second', $7, $8)
 			on conflict (tenant_id, idempotency_key) do nothing`,
-			job, key, src.id, r.SourcePath, spec, time.Duration(p.Deadline).Seconds())
+			job, key, src.id, r.SourcePath, spec, time.Duration(p.Deadline).Seconds(), labels, sum)
 		if err != nil {
 			return err
 		}
 		if tag.RowsAffected() == 0 { // a concurrent submission of the same key won
-			return tx.QueryRow(ctx, "select id from veho.jobs where idempotency_key = $1", r.IdempotencyKey).Scan(&job)
+			_, err := sameRequest(ctx, tx, r.IdempotencyKey, sum, &job)
+			return err
 		}
 		for _, d := range p.Destinations {
 			ep, _ := eps.get(d.Endpoint)
@@ -178,7 +203,7 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 		if perr, ok := errors.AsType[*policy.Error](err); ok {
 			return uuid.UUID{}, false, perr
 		}
-		if !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrQuota) && !errors.Is(err, ErrSuspended) {
+		if !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrQuota) && !errors.Is(err, ErrSuspended) && !errors.Is(err, ErrIdempotencyReuse) {
 			slog.ErrorContext(ctx, "cannot accept the job", "tenant_id", tenant.String(), "error", err)
 		}
 		e.audit.Emit(ctx, audit.Event{Action: "JOB_SUBMIT", Outcome: audit.Failed, TenantID: tenant.String(), ResourceType: "job",
@@ -250,4 +275,55 @@ func derefOr(ep *endpoint) endpoint {
 		return endpoint{}
 	}
 	return *ep
+}
+
+// sameRequest finds the job of an idempotency key: found, it sets *job, or
+// fails with ErrIdempotencyReuse when the key served another request.
+func sameRequest(ctx context.Context, tx pgx.Tx, key string, sum []byte, job *uuid.UUID) (bool, error) {
+	var prev []byte
+	err := tx.QueryRow(ctx, "select id, request_sha256 from veho.jobs where idempotency_key = $1", key).Scan(job, &prev)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, err
+	case !bytes.Equal(prev, sum):
+		return true, ErrIdempotencyReuse
+	}
+	return true, nil
+}
+
+// requestHash is the SHA-256 of the request's canonical form: the source,
+// the normalised policy and the labels, encoded by encoding/json, which
+// sorts map keys.
+func requestHash(r Request, p policy.Policy) ([]byte, error) {
+	b, err := json.Marshal(struct {
+		Endpoint, Path string
+		Policy         policy.Policy
+		Labels         map[string]string
+	}{r.SourceEndpoint, r.SourcePath, p, cmpLabels(r.Labels)})
+	if err != nil {
+		return nil, err
+	}
+	s := sha256.Sum256(b)
+	return s[:], nil
+}
+
+func cmpLabels(l map[string]string) map[string]string {
+	if l == nil {
+		return map[string]string{}
+	}
+	return l
+}
+
+func checkLabels(l map[string]string) error {
+	if len(l) > maxLabels {
+		return fmt.Errorf("%w: at most %d labels", ErrInvalid, maxLabels)
+	}
+	for k, v := range l {
+		if k == "" || len(k) > maxLabelKey || len(v) > maxLabelValue {
+			return fmt.Errorf("%w: label %q: keys of 1 to %d characters, values of at most %d", ErrInvalid, k, maxLabelKey, maxLabelValue)
+		}
+	}
+	return nil
 }

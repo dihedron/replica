@@ -8,7 +8,7 @@ A client submits the URL of an object that is already available to the service (
 
 ## Status
 
-**Early implementation.** Done: the distribution policy engine (`internal/policy`, `internal/topology`), the state store (`internal/store`: roles, schema, row-level security, `veho migrate`, start-up checks), the storage plugins (`pkg/plugin`: the contract, the `file` and S3 drivers, the conformance suite, and the go-plugin process loader with `cmd/veho-plugin-file` and `cmd/veho-plugin-s3`), the secrets (`internal/secrets`: envelope encryption under a versioned KEK, `veho kek`), the audit (`internal/audit`: events to the system log, forwarded to the SIEM), the engine (`internal/engine` and `veho serve`: transactional acceptance, the job and transfer workflows with fencing, retries and resume, housekeeping, metrics), the DBOS regression suite (`test/dbos`) and the lab (`test/lab`). Next: the API (C7), per `.specs/veho-implementation-plan.md`; the work agreed for later is in `.specs/veho-backlog.md`. Nothing is usable end to end yet.
+**Early implementation.** Done: the distribution policy engine (`internal/policy`, `internal/topology`), the state store (`internal/store`: roles, schema, row-level security, `veho migrate`, start-up checks), the storage plugins (`pkg/plugin`: the contract, the `file` and S3 drivers, the conformance suite, and the go-plugin process loader with `cmd/veho-plugin-file` and `cmd/veho-plugin-s3`), the secrets (`internal/secrets`: envelope encryption under a versioned KEK, `veho kek`), the audit (`internal/audit`: events to the system log, forwarded to the SIEM), the engine (`internal/engine` and `veho serve`: transactional acceptance, the job and transfer workflows with fencing, retries and resume, housekeeping, metrics), the DBOS regression suite (`test/dbos`), the jobs API (`internal/api`: gRPC and REST on one TLS port, API keys, `veho tenant` and `veho apikey`) and the lab (`test/lab`). Next: OIDC and SPIFFE identities, policies and administration (C7b to C7d), per `.specs/veho-implementation-plan.md`; the work agreed for later is in `.specs/veho-backlog.md`. Nothing is usable end to end yet.
 
 The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three control-plane regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`; they run as the regression suite `test/dbos` on every DBOS version bump.
 
@@ -31,6 +31,7 @@ The project follows Spec-Driven Development (`AGENTS.md`): code starts from an a
 | `veho-latency-envelope.md` | Supported latency and jitter, degradation, tuning |
 | `veho-audit-housekeeping.md` | Audit log and housekeeping (zombies, retention, pruning) |
 | `veho-store.md` | State store: database roles, schema, row-level security, migrations |
+| `veho-api-server.md` | The API server: transport, interceptors, identities, jobs (C7) |
 | `veho-engine.md` | The engine: acceptance, workflows, fencing, retries, housekeeping (C6) |
 | `veho-audit.md` | Lightweight audit: events to the system log and the SIEM |
 | `veho-secrets.md` | Secrets: key hierarchy, envelope encryption, KEK rotation, `veho kek` |

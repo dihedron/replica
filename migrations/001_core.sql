@@ -77,6 +77,10 @@ CREATE TABLE veho.jobs (
 	updated_at         timestamptz NOT NULL DEFAULT now(),
 	finished_at        timestamptz,
 	last_error         jsonb,
+	labels             jsonb NOT NULL DEFAULT '{}',
+	-- the hash of the request, so that an idempotency key reused with
+	-- another request is refused (API-4)
+	request_sha256     bytea,
 	UNIQUE (tenant_id, id),
 	UNIQUE (tenant_id, idempotency_key),
 	FOREIGN KEY (tenant_id, source_endpoint_id) REFERENCES veho.endpoints (tenant_id, id),
@@ -139,9 +143,11 @@ CREATE FUNCTION veho.jobs_immutable() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-	IF (NEW.id, NEW.tenant_id, NEW.idempotency_key, NEW.source_endpoint_id, NEW.source_path, NEW.policy, NEW.policy_ref, NEW.created_at)
+	IF (NEW.id, NEW.tenant_id, NEW.idempotency_key, NEW.source_endpoint_id, NEW.source_path, NEW.policy, NEW.policy_ref, NEW.created_at,
+	    NEW.labels, NEW.request_sha256)
 		IS DISTINCT FROM
-		(OLD.id, OLD.tenant_id, OLD.idempotency_key, OLD.source_endpoint_id, OLD.source_path, OLD.policy, OLD.policy_ref, OLD.created_at) THEN
+		(OLD.id, OLD.tenant_id, OLD.idempotency_key, OLD.source_endpoint_id, OLD.source_path, OLD.policy, OLD.policy_ref, OLD.created_at,
+		 OLD.labels, OLD.request_sha256) THEN
 		RAISE EXCEPTION 'jobs: identity, source and policy are immutable' USING ERRCODE = 'integrity_constraint_violation';
 	END IF;
 	RETURN NEW;
@@ -352,3 +358,58 @@ REVOKE ALL ON FUNCTION veho.quiet_jobs(interval, int), veho.expired_jobs(int), v
 	veho.job_tenant(uuid), veho.state_counts() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.quiet_jobs(interval, int), veho.expired_jobs(int), veho.adopted(uuid),
 	veho.job_tenant(uuid), veho.state_counts() TO veho_worker;
+
+-- ---------------------------------------------------------------------------
+-- The API's principals and their keys (.specs/veho-api-server.md §4). A
+-- platform administrator has no tenant; every other principal one.
+
+CREATE TABLE veho.principals (
+	id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id   uuid REFERENCES veho.tenants (id),
+	name        text NOT NULL CHECK (name <> ''),
+	role        text NOT NULL CHECK (role IN ('viewer', 'operator', 'admin', 'platform-admin')),
+	created_at  timestamptz NOT NULL DEFAULT now(),
+	disabled_at timestamptz,
+	CHECK ((role = 'platform-admin') = (tenant_id IS NULL))
+);
+CREATE UNIQUE INDEX principals_name ON veho.principals (coalesce(tenant_id, '00000000-0000-0000-0000-000000000000'), name);
+
+CREATE TABLE veho.api_keys (
+	id           text PRIMARY KEY CHECK (id ~ '^[a-z0-9]{12}$'),
+	principal_id uuid NOT NULL REFERENCES veho.principals (id) ON DELETE CASCADE,
+	tenant_id    uuid REFERENCES veho.tenants (id),
+	sha256       bytea NOT NULL CHECK (length(sha256) = 32),
+	created_at   timestamptz NOT NULL DEFAULT now(),
+	expires_at   timestamptz,
+	revoked_at   timestamptz,
+	last_used_at timestamptz
+);
+
+ALTER TABLE veho.principals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.api_keys ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.principals
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.api_keys
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+
+-- authenticate_key returns the principal of a key, before the tenant is
+-- known; the caller compares the hash. It records the use at most once a
+-- minute.
+CREATE FUNCTION veho.authenticate_key(p_id text)
+RETURNS TABLE (principal_id uuid, tenant_id uuid, name text, role text, sha256 bytea, valid boolean)
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	WITH k AS (
+		UPDATE veho.api_keys SET last_used_at = now()
+		 WHERE id = p_id AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')
+		RETURNING id
+	)
+	SELECT p.id, p.tenant_id, p.name, p.role, a.sha256,
+	       a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now()) AND p.disabled_at IS NULL
+	         AND (p.tenant_id IS NULL OR (SELECT t.state = 'active' FROM veho.tenants t WHERE t.id = p.tenant_id))
+	  FROM veho.api_keys a JOIN veho.principals p ON p.id = a.principal_id
+	 WHERE a.id = p_id
+$$;
+REVOKE ALL ON FUNCTION veho.authenticate_key(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.authenticate_key(text) TO veho_api;
+GRANT SELECT, INSERT, UPDATE ON veho.principals, veho.api_keys TO veho_api;

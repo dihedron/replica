@@ -2,7 +2,7 @@
 
 This file specifies the REST API and the command line clients. It is part of `veho_specification.md`.
 
-Status: draft, 2026-11-21, for review.
+Status: draft, 2026-11-21, for review. The server as built and its amendments of this document are in `veho-api-server.md` (§10): the source is `{endpoint, path}`, retry restarts every failed transfer, submission does not return `422`, labels filter as `label[<k>]=<v>`, and `AuditService` waits for backlog 32.
 
 Two interfaces to one service: **gRPC** (protobuf over HTTP/2) and **REST/JSON** over HTTPS, both versioned (`/v1`, package `veho.v1`). gRPC is preferred for application-to-application flows and for the CLI; REST stays for browsers' simple needs, scripts and tools. The protobuf definitions in `api/` are the **single source of truth** (API-1): the REST interface and the OpenAPI 3.1 document are generated from them, so the two cannot drift.
 
@@ -156,6 +156,7 @@ displays an object is `show`, and the process commands are `serve`, `migrate`,
 | :--- | :--- |
 | `veho serve` | run a node: the API and the workflow executor (one process, any region) |
 | `veho migrate` | apply the schema migrations to the state store |
+| `veho tenant create`, `veho apikey create` | bootstrap tenants and API keys, as `veho_migrator` (`veho-api-server.md` §4.3) |
 | `veho kek show \| init \| rotate \| rewrap \| rekey` | the key-encryption keys of the secrets, as `veho_migrator` with the unwrap key (`veho-secrets.md` §4) |
 | `veho job submit \| show \| list \| wait \| cancel \| retry` | client of the API; `wait` polls until the job is terminal and exits non-zero on `FAILED` |
 | `veho endpoint create \| show \| list \| update \| delete \| test` | tenant endpoints |

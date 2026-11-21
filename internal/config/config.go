@@ -27,6 +27,20 @@ type Config struct {
 	Housekeeping Housekeeping `yaml:"housekeeping"`
 	Plugins      []Plugin     `yaml:"plugins"`
 	Metrics      Metrics      `yaml:"metrics"`
+	API          API          `yaml:"api"`
+}
+
+// API is the API's listener (veho-api-server.md §2, §7).
+type API struct {
+	Listen     string `yaml:"listen"`
+	TLS        TLS    `yaml:"tls"`
+	MaxWatches int    `yaml:"max_watches"`
+}
+
+// TLS names the certificate and key files of a listener.
+type TLS struct {
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // Node is this node: its executor ID and its location.
@@ -146,6 +160,8 @@ func (c *Config) complete() error {
 	set(&c.Database.DBOS.Env, "VEHO_DBOS_DATABASE_URL")
 	set(&c.Audit.Sink, "syslog")
 	set(&c.Metrics.Listen, "127.0.0.1:9464")
+	set(&c.API.Listen, ":8443")
+	setI(&c.API.MaxWatches, 1000)
 	setD(&c.Engine.Heartbeat, 10*time.Second)
 	setD(&c.Engine.LeaseTTL, 60*time.Second)
 	setI(&c.Engine.PartSizeMiB, 64)
@@ -199,6 +215,10 @@ func (c *Config) validate() error {
 		check(err == nil && len(sum) == sha256.Size, "plugins[%d]: sha256 must be 64 hexadecimal digits", i)
 		names[p.Name] = true
 	}
+	_, _, err := net.SplitHostPort(c.API.Listen)
+	check(err == nil, "api.listen %q: want host:port", c.API.Listen)
+	check(c.API.TLS.CertFile != "" && c.API.TLS.KeyFile != "", "api.tls.cert_file and api.tls.key_file are required")
+	check(c.API.MaxWatches > 0, "api.max_watches must be positive")
 	if c.Metrics.Listen != "off" {
 		_, _, err := net.SplitHostPort(c.Metrics.Listen)
 		check(err == nil, "metrics.listen %q: want host:port or off", c.Metrics.Listen)

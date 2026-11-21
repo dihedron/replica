@@ -122,7 +122,7 @@ resources with the node's network position.
 
 - **SEC-15** TLS 1.2+ everywhere (API, Postgres, etcd, inter-node); mTLS for
   Postgres/etcd.
-- **SEC-16** API keys stored hashed (argon2id/sha256+pepper), shown once.
+- **SEC-16** API keys stored hashed, shown once: SHA-256 of a 256-bit random secret, without a pepper, since a slow hash protects guessable passwords, not random keys (`veho-api-server.md` §4.2).
 - **SEC-23** The gRPC interface authenticates every call and every stream (API-11); authorization, quotas, rate limits and audit are the same interceptors for gRPC and for the REST gateway, so there is no path that skips them (T-36).
 - **SEC-20** Identity mechanisms accepted by the API, each mapped to a tenant
   and a role by an identity binding configured by a tenant admin (never by the

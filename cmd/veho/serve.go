@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dihedron/veho/internal/api"
 	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/engine"
@@ -95,14 +97,19 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 		return errors.Join(err, e.Shutdown(shutdownTimeout))
 	}
 	defer stopMetrics()
+	apiDone, err := serveAPI(hctx, cfg, e, pools["api"])
+	if err != nil {
+		stopBeat()
+		return errors.Join(err, e.Shutdown(shutdownTimeout))
+	}
 	slog.InfoContext(ctx, "running", "executor", cfg.Node.ID)
 	if cmd.ready != nil {
 		cmd.ready <- e
 	}
 	<-ctx.Done()
 	slog.Info("stopping", "executor", cfg.Node.ID)
-	stopBeat()
-	return e.Shutdown(shutdownTimeout)
+	stopBeat() // the API stops with it
+	return errors.Join(<-apiDone, e.Shutdown(shutdownTimeout))
 }
 
 // connect opens the pools of veho_api and veho_worker, runs the start-up
@@ -197,4 +204,35 @@ func serveMetrics(cfg *config.Config, e *engine.Engine, aud *audit.Logger) (func
 		}
 	}()
 	return func() { _ = srv.Close() }, nil
+}
+
+// serveAPI starts the API on api.listen (.specs/veho-api-server.md §2); the
+// channel gets its end once ctx is done.
+func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *pgxpool.Pool) (<-chan error, error) {
+	cert, err := tls.LoadX509KeyPair(cfg.API.TLS.CertFile, cfg.API.TLS.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("serve: api.tls: %w", err)
+	}
+	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Ready: func(ctx context.Context) error {
+		if e.Fenced() {
+			return engine.ErrFenced
+		}
+		return pool.Ping(ctx)
+	}})
+	if err != nil {
+		return nil, err
+	}
+	ln, err := net.Listen("tcp", cfg.API.Listen)
+	if err != nil {
+		srv.Close()
+		return nil, fmt.Errorf("serve: api.listen: %w", err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		err := srv.Serve(ctx, ln, cert)
+		srv.Close()
+		done <- err
+	}()
+	slog.InfoContext(ctx, "API listening", "address", ln.Addr().String())
+	return done, nil
 }

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net/http"
 	"os"
@@ -51,6 +52,7 @@ func TestServe(t *testing.T) {
 	if err := secrets.InitKEK(ctx, conn, secrets.FileSource{Path: key}); err != nil {
 		t.Fatal(err)
 	}
+	crt, keyFile := selfSigned(t, dir)
 	cfg := filepath.Join(dir, "veho.yaml")
 	if err := os.WriteFile(cfg, []byte(`
 node: {id: test-serve, region: lab-a}
@@ -61,6 +63,7 @@ database:
 secrets: {unwrap_key: "file:`+key+`"}
 audit: {sink: stderr}
 metrics: {listen: "127.0.0.1:19464"}
+api: {listen: "127.0.0.1:18443", tls: {cert_file: "`+crt+`", key_file: "`+keyFile+`"}}
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +91,17 @@ metrics: {listen: "127.0.0.1:19464"}
 	for _, m := range []string{"veho_objects{", "veho_heartbeat_age_seconds", "veho_audit_dropped_total"} {
 		if !strings.Contains(string(body), m) {
 			t.Errorf("no %s in the metrics:\n%s", m, body)
+		}
+	}
+	c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}} //nolint:gosec // the test's own certificate
+	for path, want := range map[string]int{"/healthz": 200, "/readyz": 200, "/v1/jobs": 401} {
+		r, err := c.Get("https://127.0.0.1:18443" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = r.Body.Close()
+		if r.StatusCode != want {
+			t.Errorf("%s: %d, want %d", path, r.StatusCode, want)
 		}
 	}
 	stop()

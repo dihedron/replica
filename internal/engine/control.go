@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 	"uuid"
 
@@ -100,15 +101,23 @@ func (e *Engine) emitJob(ctx context.Context, action string, tenant, job uuid.UU
 
 // JobStatus is what Status shows (FR-14).
 type JobStatus struct {
-	ID          uuid.UUID
-	State       string
-	Copies      int
-	SatisfiedAt *time.Time
-	CompletedAt *time.Time
-	SettledAt   *time.Time
-	DeadlineAt  time.Time
-	LastError   json.RawMessage
-	Transfers   []TransferStatus
+	ID             uuid.UUID
+	State          string
+	SourceEndpoint string
+	SourcePath     string
+	SourceSize     *int64
+	SourceVersion  string
+	Labels         map[string]string
+	Copies         int
+	Destinations   int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	DeadlineAt     time.Time
+	SatisfiedAt    *time.Time
+	CompletedAt    *time.Time
+	SettledAt      *time.Time
+	LastError      json.RawMessage
+	Transfers      []TransferStatus
 }
 
 // TransferStatus is one destination's progress.
@@ -116,24 +125,34 @@ type TransferStatus struct {
 	ID         uuid.UUID
 	Endpoint   string
 	Path       string
+	Position   map[string]string
 	State      string
 	BytesDone  int64
 	BytesTotal *int64
 	Attempt    int
 	LastError  json.RawMessage
+	FinishedAt *time.Time
+}
+
+const jobColumns = `j.id, j.state, e.name, j.source_path, (j.source_info->>'size')::bigint, coalesce(j.source_info->>'version', ''),
+	j.labels, j.copies_done, (select count(*)::int from veho.transfers t where t.job_id = j.id), j.created_at, j.updated_at, j.deadline_at, j.satisfied_at, j.completed_at, j.settled_at, j.last_error`
+
+func scanJob(row pgx.Row, s *JobStatus) error {
+	return row.Scan(&s.ID, &s.State, &s.SourceEndpoint, &s.SourcePath, &s.SourceSize, &s.SourceVersion, &s.Labels, &s.Copies, &s.Destinations,
+		&s.CreatedAt, &s.UpdatedAt, &s.DeadlineAt, &s.SatisfiedAt, &s.CompletedAt, &s.SettledAt, &s.LastError)
 }
 
 // Status returns a job and its transfers.
 func (e *Engine) Status(ctx context.Context, tenant, job uuid.UUID) (JobStatus, error) {
-	s := JobStatus{ID: job}
+	var s JobStatus
 	err := store.InTenant(ctx, e.api, tenant, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `select state, copies_done, satisfied_at, completed_at, settled_at, deadline_at, last_error
-			from veho.jobs where id = $1`, job).Scan(&s.State, &s.Copies, &s.SatisfiedAt, &s.CompletedAt, &s.SettledAt, &s.DeadlineAt, &s.LastError); errors.Is(err, pgx.ErrNoRows) {
+		err := scanJob(tx.QueryRow(ctx, "select "+jobColumns+" from veho.jobs j join veho.endpoints e on e.id = j.source_endpoint_id where j.id = $1", job), &s)
+		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		} else if err != nil {
 			return err
 		}
-		rows, err := tx.Query(ctx, `select t.id, e.name, t.dest_path, t.state, t.bytes_done, t.bytes_total, t.attempt, t.last_error
+		rows, err := tx.Query(ctx, `select t.id, e.name, t.dest_path, t.position, t.state, t.bytes_done, t.bytes_total, t.attempt, t.last_error, t.finished_at
 			from veho.transfers t join veho.endpoints e on e.id = t.destination_endpoint_id where t.job_id = $1 order by e.name`, job)
 		if err != nil {
 			return err
@@ -145,4 +164,89 @@ func (e *Engine) Status(ctx context.Context, tenant, job uuid.UUID) (JobStatus, 
 		return JobStatus{}, fmt.Errorf("engine: status: %w", err)
 	}
 	return s, nil
+}
+
+// Filter selects jobs for ListJobs (FR-16).
+type Filter struct {
+	State          string
+	Since          time.Time
+	SourceEndpoint string
+	Labels         map[string]string
+	// Limit is at most 500; 0 is 100.
+	Limit int
+	// Cursor is the NextCursor of the previous page.
+	Cursor string
+}
+
+// ListJobs returns a page of the tenant's jobs, newest first, without their
+// transfers, and the cursor of the next page ("" at the end).
+func (e *Engine) ListJobs(ctx context.Context, tenant uuid.UUID, f Filter) ([]JobStatus, string, error) {
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	limit = min(limit, 500)
+	q := "select " + jobColumns + " from veho.jobs j join veho.endpoints e on e.id = j.source_endpoint_id where true"
+	var args []any
+	arg := func(v any) string { args = append(args, v); return fmt.Sprintf("$%d", len(args)) }
+	if f.State != "" {
+		q += " and j.state = " + arg(f.State)
+	}
+	if !f.Since.IsZero() {
+		q += " and j.created_at >= " + arg(f.Since)
+	}
+	if f.SourceEndpoint != "" {
+		q += " and e.name = " + arg(f.SourceEndpoint)
+	}
+	if len(f.Labels) > 0 {
+		l, _ := json.Marshal(f.Labels)
+		q += " and j.labels @> " + arg(l) + "::jsonb"
+	}
+	if f.Cursor != "" {
+		at, id, err := parseCursor(f.Cursor)
+		if err != nil {
+			return nil, "", fmt.Errorf("engine: %w: cursor", ErrInvalid)
+		}
+		q += " and (j.created_at, j.id) < (" + arg(at) + ", " + arg(id) + ")"
+	}
+	q += " order by j.created_at desc, j.id desc limit " + arg(limit+1)
+	var out []JobStatus
+	err := store.InTenant(ctx, e.api, tenant, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, q, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var s JobStatus
+			if err := scanJob(rows, &s); err != nil {
+				return err
+			}
+			out = append(out, s)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("engine: list: %w", err)
+	}
+	next := ""
+	if len(out) > limit {
+		out = out[:limit]
+		last := out[limit-1]
+		next = last.CreatedAt.UTC().Format(time.RFC3339Nano) + "_" + last.ID.String()
+	}
+	return out, next, nil
+}
+
+func parseCursor(c string) (time.Time, uuid.UUID, error) {
+	at, id, ok := strings.Cut(c, "_")
+	if !ok {
+		return time.Time{}, uuid.UUID{}, errors.New("malformed")
+	}
+	t, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		return time.Time{}, uuid.UUID{}, err
+	}
+	u, err := uuid.Parse(id)
+	return t, u, err
 }
