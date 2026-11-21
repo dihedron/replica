@@ -1,0 +1,143 @@
+// The process plugins' service (.specs/veho-plugins.md §6): the contract of
+// pkg/plugin over gRPC, served by a driver in its own process. Clients and
+// uploads live in the plugin process and are named by handles; data goes in
+// chunks. Errors carry their class in the trailer "veho-class" (and
+// "veho-not-found" for plugin.ErrNotFound).
+//
+// Generate with: make proto
+syntax = "proto3";
+
+package veho.plugin.v1;
+
+option go_package = "github.com/dihedron/veho/pkg/plugin/process/proto";
+
+service Driver {
+  rpc Describe(Empty) returns (Description);
+  rpc ParseRef(ParseRefRequest) returns (Ref);
+  rpc Open(OpenRequest) returns (Handle);
+  rpc Close(Handle) returns (Empty);
+
+  rpc Stat(StatRequest) returns (ObjectInfo);
+  rpc ReadRange(ReadRangeRequest) returns (stream Chunk);
+  rpc Delete(StatRequest) returns (Empty);
+
+  rpc Begin(BeginRequest) returns (UploadHandle);
+  rpc Resume(ResumeRequest) returns (UploadHandle);
+  // The first message is the header, the others carry the data.
+  rpc WritePart(stream WritePartRequest) returns (PartResult);
+  rpc ListParts(Handle) returns (PartList);
+  rpc Commit(CommitRequest) returns (ObjectInfo);
+  rpc Abort(Handle) returns (Empty);
+}
+
+message Empty {}
+
+message Capabilities {
+  bool source = 1;
+  bool sink = 2;
+  bool range_read = 3;
+  bool resumable_upload = 4;
+  bool parallel_parts = 5;
+  repeated string native_checksum = 6;
+  int64 max_parts = 7;
+  int64 min_part_size = 8;
+  int64 max_part_size = 9;
+  bool server_side_copy = 10;
+}
+
+message Description {
+  string name = 1;
+  repeated string schemes = 2;
+  Capabilities capabilities = 3;
+  bytes config_schema = 4;
+}
+
+message Ref {
+  string container = 1;
+  string key = 2;
+}
+
+message ParseRefRequest {
+  string url = 1;
+}
+
+message OpenRequest {
+  bytes config = 1;
+  map<string, string> credentials = 2;
+}
+
+// Handle names a client (Open) or an upload (Begin, Resume).
+message Handle {
+  string id = 1;
+}
+
+message ObjectInfo {
+  int64 size = 1;
+  string version = 2;
+  map<string, string> checksums = 3;
+  map<string, string> metadata = 4;
+}
+
+message StatRequest {
+  string client = 1;
+  Ref ref = 2;
+}
+
+message ReadRangeRequest {
+  string client = 1;
+  Ref ref = 2;
+  int64 offset = 3;
+  int64 length = 4;
+  string if_version = 5;
+}
+
+message Chunk {
+  bytes data = 1;
+}
+
+message BeginRequest {
+  string client = 1;
+  Ref ref = 2;
+  ObjectInfo info = 3;
+  string content_type = 4;
+  map<string, string> metadata = 5;
+}
+
+message ResumeRequest {
+  string client = 1;
+  Ref ref = 2;
+  bytes token = 3;
+}
+
+message UploadHandle {
+  string id = 1;
+  bytes token = 2;
+}
+
+message WritePartRequest {
+  message Header {
+    string upload = 1;
+    int64 part_no = 2;
+    int64 length = 3;
+  }
+  oneof msg {
+    Header header = 1;
+    bytes data = 2;
+  }
+}
+
+message PartResult {
+  int64 part_no = 1;
+  int64 size = 2;
+  string etag = 3;
+  string sha256 = 4;
+}
+
+message PartList {
+  repeated PartResult parts = 1;
+}
+
+message CommitRequest {
+  string upload = 1;
+  repeated PartResult parts = 2;
+}

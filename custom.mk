@@ -98,3 +98,11 @@ vuln: ## check go.mod and the code for known vulnerabilities with govulncheck (r
 # the DBOS spike (test/spikes/dbos) is a disposable harness that needs a
 # PostgreSQL: see .specs/veho-dbos-spike.md; it is promoted into the
 # acceptance suite (AC-21) and removed from here when implementation starts
+
+# proto regenerates the Go code of the process plugins' service; the
+# generated files are committed (protoc 3.21+, protoc-gen-go v1.36,
+# protoc-gen-go-grpc v1.5)
+.PHONY: proto
+proto: ## regenerate pkg/plugin/process/proto from plugin.proto
+	@cd pkg/plugin/process/proto && protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative plugin.proto

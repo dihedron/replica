@@ -2,7 +2,7 @@
 
 This file specifies the storage plugin interfaces and their conformance suite. It is part of `veho_specification.md`.
 
-Status: approved 2026-11-21 with §7 (the decisions of chunk C5); C5a and C5b done (the `file` and S3 drivers pass the suite, S3 on the lab's three Garage clusters), C5c next.
+Status: approved 2026-11-21 with §7 (the decisions of chunk C5); C5 done 2026-11-21, with the deferrals listed at the end of §7.
 
 ## 1. Mechanism
 
@@ -203,3 +203,17 @@ Decisions, completing §2:
 - **Empty objects on S3**: S3-compatible services refuse an empty part (Garage does, `InvalidRequest: Empty body`), so an empty part is not uploaded, and `Commit` of an empty object aborts the multipart upload and publishes it with an empty `PutObject`, which is atomic too.
 - **Error table without the proxy**: the S3 driver's classification is checked against a fake service that answers with each status and error code (`pkg/plugin/s3/s3_test.go`); the fault proxy of L3 then repeats it against Garage, mid-transfer.
 - **Conformance suite**: `conformance.Run(t, conformance.Target{...})`, with a seed for its random sizes (reported on failure). The error table of §4 by fault injection waits for the lab's S3 fault proxy (`veho-lab.md` §5, L3); until then the suite checks the classes it can provoke without one (not found, source changed, invalid resume token, bad credentials when the target provides them).
+
+### 7.1 The process loader as built (C5c)
+
+- `pkg/plugin/process`: `Serve(driver)` is a plugin binary's main (`cmd/veho-plugin-file`, `cmd/veho-plugin-s3`); `Load(Options)` starts one. The service is `pkg/plugin/process/proto/plugin.proto` (`make proto`; the generated code is committed). Clients and uploads live in the plugin process behind random handles; data moves in 1 MiB messages. An error's class travels in the trailer (`veho-class`, `veho-not-found`); a lost or crashed plugin is `Transient` (PLG-18), and the next `Open` restarts the process.
+- PLG-12: handshake with a magic cookie and protocol version 1, gRPC only. PLG-13: go-plugin's automatic mutual TLS. PLG-14: go-plugin checks the binary's SHA-256 before starting it (`SecureConfig`); `RequireRootOwned` refuses a binary or directory that is not root's or is writable by others. The plugin gets none of the core's environment (`SkipHostEnv`), so no secret reaches it that way. PLG-19: the plugin's log lines go through `slog`.
+- Tests: the suite passes under the process loader on `file` and, in the lab, on S3 (Garage of region B); a wrong or missing checksum and a user-owned binary are refused; a `SIGKILL`ed plugin fails the call in flight as `Transient` and is restarted by the next `Open`.
+- **PLG-17 measured** (`BenchmarkCopy`, 64 MiB in 8 MiB parts, `file` driver to `file` driver, the core hashing the stream; AMD Ryzen 7 8745HS, 2026-11-21): 380 MB/s compiled in, 325 MB/s out of process, about 15 % less, both bound by the driver's synchronous writes. That is more than 2.5 Gbit/s per transfer through the core, so the direct plugin-to-plugin stream is not needed for v1; backlog 12 (OI-10) can decide on packaging alone.
+
+Deferred, each to the chunk that owns it:
+
+- PLG-14's **signed manifest**: `Load` takes the expected checksum; reading it from a manifest signed with the release key comes with the release work (C11, backlog 8).
+- PLG-15's **confinement** of the plugin process (systemd and AppArmor or SELinux settings): with the packaging (C11, backlog 27).
+- PLG-16's **process per tenant** and the choice of loader per driver: configuration of `veho serve` (C6).
+- The error table **by fault injection against a real service**: the lab's S3 fault proxy (L3); the classification is unit-tested against a fake service meanwhile.
