@@ -80,3 +80,23 @@ func (e *Engine) Fenced() bool {
 	defer e.mu.Unlock()
 	return e.stopped()
 }
+
+// guard returns a context that ends when ctx does or when the node is
+// fenced, for the work of a step; it fails at once while fenced (§7).
+func (e *Engine) guard(ctx context.Context) (context.Context, context.CancelFunc, error) {
+	e.mu.Lock()
+	stop, fenced := e.stop, e.stopped()
+	e.mu.Unlock()
+	if fenced {
+		return nil, nil, ErrFenced
+	}
+	gctx, cancel := context.WithCancelCause(ctx)
+	go func() { // ends with gctx, which the caller's cancel ends
+		select {
+		case <-stop:
+			cancel(ErrFenced)
+		case <-gctx.Done():
+		}
+	}()
+	return gctx, func() { cancel(nil) }, nil
+}

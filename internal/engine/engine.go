@@ -15,6 +15,7 @@ import (
 	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/secrets"
+	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,6 +41,8 @@ type Deps struct {
 	Audit   audit.Auditor
 	// Secrets gives the attempts their credentials (SEC-10).
 	Secrets *secrets.Store
+	// Drivers are the storage drivers by name (§6).
+	Drivers map[string]plugin.Driver
 	Logger  *slog.Logger
 }
 
@@ -50,6 +53,8 @@ type Engine struct {
 	dbos        dbos.Context
 	audit       audit.Auditor
 	secrets     *secrets.Store
+	drivers     map[string]plugin.Driver
+	queues      map[string]dbos.Queue
 	executor    string
 	region      string
 
@@ -76,18 +81,22 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("engine: %w", err)
 	}
-	e := &Engine{cfg: c, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, executor: c.Node.ID, region: c.Node.Region,
-		lastOK: time.Now(), stop: make(chan struct{})}
+	e := &Engine{cfg: c, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
+		lastOK: time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}}
 	for _, q := range []string{QueueJobs, QueueTransfer} {
 		// one partition per tenant (EXT-3a): a tenant runs at most
 		// tenant_concurrency workflows of a queue at a time
-		if _, err := dbos.RegisterQueue(dc, q,
+		queue, err := dbos.RegisterQueue(dc, q,
 			dbos.WithPartitionConcurrency(c.Engine.TenantConcurrency),
 			dbos.WithWorkerConcurrency(c.Engine.WorkerConcurrency),
-			dbos.WithQueueOnConflict(dbos.QueueConflictUpdateIfLatestVersion)); err != nil {
+			dbos.WithQueueOnConflict(dbos.QueueConflictUpdateIfLatestVersion))
+		if err != nil {
 			return nil, errors.Join(fmt.Errorf("engine: queue %s: %w", q, err), dbos.Shutdown(dc, 5*time.Second))
 		}
+		e.queues[q] = queue
 	}
+	dbos.RegisterWorkflow(dc, e.jobWorkflow, dbos.WithWorkflowName(WorkflowJob))
+	dbos.RegisterWorkflow(dc, e.transferWorkflow, dbos.WithWorkflowName(WorkflowTransfer))
 	return e, nil
 }
 

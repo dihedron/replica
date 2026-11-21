@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -14,9 +16,13 @@ import (
 	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/policy"
+	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/internal/store/migrate"
 	"github.com/dihedron/veho/migrations"
+	"github.com/dihedron/veho/pkg/plugin"
+	"github.com/dihedron/veho/pkg/plugin/file"
+	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -36,6 +42,8 @@ type fixture struct {
 	migrator    *pgx.Conn
 	tenant      uuid.UUID
 	audit       *audit.Recorder
+	secrets     *secrets.Store
+	flaky       *flaky
 }
 
 func testConfig(t *testing.T) *config.Config {
@@ -43,7 +51,7 @@ func testConfig(t *testing.T) *config.Config {
 	c, err := config.Parse([]byte(`
 node: {id: test-` + uuid.New().String()[:8] + `, region: lab-a}
 secrets: {unwrap_key: "file:/nonexistent"}
-engine: {heartbeat: 1s, lease_ttl: 4s}
+engine: {heartbeat: 1s, lease_ttl: 4s, part_size_mib: 5, parts_in_flight: 2}
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -64,15 +72,39 @@ func setup(t *testing.T) fixture {
 	if _, err := migrate.Apply(ctx, conn, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	f := fixture{migrator: conn, audit: &audit.Recorder{}}
+	f := fixture{migrator: conn, audit: &audit.Recorder{}, flaky: &flaky{Driver: file.New()}}
 	for env, p := range map[string]**pgxpool.Pool{"VEHO_TEST_API_DATABASE_URL": &f.api, "VEHO_TEST_WORKER_DATABASE_URL": &f.worker} {
 		if *p, err = store.Open(ctx, dsn(t, env), store.Options{Name: "test/engine"}); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup((*p).Close)
 	}
+	// the KEKs under this test's key, with the lock of the other packages'
+	// tests that share veho.kek
+	key := filepath.Join(t.TempDir(), "unwrap.key")
+	if err := os.WriteFile(key, []byte(strings.Repeat("k", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		"select pg_advisory_lock(hashtext('veho-test-kek'))",
+		"update veho.endpoints set credential_ref = null where credential_ref like 'db://%'",
+		"delete from veho.secrets", "delete from veho.kek",
+	} {
+		if _, err := conn.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := secrets.InitKEK(ctx, conn, secrets.FileSource{Path: key}); err != nil {
+		t.Fatal(err)
+	}
+	ring, err := secrets.LoadKeyring(ctx, f.worker, secrets.FileSource{Path: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.secrets = secrets.NewStore(ring, f.api, f.worker, f.audit)
+	drivers := map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}
 	if f.e, err = New(ctx, Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
-		Version: "test", Audit: f.audit}); err != nil {
+		Version: "test", Audit: f.audit, Secrets: f.secrets, Drivers: drivers}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.e.Shutdown(5 * time.Second) })

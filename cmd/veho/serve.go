@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,10 @@ import (
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/migrations"
 	"github.com/dihedron/veho/pkg/metadata"
+	"github.com/dihedron/veho/pkg/plugin"
+	"github.com/dihedron/veho/pkg/plugin/file"
+	"github.com/dihedron/veho/pkg/plugin/process"
+	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -60,8 +65,13 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 	if err := store.CheckDSN(dbosDSN, false); err != nil {
 		return fmt.Errorf("serve: database.dbos (%s): %w", cfg.Database.DBOS.Env, err)
 	}
+	drivers, stopPlugins, err := loadDrivers(cfg)
+	defer stopPlugins()
+	if err != nil {
+		return err
+	}
 	e, err := engine.New(ctx, engine.Deps{Config: cfg, API: pools["api"], Worker: pools["worker"], DBOSURL: dbosDSN,
-		Version: metadata.Version, Audit: aud, Secrets: secrets.NewStore(ring, pools["api"], pools["worker"], aud)})
+		Version: metadata.Version, Audit: aud, Secrets: secrets.NewStore(ring, pools["api"], pools["worker"], aud), Drivers: drivers})
 	if err != nil {
 		return err
 	}
@@ -122,4 +132,32 @@ func connect(ctx context.Context, cfg *config.Config) (map[string]*pgxpool.Pool,
 		return pools, nil, fmt.Errorf("serve: node.region %q: %w", cfg.Node.Region, err)
 	}
 	return pools, ring, nil
+}
+
+// loadDrivers returns the compiled-in drivers and the process plugins of the
+// configuration (.specs/veho-engine.md §6); stop kills the plugins.
+func loadDrivers(cfg *config.Config) (map[string]plugin.Driver, func(), error) {
+	drivers := map[string]plugin.Driver{}
+	for _, d := range []plugin.Driver{file.New(), s3.New()} {
+		drivers[d.Name()] = d
+	}
+	var procs []*process.Process
+	stop := func() {
+		for _, p := range procs {
+			p.Kill()
+		}
+	}
+	for _, p := range cfg.Plugins {
+		sum, _ := hex.DecodeString(p.SHA256) // checked by config
+		proc, err := process.Load(process.Options{Path: p.Path, SHA256: sum, RequireRootOwned: true})
+		if err != nil {
+			return nil, stop, fmt.Errorf("serve: plugin %s: %w", p.Name, err)
+		}
+		procs = append(procs, proc)
+		if _, ok := drivers[p.Name]; ok {
+			return nil, stop, fmt.Errorf("serve: plugin %s: a driver of that name exists", p.Name)
+		}
+		drivers[p.Name] = proc.Driver()
+	}
+	return drivers, stop, nil
 }

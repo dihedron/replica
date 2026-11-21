@@ -33,6 +33,8 @@ type Request struct {
 type JobInput struct {
 	Tenant uuid.UUID `json:"tenant"`
 	Job    uuid.UUID `json:"job"`
+	// Run numbers the runs of the job: 0, then one per Retry (§4.6).
+	Run int `json:"run,omitempty"`
 }
 
 // Quota defaults and the platform's ceiling (veho-distribution-policy.md §4).
