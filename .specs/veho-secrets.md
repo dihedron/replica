@@ -98,7 +98,7 @@ func (s *Secret) String() string      // "[redacted]"; also MarshalJSON, LogValu
 - **Values.** Opaque bytes up to 64 KiB, so that credentials of any driver fit (the endpoint layer, C6, decodes them into `plugin.Credentials`). An empty value is refused.
 - **Zeroing is best effort.** `Zero` and the `clear` calls overwrite the buffers veho owns; Go may have copied them (a `string` conversion, an `append` that grows a slice, a buffer inside the TLS or database driver), and the driver's own copies are its own (PLG-16). Core dumps are disabled by the service unit (T-19). This limit is stated in the Operator's Guide.
 - **The secret API and its CLI** (`PUT /v1/secrets/{name}`, `veho secret set|show|list|delete`) are transport over `Store` and come with the API (C7). C3 delivers `Store`, its tests and the operator commands of §4.
-- **Audit.** SEC-27 and T-37 want every use of the secret API and every KEK change audited. The audit log comes with C4; until then `Store` and the `veho kek` commands log each change with `slog` (tenant, name, versions; never the value), and C4 turns those points into audit entries.
+- **Audit.** `Store.Put` and `Store.Delete` emit `SECRET_PUT` and `SECRET_DELETE`, and each `veho kek` command that changes the KEKs emits `KEK_INIT`, `KEK_ROTATE`, `KEK_REWRAP` or `KEK_REKEY`, through `internal/audit` (`veho-audit.md`, C4).
 
 ## 4. Operator commands (`veho kek`)
 

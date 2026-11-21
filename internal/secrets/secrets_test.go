@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"uuid"
+
+	"github.com/dihedron/veho/internal/audit"
 )
 
 // memKeyring is a Keyring that never reloads.
@@ -187,7 +189,7 @@ func TestSecretRedacted(t *testing.T) {
 
 // SECR-8, unit part: a reference without db:// is unavailable and invalid.
 func TestFetchBadRef(t *testing.T) {
-	_, err := NewStore(memKeyring(nil), nil, nil).Fetch(context.Background(), uuid.New(), "vault://x")
+	_, err := NewStore(memKeyring(nil), nil, nil, &audit.Recorder{}).Fetch(context.Background(), uuid.New(), "vault://x")
 	if !errors.Is(err, ErrUnavailable) || !errors.Is(err, ErrInvalid) {
 		t.Errorf("got %v", err)
 	}

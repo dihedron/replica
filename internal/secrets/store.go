@@ -10,6 +10,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -47,15 +48,26 @@ type Meta struct {
 }
 
 // Store is the secret service. Put, List, Show and Delete run on the API's
-// pool, Fetch on the worker's; a nil pool fails its methods.
+// pool, Fetch on the worker's; a nil pool fails its methods. Put and Delete
+// are audited after their commit (veho-audit.md §4).
 type Store struct {
 	kek         KEK
 	api, worker *pgxpool.Pool
+	audit       audit.Auditor
 }
 
 // NewStore returns the store of kek on the pools of veho_api and veho_worker.
-func NewStore(kek KEK, api, worker *pgxpool.Pool) *Store {
-	return &Store{kek: kek, api: api, worker: worker}
+func NewStore(kek KEK, api, worker *pgxpool.Pool, aud audit.Auditor) *Store {
+	return &Store{kek: kek, api: api, worker: worker, audit: aud}
+}
+
+// emit audits an action on the secret name.
+func (s *Store) emit(ctx context.Context, action string, tenant uuid.UUID, name string, err error, details any) {
+	outcome := audit.Success
+	if err != nil {
+		outcome, details = audit.Failed, map[string]string{"error": err.Error()}
+	}
+	s.audit.Emit(ctx, audit.Event{Action: action, Outcome: outcome, TenantID: tenant.String(), ResourceType: "secret", ResourceName: name, Details: details})
 }
 
 var errNoPool = errors.New("secrets: no pool for this role")
@@ -130,10 +142,11 @@ func (s *Store) Put(ctx context.Context, tenant uuid.UUID, name string, value []
 	})
 	if err != nil {
 		slog.ErrorContext(ctx, "cannot write the secret", "tenant_id", tenant.String(), "secret", name, "error", err)
-		return Meta{}, fmt.Errorf("secrets: put %s: %w", name, err)
+		err = fmt.Errorf("secrets: put %s: %w", name, err)
+		s.emit(ctx, "SECRET_PUT", tenant, name, err, nil)
+		return Meta{}, err
 	}
-	// shortcut: logged until the audit log exists (C4), which records it
-	slog.InfoContext(ctx, "secret written", "tenant_id", tenant.String(), "secret", name, "version", m.Version, "kek_version", m.KEKVersion)
+	s.emit(ctx, "SECRET_PUT", tenant, name, nil, map[string]int{"version": m.Version, "kek_version": m.KEKVersion})
 	return m, nil
 }
 
@@ -195,18 +208,17 @@ func (s *Store) Delete(ctx context.Context, tenant uuid.UUID, name string) error
 		deleted = tag.RowsAffected()
 		return err
 	})
-	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23503" {
-		return fmt.Errorf("secrets: %s: %w", name, ErrInUse)
-	}
-	if err != nil {
+	switch pgErr, ok := errors.AsType[*pgconn.PgError](err); {
+	case ok && pgErr.Code == "23503":
+		err = fmt.Errorf("secrets: %s: %w", name, ErrInUse)
+	case err != nil:
 		slog.ErrorContext(ctx, "cannot delete the secret", "tenant_id", tenant.String(), "secret", name, "error", err)
-		return fmt.Errorf("secrets: delete %s: %w", name, err)
+		err = fmt.Errorf("secrets: delete %s: %w", name, err)
+	case deleted == 0:
+		err = fmt.Errorf("secrets: %s: %w", name, ErrNotFound)
 	}
-	if deleted == 0 {
-		return fmt.Errorf("secrets: %s: %w", name, ErrNotFound)
-	}
-	slog.InfoContext(ctx, "secret deleted", "tenant_id", tenant.String(), "secret", name)
-	return nil
+	s.emit(ctx, "SECRET_DELETE", tenant, name, err, nil)
+	return err
 }
 
 // Fetch decrypts the secret of ref ("db://<name>") for one attempt; the

@@ -7,8 +7,10 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/store"
 )
 
@@ -46,25 +48,39 @@ func TestKEK(t *testing.T) {
 		return "file:" + p
 	}
 	db := dbOptions{DSNEnv: "VEHO_TEST_DATABASE_URL"}
+	rec := &audit.Recorder{}
+	aud := auditOptions{auditor: rec}
 	k1, k2 := keyOptions{key()}, keyOptions{key()}
 	steps := []struct {
 		name string
 		cmd  interface{ Execute([]string) error }
 		ok   bool
 	}{
-		{"init", &KEKInitCommand{db, k1}, true},
-		{"init again", &KEKInitCommand{db, k1}, false},
-		{"rotate", &KEKRotateCommand{db, k1}, true},
-		{"rewrap", &KEKRewrapCommand{db, k1, 500}, true},
-		{"rekey", &KEKRekeyCommand{db, k1, k2.UnwrapKey}, true},
-		{"rotate with the old key", &KEKRotateCommand{db, k1}, false},
-		{"rotate with the new key", &KEKRotateCommand{db, k2}, true},
+		{"init", &KEKInitCommand{db, k1, aud}, true},
+		{"init again", &KEKInitCommand{db, k1, aud}, false},
+		{"rotate", &KEKRotateCommand{db, k1, aud}, true},
+		{"rewrap", &KEKRewrapCommand{db, k1, aud, 500}, true},
+		{"rekey", &KEKRekeyCommand{db, k1, aud, k2.UnwrapKey}, true},
+		{"rotate with the old key", &KEKRotateCommand{db, k1, aud}, false},
+		{"rotate with the new key", &KEKRotateCommand{db, k2, aud}, true},
 		{"show", &KEKShowCommand{db}, true},
-		{"a bad unwrap key", &KEKRotateCommand{db, keyOptions{"vault:x"}}, false},
+		{"a bad unwrap key", &KEKRotateCommand{db, keyOptions{"vault:x"}, aud}, false},
 	}
 	for _, s := range steps {
 		if err := s.cmd.Execute(nil); (err == nil) != s.ok {
 			t.Errorf("%s: %v", s.name, err)
 		}
+	}
+	// AUDL-4: one event per command that reached the database
+	var got []string
+	for _, e := range rec.Events() {
+		got = append(got, e.Action+":"+e.Outcome)
+		if e.Principal == "" {
+			t.Errorf("%s: no principal", e.Action)
+		}
+	}
+	want := "KEK_INIT:success KEK_INIT:failed KEK_ROTATE:success KEK_REWRAP:success KEK_REKEY:success KEK_ROTATE:failed KEK_ROTATE:success"
+	if strings.Join(got, " ") != want {
+		t.Errorf("events:\n%s\nwant:\n%s", strings.Join(got, " "), want)
 	}
 }

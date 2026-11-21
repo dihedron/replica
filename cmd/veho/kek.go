@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/user"
 	"text/tabwriter"
 	"time"
 
+	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -49,6 +51,33 @@ type keyOptions struct {
 	UnwrapKey string `long:"unwrap-key" required:"true" description:"The unwrap key: file:<path> or systemd-credential:<name>"`
 }
 
+// auditOptions name the audit sink (.specs/veho-audit.md §3).
+type auditOptions struct {
+	AuditSink string `long:"audit-sink" default:"syslog" choice:"syslog" choice:"stderr" description:"Where the audit events go"`
+
+	auditor audit.Auditor // tests only; never set by a flag
+}
+
+// open returns the auditor, with this host as the node.
+func (o auditOptions) open() (audit.Auditor, error) {
+	if o.auditor != nil {
+		return o.auditor, nil
+	}
+	host, err := os.Hostname()
+	if err != nil {
+		return nil, fmt.Errorf("audit: %w", err)
+	}
+	return audit.Open(o.AuditSink, host)
+}
+
+// operator is the principal of a command: the user who runs it.
+func operator() string {
+	if u, err := user.Current(); err == nil {
+		return "os:" + u.Username
+	}
+	return fmt.Sprintf("os:uid=%d", os.Getuid())
+}
+
 // run connects and runs fn; every error is logged and wrapped with cmd.
 func run(o dbOptions, cmd string, fn func(context.Context, *pgx.Conn) error) error {
 	ctx := context.Background()
@@ -62,6 +91,26 @@ func run(o dbOptions, cmd string, fn func(context.Context, *pgx.Conn) error) err
 		return fmt.Errorf("%s: %w", cmd, err)
 	}
 	return nil
+}
+
+// audited is run for a command that changes the KEKs: it audits action
+// after fn, with the details fn returns.
+func audited(o dbOptions, a auditOptions, cmd, action string, fn func(context.Context, *pgx.Conn) (any, error)) error {
+	aud, err := a.open()
+	if err != nil {
+		return fmt.Errorf("%s: %w", cmd, err)
+	}
+	var details any
+	err = run(o, cmd, func(ctx context.Context, conn *pgx.Conn) error {
+		details, err = fn(ctx, conn)
+		return err
+	})
+	e := audit.Event{Action: action, Outcome: audit.Success, Principal: operator(), ResourceType: "kek", Details: details}
+	if err != nil {
+		e.Outcome, e.Details = audit.Failed, map[string]string{"error": err.Error()}
+	}
+	aud.Emit(context.Background(), e)
+	return err
 }
 
 // KEKShowCommand is "veho kek show".
@@ -91,6 +140,7 @@ func (cmd *KEKShowCommand) Execute([]string) error {
 type KEKInitCommand struct {
 	dbOptions
 	keyOptions
+	auditOptions
 }
 
 // Execute creates KEK version 1.
@@ -99,12 +149,12 @@ func (cmd *KEKInitCommand) Execute([]string) error {
 	if err != nil {
 		return err
 	}
-	return run(cmd.dbOptions, "kek init", func(ctx context.Context, conn *pgx.Conn) error {
+	return audited(cmd.dbOptions, cmd.auditOptions, "kek init", "KEK_INIT", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		if err := secrets.InitKEK(ctx, conn, src); err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Println("created KEK version 1")
-		return nil
+		return map[string]int{"kek_version": 1}, nil
 	})
 }
 
@@ -112,6 +162,7 @@ func (cmd *KEKInitCommand) Execute([]string) error {
 type KEKRotateCommand struct {
 	dbOptions
 	keyOptions
+	auditOptions
 }
 
 // Execute creates the next KEK version.
@@ -120,13 +171,13 @@ func (cmd *KEKRotateCommand) Execute([]string) error {
 	if err != nil {
 		return err
 	}
-	return run(cmd.dbOptions, "kek rotate", func(ctx context.Context, conn *pgx.Conn) error {
+	return audited(cmd.dbOptions, cmd.auditOptions, "kek rotate", "KEK_ROTATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		v, err := secrets.RotateKEK(ctx, conn, src)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Printf("KEK version %d is active; run veho kek rewrap to retire the previous one\n", v)
-		return nil
+		return map[string]int{"kek_version": v}, nil
 	})
 }
 
@@ -134,6 +185,7 @@ func (cmd *KEKRotateCommand) Execute([]string) error {
 type KEKRewrapCommand struct {
 	dbOptions
 	keyOptions
+	auditOptions
 	Batch int `long:"batch" default:"500" description:"Data keys re-wrapped per transaction"`
 }
 
@@ -143,13 +195,13 @@ func (cmd *KEKRewrapCommand) Execute([]string) error {
 	if err != nil {
 		return err
 	}
-	return run(cmd.dbOptions, "kek rewrap", func(ctx context.Context, conn *pgx.Conn) error {
+	return audited(cmd.dbOptions, cmd.auditOptions, "kek rewrap", "KEK_REWRAP", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		res, err := secrets.RewrapDEKs(ctx, conn, src, cmd.Batch)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Printf("re-wrapped %d data keys, skipped %d replaced meanwhile, retired KEK versions %v\n", res.Rewrapped, res.Skipped, res.Retired)
-		return nil
+		return map[string]any{"rewrapped": res.Rewrapped, "skipped": res.Skipped, "retired": res.Retired}, nil
 	})
 }
 
@@ -157,6 +209,7 @@ func (cmd *KEKRewrapCommand) Execute([]string) error {
 type KEKRekeyCommand struct {
 	dbOptions
 	keyOptions
+	auditOptions
 	NewUnwrapKey string `long:"new-unwrap-key" required:"true" description:"The new unwrap key: file:<path> or systemd-credential:<name>"`
 }
 
@@ -170,11 +223,11 @@ func (cmd *KEKRekeyCommand) Execute([]string) error {
 	if err != nil {
 		return err
 	}
-	return run(cmd.dbOptions, "kek rekey", func(ctx context.Context, conn *pgx.Conn) error {
+	return audited(cmd.dbOptions, cmd.auditOptions, "kek rekey", "KEK_REKEY", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		if err := secrets.RekeyKEKs(ctx, conn, current, next); err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Println("the KEKs are wrapped by the new unwrap key; give it to the nodes before their next start")
-		return nil
+		return map[string]string{"unwrap_key": next.Name()}, nil
 	})
 }

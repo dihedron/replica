@@ -235,6 +235,7 @@ all partitions at once.
 | `veho-job-lifecycle.md` | Data model, state machines, workflows, adoption, retries |
 | `veho-audit-housekeeping.md` | Audit log (hash chain, checkpoints, export, pruning) and housekeeping (zombie tasks, retention), copied from ligo |
 | `veho-latency-envelope.md` | Supported latency and jitter, degradation, tuning, AC-24 |
+| `veho-audit.md` | Lightweight audit: events to the system log and the SIEM |
 | `veho-secrets.md` | Secrets: key hierarchy, envelope encryption, KEK rotation, `veho kek` |
 | `veho-lab.md` | The lab: three regions in one LXD VM, the emulated WAN, Patroni and etcd, Garage; `test/lab/lab.sh` |
 | `veho-distribution-policy.md` | Distribution policy: destinations, M of N completion, topology spread |

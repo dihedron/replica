@@ -2,6 +2,8 @@
 
 This file specifies the audit log, the periodic housekeeping (zombie tasks, retention, pruning) and how they are built. It is part of `veho_specification.md`.
 
+**Deferred (2026-11-21):** v1 audits with the lightweight design of `veho-audit.md` (events to the system log, forwarded to the SIEM); the audit log of §1, §2 and §4 here, its signer (SEC-28) and `GET /v1/audit` (AUD-7) are backlog item 32. The housekeeping of §3 stands.
+
 Status: draft, 2026-11-21, for review. The design is copied from ligo (`ligo/.specs/ligo-pruning.md`, `ligo/internal/audit`, `ligo/internal/workflows/sweeper.go`), which already has it built and tested, and adapted where veho differs (§6). The implementation is copied too, as far as it is feasible (§7).
 
 ## 1. Audit log

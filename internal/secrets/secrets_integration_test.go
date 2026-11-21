@@ -5,6 +5,7 @@ package secrets
 import (
 	"context"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/internal/store/migrate"
 	"github.com/dihedron/veho/migrations"
@@ -37,6 +39,7 @@ type fixture struct {
 	api, worker *pgxpool.Pool
 	src         FileSource
 	t1, t2      uuid.UUID
+	audit       *audit.Recorder
 }
 
 // keyFile writes a new unwrap key.
@@ -74,7 +77,7 @@ func setup(t *testing.T) fixture {
 			t.Fatal(err)
 		}
 	}
-	f := fixture{migrator: conn, src: keyFile(t)}
+	f := fixture{migrator: conn, src: keyFile(t), audit: &audit.Recorder{}}
 	for env, p := range map[string]**pgxpool.Pool{"VEHO_TEST_API_DATABASE_URL": &f.api, "VEHO_TEST_WORKER_DATABASE_URL": &f.worker} {
 		if *p, err = store.Open(ctx, dsn(t, env), store.Options{Name: "test/secrets"}); err != nil {
 			t.Fatal(err)
@@ -98,7 +101,7 @@ func (f fixture) store(t *testing.T) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(ring, f.api, f.worker)
+	return NewStore(ring, f.api, f.worker, f.audit)
 }
 
 func fetch(t *testing.T, s *Store, tenant uuid.UUID, name string) string {
@@ -148,6 +151,16 @@ func TestPutFetch(t *testing.T) {
 		t.Errorf("show a missing secret: %v", err)
 	}
 
+	// AUDL-3: the puts are audited with their versions, never their values
+	ev := f.audit.Events()
+	if len(ev) != 2 || ev[0].Action != "SECRET_PUT" || ev[0].Outcome != audit.Success || ev[0].TenantID != f.t1.String() ||
+		ev[0].ResourceName != "s3" || ev[1].Details.(map[string]int)["version"] != 2 {
+		t.Errorf("events: %+v", ev)
+	}
+	if j, _ := json.Marshal(ev); strings.Contains(string(j), "canary") {
+		t.Error("an event carries the value")
+	}
+
 	// SECR-2
 	var dump strings.Builder
 	for _, table := range []string{"veho.secrets", "veho.kek"} {
@@ -174,7 +187,7 @@ func TestPutFetch(t *testing.T) {
 		t.Fatal(err)
 	}
 	dead.Close()
-	if _, err := NewStore(ring, nil, dead).Fetch(ctx, f.t1, "db://s3"); !errors.Is(err, ErrUnavailable) {
+	if _, err := NewStore(ring, nil, dead, f.audit).Fetch(ctx, f.t1, "db://s3"); !errors.Is(err, ErrUnavailable) {
 		t.Errorf("database closed: %v", err)
 	}
 }
@@ -240,6 +253,15 @@ func TestDeleteInUse(t *testing.T) {
 	}
 	if err := s.Delete(ctx, f.t1, "free"); err != nil {
 		t.Errorf("delete: %v", err)
+	}
+	var deletes []string
+	for _, e := range f.audit.Events() {
+		if e.Action == "SECRET_DELETE" {
+			deletes = append(deletes, e.ResourceName+":"+e.Outcome)
+		}
+	}
+	if strings.Join(deletes, " ") != "used:failed free:success" {
+		t.Errorf("delete events: %v", deletes)
 	}
 }
 
@@ -431,7 +453,7 @@ func TestRekey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fetch(t, NewStore(ring, f.api, f.worker), f.t1, "a"); got != "value" {
+	if got := fetch(t, NewStore(ring, f.api, f.worker, f.audit), f.t1, "a"); got != "value" {
 		t.Errorf("after rekey: %q", got)
 	}
 	// SECR-7: no active KEK
