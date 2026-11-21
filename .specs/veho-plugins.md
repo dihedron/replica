@@ -2,7 +2,7 @@
 
 This file specifies the storage plugin interfaces and their conformance suite. It is part of `veho_specification.md`.
 
-Status: draft, 2026-11-21, for review.
+Status: approved 2026-11-21 with §7 (the decisions of chunk C5); being implemented.
 
 ## 1. Mechanism
 
@@ -179,3 +179,25 @@ Backed by Garage (S3, the lab or a local instance), a Glance/devstack or stub se
 - **PLG-19** Plugin logs are read from the plugin's log stream and written
   through `slog` with the contextual keys; a plugin never writes to the
   core's standard output.
+
+## 7. Implementation (chunk C5)
+
+C5 is built in three steps, each a commit with its tests:
+
+| Step | Builds | Tested |
+| :--- | :--- | :--- |
+| **C5a** | `pkg/plugin` (the types of §2, the error classes, the in-process registry), the `file` driver, `pkg/plugin/conformance` | the suite on `file`, here |
+| **C5b** | the S3 driver (`pkg/plugin/s3`, AWS SDK for Go v2) | the suite on the lab's three Garage clusters |
+| **C5c** | the protobuf service, the go-plugin process loader and server, PLG-12 to PLG-19, the PLG-17 benchmark | the suite under the process loader, on `file` and S3 |
+
+Decisions, completing §2:
+
+- **Ref** is `{Container, Key}`: for S3 the bucket and the key, for `file` the key only (the root is in the endpoint's configuration). An empty `Container` means the endpoint's default (S3 `bucket`).
+- **Config** is the endpoint's JSON configuration (`json.RawMessage`); **Credentials** is a `map[string]string` (`access_key_id`, `secret_access_key`, `session_token` for S3). Each driver exposes its configuration's JSON Schema (`ConfigSchema() []byte`, PLG-10); validating `endpoints.config` against it belongs to the API (C7).
+- **Part numbers** start at 0, as `parts.part_no`; a driver maps them (S3: `partNo + 1`).
+- **PartResult** is `{PartNo, Size, ETag, SHA256}`; the SHA-256 is computed by the driver over the bytes it wrote. The core computes its own digest too (PLG-17), so a driver's figure is a cross-check, not the authority.
+- **Not found** is `plugin.ErrNotFound`, class `Permanent`, so the core can tell "absent" from other permanent errors (overwrite checks, PLG-8 tests).
+- **Error classes** (PLG-4) are `Unknown`, `Transient`, `Permanent`, `ResumeInvalid`, `Integrity`, `SourceChanged`; `plugin.Wrap(err, class)` and `plugin.ClassOf(err)`. A cancelled context is returned as the context's error, unclassified: the core knows why it cancelled.
+- **The `file` driver** writes through `os.Root` (no path can escape the root). An upload is a staging directory under `<root>/.veho-staging/<upload-id>/` with one file per part, each written to a temporary name and renamed (idempotent per part); `Commit` concatenates the parts into a temporary file, syncs it and renames it to the final key (atomic, PLG-7 and PLG-8). The version of an object is its size and modification time in nanoseconds.
+- **The S3 driver** uses multipart uploads (invisible until complete: PLG-8). Each part is read into memory, its MD5 sent as `Content-MD5` (the server verifies it: a mismatch is `Integrity`) and its SHA-256 computed; this bounds memory to part size times parallel parts, so the driver declares `MaxPartSize` 512 MiB (S3 allows 5 GiB). The token is the bucket, key and upload ID. `Commit` of an upload that no longer exists returns the object if its ETag is the multipart ETag of the given parts (idempotent commit). Versions are ETags; `ReadRange` sends `If-Match`, and `412` is `SourceChanged`. Classification: `5xx`, throttling and network errors are `Transient`; `400`, `401`, `403`, `404` are `Permanent` (`NoSuchKey` is `ErrNotFound`); `NoSuchUpload` on `Resume` or `WritePart` is `ResumeInvalid`; `BadDigest` and `InvalidDigest` are `Integrity`. The SDK's default request checksums are off (`when_required`), so that any S3-compatible service, Garage included, accepts the requests; Content-MD5 gives the integrity check.
+- **Conformance suite**: `conformance.Run(t, conformance.Target{...})`, with a seed for its random sizes (reported on failure). The error table of §4 by fault injection waits for the lab's S3 fault proxy (`veho-lab.md` §5, L3); until then the suite checks the classes it can provoke without one (not found, source changed, invalid resume token, bad credentials when the target provides them).
