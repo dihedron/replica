@@ -2,15 +2,15 @@
 
 *veho* is the Latin verb *vehō*, "I carry, I convey, I transport" (from the Proto-Indo-European root *\*weǵʰ-*, "to ride"; the same family gives *vehicle* and *vector*).
 
-Durable, asynchronous replication of large objects (typically big files) across three geographically distributed storage systems.
+Durable, asynchronous replication of large objects (typically big files) to any number of destination storage systems, wherever they are (on premises, or in other clouds: for example an S3 bucket at one provider and another provider's object store). The destinations are controlled by `veho` nodes running in three regions that share one durable control plane; the topology of the destinations has nothing to do with the three control-plane regions.
 
-A client submits the URL of an object that is already available to the service (for example in an S3 bucket or an OpenStack Glance repository) together with a replication policy that names the destinations in two other regions. The node that receives the request writes the job down reliably, answers with a job ID, and the client polls that ID for progress and completion. If the node fails, another node (in the same region or in another one) resumes the job. Anything that fails is retried. Storage backends are plugins. The service is multi-tenant.
+A client submits the URL of an object that is already available to the service (for example in an S3 bucket or an OpenStack Glance repository) together with a distribution policy that names the destinations (two or more, anywhere in the distribution topology) and says when the job counts as done (for example 7 of 9 copies, or 5 copies spread over 3 regions). The node that receives the request writes the job down reliably, answers with a job ID, and the client polls that ID for progress and completion. If the node fails, another node (in the same region or in another one) resumes the job. Anything that fails is retried. Storage backends are plugins. The service is multi-tenant.
 
 ## Status
 
 **Specification phase.** There is no implementation yet: `internal/step` and `internal/workflow` are experiments with DBOS that the implementation will replace. The specification is a draft waiting for review (`.specs/veho_specification.md`), and the work agreed for later is in `.specs/veho-backlog.md`.
 
-The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`, with the harness in `test/spikes/dbos`.
+The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three control-plane regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`, with the harness in `test/spikes/dbos`.
 
 ## Specifications
 

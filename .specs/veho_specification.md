@@ -1,4 +1,4 @@
-# Architectural & Technical Specification: `veho`, durable replication of large objects across three regions
+# Architectural & Technical Specification: `veho`, durable replication of large objects to any number of destinations, controlled from three regions
 
 - **Document Version:** `0.1.0`
 - **Status:** Draft, for review; not yet approved for implementation (`AGENTS.md`, rule 1)
@@ -30,12 +30,17 @@ Every assumption this design makes about DBOS Transact for Go was checked agains
 
 ## 1. Problem statement
 
-A client holds a large object X in a storage system reachable from region A
-(e.g. an S3 bucket or an OpenStack Glance repository). The client asks
-`veho` to copy X to N destinations (N >= 2, typically one per region B, C, ...), according to a
-*replication policy*. The request returns immediately with a *job ID*; the
-copy happens asynchronously and the client polls the job for progress and
-completion.
+A client holds a large object X in a storage system that `veho` can read
+(e.g. an S3 bucket or an OpenStack Glance repository, anywhere). The client
+asks `veho` to copy X to N destinations (N >= 2), according to a
+*distribution policy*. The destinations are any storage systems that a plugin
+supports, anywhere: on premises, or in other clouds (for example an S3 bucket
+at one provider and another provider's object store). They are controlled by
+`veho` nodes that run in three regions and share one durable control plane;
+the topology of the destinations is described by the policy and has nothing to
+do with the three control-plane regions. The request returns immediately with
+a *job ID*; the copy happens asynchronously and the client polls the job for
+progress and completion.
 
 The system must never lose an accepted job and must keep retrying until the
 job succeeds, is cancelled, or exceeds its deadline — even if the node that
@@ -58,7 +63,7 @@ accepted it (or an entire region) fails.
 - High concurrency or throughput scale-out (target: tens of concurrent jobs,
   not thousands).
 - Continuous/bidirectional sync, change-data-capture, or conflict resolution.
-- More than three regions (design should not preclude it; not tested).
+- A control plane in other than three regions (design should not preclude it; not tested). The number of destinations and their topology are not limited by this.
 - Hosting or managing the storage systems themselves.
 - Client-side upload of the data into veho (data must already be in a
   reachable source).
