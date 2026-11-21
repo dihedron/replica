@@ -422,6 +422,11 @@ func (e *Engine) batch(ctx context.Context, in TransferInput, a attempt, up *ope
 				where id = $1`, in.Transfer)
 			return err
 		})
+		if werr == nil {
+			for _, c := range copied {
+				e.metrics.bytes.Add(float64(c.part.Length))
+			}
+		}
 		if err := errors.Join(cerr, werr); err != nil {
 			return check(err)
 		}
@@ -650,6 +655,7 @@ func (e *Engine) end(ctx context.Context, in TransferInput, fence int64, state p
 // failTransfer ends the transfer FAILED with r as its last error, aborting
 // its upload.
 func (e *Engine) failTransfer(ctx context.Context, in TransferInput, r result) result {
+	e.metrics.attempts.WithLabelValues(r.Class.String()).Inc()
 	return e.held(ctx, in, func(ctx context.Context, fence int64) result {
 		e.abort(ctx, in)
 		return e.end(ctx, in, fence, policy.Failed, &r)
@@ -753,6 +759,7 @@ func (e *Engine) reset(ctx context.Context, in TransferInput) result {
 // note records the failure before the wait (RETRY_WAIT, last_error) and
 // returns the policy's backoff; past the job's deadline it fails (§5).
 func (e *Engine) note(ctx context.Context, in TransferInput, r result) noteResult {
+	e.metrics.attempts.WithLabelValues(r.Class.String()).Inc()
 	out := noteResult{}
 	out.result = e.held(ctx, in, func(ctx context.Context, fence int64) result {
 		errJSON, _ := json.Marshal(map[string]string{"class": r.Class.String(), "message": r.Err})

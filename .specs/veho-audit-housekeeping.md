@@ -51,7 +51,7 @@ A zombie is work that no live executor is doing. Four kinds, each handled:
 | **Orphan of a dead executor**: a workflow `PENDING` on an executor that stopped heartbeating | `ListWorkflows(PENDING)` against the executor registry (`last_seen` older than the lease TTL) | `ResumeWorkflows`; the node that dequeues it becomes the executor. The reconciler counts its own adoptions, because `ResumeWorkflows` resets DBOS's recovery counter; a job that keeps killing executors stops at the ceiling and fails (AC-19). `veho-job-lifecycle.md` §6. |
 | **Unknown to DBOS**: a job or transfer non-terminal and quiet for longer than `stale` (default 60 s) whose workflow DBOS does not know | row scan against `GetWorkflowStatus` | Start the workflow again (idempotent by workflow ID). With a transactional acceptance this means a bug or a restore, so it is audited and counted. |
 | **Ended without marking**: the workflow is `SUCCESS`, `ERROR` or `CANCELLED` but the job or transfer row is still non-terminal | same scan | Mark the row from the workflow's outcome (the compare-and-set of the lifecycle) and audit it. |
-| **Expired lease**: a transfer whose lease expired and was never adopted | database clock against `lease_expires_at` (T-27) | Release it so that the executor path of the first row takes it. |
+| **Expired lease**: a transfer whose lease expired and was never adopted | database clock against `lease_expires_at` (T-27) | Counted (`veho_expired_leases`), not released: the first row's adoption covers a dead executor, and releasing the lease of a live but slow one would end its workflow with nobody to adopt the transfer (`veho-engine.md` §7). |
 
 The fence (`veho-job-lifecycle.md` §6) stays the protection against the zombie that is not dead but paused: it finishes its in-flight step and is refused at its next checkpoint.
 
@@ -81,7 +81,7 @@ Copied from ligo (`ligo-pruning.md` §3.4 to §3.6):
 
 ## 5. System actions
 
-New audit actions: `SYSTEM_AUDIT_EXPORTED`, `SYSTEM_AUDIT_PRUNED`, `SYSTEM_ZOMBIE_ADOPTED` (an orphan resumed), `SYSTEM_ZOMBIE_RESTARTED`, `SYSTEM_ZOMBIE_REPAIRED`, `SYSTEM_RETENTION_PURGED` (counts per table).
+New audit actions: `SYSTEM_AUDIT_EXPORTED`, `SYSTEM_AUDIT_PRUNED`, `SYSTEM_ZOMBIE_ADOPTED` (an orphan resumed), `SYSTEM_ZOMBIE_RESTARTED`, `SYSTEM_ZOMBIE_REPAIRED`, `SYSTEM_RETENTION_PURGED` (counts per table), `SYSTEM_JOB_EXPIRED` (a job failed at its deadline).
 
 ## 6. What differs from ligo
 

@@ -55,6 +55,7 @@ type Engine struct {
 	secrets     *secrets.Store
 	drivers     map[string]plugin.Driver
 	queues      map[string]dbos.Queue
+	metrics     *metrics
 	executor    string
 	region      string
 
@@ -82,7 +83,7 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 		return nil, fmt.Errorf("engine: %w", err)
 	}
 	e := &Engine{cfg: c, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
-		lastOK: time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}}
+		lastOK: time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}, metrics: newMetrics()}
 	for _, q := range []string{QueueJobs, QueueTransfer} {
 		// one partition per tenant (EXT-3a): a tenant runs at most
 		// tenant_concurrency workflows of a queue at a time

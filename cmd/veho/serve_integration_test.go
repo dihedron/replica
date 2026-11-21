@@ -4,8 +4,11 @@ package main
 
 import (
 	"context"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,6 +60,7 @@ database:
   dbos: {dsn_env: VEHO_TEST_DBOS_DATABASE_URL}
 secrets: {unwrap_key: "file:`+key+`"}
 audit: {sink: stderr}
+metrics: {listen: "127.0.0.1:19464"}
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +78,17 @@ audit: {sink: stderr}
 	var age float64
 	if err := conn.QueryRow(ctx, "select extract(epoch from now() - last_seen) from veho.executors where id = 'test-serve'").Scan(&age); err != nil || age > 10 {
 		t.Errorf("heartbeat %vs ago, %v", age, err)
+	}
+	resp, err := http.Get("http://127.0.0.1:19464/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	for _, m := range []string{"veho_objects{", "veho_heartbeat_age_seconds", "veho_audit_dropped_total"} {
+		if !strings.Contains(string(body), m) {
+			t.Errorf("no %s in the metrics:\n%s", m, body)
+		}
 	}
 	stop()
 	if err := <-done; err != nil {
