@@ -137,6 +137,8 @@ func (s *suite) write(t *testing.T, c plugin.Client, ref plugin.Ref, data []byte
 	if err != nil {
 		t.Fatalf("Commit(%v): %v", ref, err)
 	}
+	// before the client closes (cleanups run last in, first out)
+	t.Cleanup(func() { _ = c.Delete(context.Background(), ref) })
 	if info.Size != int64(len(data)) {
 		t.Fatalf("Commit(%v): size %d, want %d", ref, info.Size, len(data))
 	}
@@ -300,6 +302,7 @@ func (s *suite) idempotent(t *testing.T) {
 	}
 	s.writeParts(t, up, parts[:1], 0)
 	results := s.writeParts(t, up, parts, 0) // part 0 again
+	t.Cleanup(func() { _ = c.Delete(context.Background(), ref) })
 	first, err := up.Commit(ctx, results)
 	if err != nil {
 		t.Fatalf("Commit: %v", err)
@@ -340,6 +343,7 @@ func (s *suite) resume(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].PartNo != 0 || listed[0].Size != int64(len(parts[0])) {
 		t.Fatalf("ListParts after Resume = %+v, %v", listed, err)
 	}
+	t.Cleanup(func() { _ = c.Delete(context.Background(), ref) })
 	rest := s.writeParts(t, again, parts[1:], 1)
 	if _, err := again.Commit(ctx, append(listed, rest...)); err != nil {
 		t.Fatalf("Commit after Resume: %v", err)

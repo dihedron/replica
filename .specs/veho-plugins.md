@@ -2,7 +2,7 @@
 
 This file specifies the storage plugin interfaces and their conformance suite. It is part of `veho_specification.md`.
 
-Status: approved 2026-11-21 with §7 (the decisions of chunk C5); being implemented.
+Status: approved 2026-11-21 with §7 (the decisions of chunk C5); C5a and C5b done (the `file` and S3 drivers pass the suite, S3 on the lab's three Garage clusters), C5c next.
 
 ## 1. Mechanism
 
@@ -200,4 +200,6 @@ Decisions, completing §2:
 - **Error classes** (PLG-4) are `Unknown`, `Transient`, `Permanent`, `ResumeInvalid`, `Integrity`, `SourceChanged`; `plugin.Wrap(err, class)` and `plugin.ClassOf(err)`. A cancelled context is returned as the context's error, unclassified: the core knows why it cancelled.
 - **The `file` driver** writes through `os.Root` (no path can escape the root). An upload is a staging directory under `<root>/.veho-staging/<upload-id>/` with one file per part, each written to a temporary name and renamed (idempotent per part); `Commit` concatenates the parts into a temporary file, syncs it and renames it to the final key (atomic, PLG-7 and PLG-8). The version of an object is its size and modification time in nanoseconds.
 - **The S3 driver** uses multipart uploads (invisible until complete: PLG-8). Each part is read into memory, its MD5 sent as `Content-MD5` (the server verifies it: a mismatch is `Integrity`) and its SHA-256 computed; this bounds memory to part size times parallel parts, so the driver declares `MaxPartSize` 512 MiB (S3 allows 5 GiB). The token is the bucket, key and upload ID. `Commit` of an upload that no longer exists returns the object if its ETag is the multipart ETag of the given parts (idempotent commit). Versions are ETags; `ReadRange` sends `If-Match`, and `412` is `SourceChanged`. Classification: `5xx`, throttling and network errors are `Transient`; `400`, `401`, `403`, `404` are `Permanent` (`NoSuchKey` is `ErrNotFound`); `NoSuchUpload` on `Resume` or `WritePart` is `ResumeInvalid`; `BadDigest` and `InvalidDigest` are `Integrity`. The SDK's default request checksums are off (`when_required`), so that any S3-compatible service, Garage included, accepts the requests; Content-MD5 gives the integrity check.
+- **Empty objects on S3**: S3-compatible services refuse an empty part (Garage does, `InvalidRequest: Empty body`), so an empty part is not uploaded, and `Commit` of an empty object aborts the multipart upload and publishes it with an empty `PutObject`, which is atomic too.
+- **Error table without the proxy**: the S3 driver's classification is checked against a fake service that answers with each status and error code (`pkg/plugin/s3/s3_test.go`); the fault proxy of L3 then repeats it against Garage, mid-transfer.
 - **Conformance suite**: `conformance.Run(t, conformance.Target{...})`, with a seed for its random sizes (reported on failure). The error table of §4 by fault injection waits for the lab's S3 fault proxy (`veho-lab.md` §5, L3); until then the suite checks the classes it can provoke without one (not found, source changed, invalid resume token, bad credentials when the target provides them).
