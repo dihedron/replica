@@ -6,6 +6,7 @@ import "errors"
 // chunks that implement them (.specs/veho-implementation-plan.md).
 type Command struct {
 	Migrate MigrateCommand `command:"migrate" description:"Apply the database migrations embedded in this binary, as veho_migrator"`
+	Serve   ServeCommand   `command:"serve" description:"Run a node: the workflow executor (the API comes with C7)"`
 	KEK     KEKCommand     `command:"kek" description:"Manage the key-encryption keys of the secrets, as veho_migrator"`
 }
 
