@@ -31,3 +31,11 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Release documents and their intermediate files (docs/build.sh)
+build/
+
+# Profiling data
+*.prof
+*.pprof
+*.mprof

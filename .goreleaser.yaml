@@ -23,7 +23,7 @@ before:
 builds:
   - id: replica
     binary: replica
-    main: .
+    main: ./cmd/replica
     goos:
       - linux
       - windows
@@ -132,7 +132,7 @@ nfpms:
 #        type: config
 #        expand: true
     scripts:
-      postinstall: ./postinstall.sh
+      postinstall: ./packaging/postinstall.sh
     epoch: "1"
     release: "1"
     section: default

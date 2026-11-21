@@ -4,7 +4,6 @@ go 1.26.1
 
 require (
 	github.com/dbos-inc/dbos-transact-golang v1.9.0
-	github.com/dihedron/overlay v0.0.2
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/jessevdk/go-flags v1.6.1
 	github.com/joho/godotenv v1.5.1
