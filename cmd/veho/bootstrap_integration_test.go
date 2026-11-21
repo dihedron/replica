@@ -91,6 +91,25 @@ func TestBootstrap(t *testing.T) {
 		t.Error("a tenant without a role: no error")
 	}
 
+	// API-T13: an entitlement by subject, one by group; both or neither refused
+	ec := &EntitlementCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "oidc",
+		Issuer: "https://idp.example", Subject: "alice", Tenant: name, Role: "operator"}
+	if id := stdout(t, func() error { return ec.Execute(nil) }); len(id) != 36 {
+		t.Errorf("entitlement id %q", id)
+	}
+	eg := &EntitlementCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "spiffe",
+		Issuer: "veho.test", Group: "ops", PlatformAdmin: true}
+	_ = stdout(t, func() error { return eg.Execute(nil) })
+	for _, bad := range []*EntitlementCreateCommand{
+		{dbOptions: db, Kind: "oidc", Issuer: "https://idp.example", Subject: "a", Group: "g", Tenant: name, Role: "viewer"},
+		{dbOptions: db, Kind: "oidc", Issuer: "https://idp.example", Tenant: name, Role: "viewer"},
+		{dbOptions: db, Kind: "oidc", Issuer: "https://idp.example", Subject: "a", Tenant: name},
+	} {
+		if err := bad.Execute(nil); err == nil {
+			t.Errorf("%+v: no error", bad)
+		}
+	}
+
 	ctx := context.Background()
 	conn, err := store.Connect(ctx, os.Getenv("VEHO_TEST_DATABASE_URL"), false)
 	if err != nil {
@@ -105,7 +124,12 @@ func TestBootstrap(t *testing.T) {
 		t.Errorf("stored hash: %x, %v", stored, err)
 	}
 	events, _ := json.Marshal(rec.Events())
-	if strings.Contains(string(events), secret) || len(rec.Events()) != 3 {
+	var n int
+	if err := conn.QueryRow(ctx, `select count(*) from veho.entitlements e join veho.tenants t on t.id = e.tenant_id
+		where t.name = $1 and e.subject = 'alice' and e.role = 'operator'`, name).Scan(&n); err != nil || n != 1 {
+		t.Errorf("%d entitlements of alice, %v", n, err)
+	}
+	if strings.Contains(string(events), secret) || len(rec.Events()) != 5 {
 		t.Errorf("events %s", events)
 	}
 }

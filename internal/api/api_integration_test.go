@@ -62,6 +62,16 @@ type fixture struct {
 	a, b     uuid.UUID // two tenants
 	srcDir   string
 	keys     map[string]string // by name: a-viewer, a-operator, b-operator, platform
+	// client is the certificate the clients present, if any
+	client *tls.Certificate
+}
+
+func (f *fixture) tlsConfig() *tls.Config {
+	c := &tls.Config{RootCAs: f.roots, ServerName: "localhost"}
+	if f.client != nil {
+		c.Certificates = []tls.Certificate{*f.client}
+	}
+	return c
 }
 
 // cert makes a self-signed certificate for localhost.
@@ -82,6 +92,12 @@ func cert(t *testing.T) (tls.Certificate, *x509.CertPool) {
 }
 
 func setup(t *testing.T, o Options) *fixture {
+	return setupWith(t, o, nil)
+}
+
+// setupWith builds the fixture; ids, when given, builds the server's
+// Identities once the tenants exist.
+func setupWith(t *testing.T, o Options, ids func(f *fixture) *Identities) *fixture {
 	t.Helper()
 	ctx := context.Background()
 	conn, err := store.Connect(ctx, dsn(t, "VEHO_TEST_DATABASE_URL"), false)
@@ -150,6 +166,9 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 	}
 
 	o.Engine, o.API = f.e, f.api
+	if ids != nil {
+		o.Identities = ids(f)
+	}
 	if o.MaxWatches == 0 {
 		o.MaxWatches = 10
 	}
@@ -173,6 +192,19 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 	return f
 }
 
+// running inserts a RUNNING job of tenant with no workflow: it never
+// settles, so that a watch of it lasts.
+func (f *fixture) running(t *testing.T, tenant uuid.UUID) string {
+	t.Helper()
+	id := uuid.NewV7()
+	if _, err := f.migrator.Exec(context.Background(), `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy, state, deadline_at)
+		select $1, $2, e.id, 'obj', '{}', 'RUNNING', now() + interval '1 hour' from veho.endpoints e where e.tenant_id = $2 and e.name = 'source'`,
+		id, tenant); err != nil {
+		t.Fatal(err)
+	}
+	return id.String()
+}
+
 // key inserts a principal and its key, as veho apikey create does.
 func (f *fixture) key(t *testing.T, tenant *uuid.UUID, role, name string) string {
 	t.Helper()
@@ -190,7 +222,7 @@ func (f *fixture) key(t *testing.T, tenant *uuid.UUID, role, name string) string
 
 func (f *fixture) grpc(t *testing.T) vehov1.JobServiceClient {
 	t.Helper()
-	conn, err := grpc.NewClient(f.addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: f.roots, ServerName: "localhost"})))
+	conn, err := grpc.NewClient(f.addr, grpc.WithTransportCredentials(credentials.NewTLS(f.tlsConfig())))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +258,7 @@ func (f *fixture) rest(t *testing.T, method, path, key string, body any, headers
 	for i := 0; i+1 < len(headers); i += 2 {
 		req.Header.Set(headers[i], headers[i+1])
 	}
-	c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: f.roots, ServerName: "localhost"},
+	c := &http.Client{Transport: &http.Transport{TLSClientConfig: f.tlsConfig(),
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "tcp", f.addr)
 		}}}
@@ -494,12 +526,8 @@ func TestLongPollAndRevocation(t *testing.T) {
 	}
 
 	// a stream of a job that does not settle, then the key revoked
-	if err := os.Chmod(f.srcDir, 0o000); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chmod(f.srcDir, 0o700) }()
 	revocable := f.key(t, &f.a, RoleViewer, "revocable")
-	id2 := f.rest(t, "POST", "/v1/jobs", key, job("out/rv")).body["id"].(string)
+	id2 := f.running(t, f.a)
 	w2, err := c.WatchJob(as(revocable), &vehov1.JobRef{Id: id2})
 	if err != nil {
 		t.Fatal(err)

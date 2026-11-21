@@ -213,7 +213,11 @@ func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *p
 	if err != nil {
 		return nil, fmt.Errorf("serve: api.tls: %w", err)
 	}
-	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Ready: func(ctx context.Context) error {
+	ids, err := api.NewIdentities(ctx, cfg.API)
+	if err != nil {
+		return nil, fmt.Errorf("serve: %w", err)
+	}
+	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Identities: ids, Ready: func(ctx context.Context) error {
 		if e.Fenced() {
 			return engine.ErrFenced
 		}

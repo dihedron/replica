@@ -2,13 +2,18 @@ package api
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/base64"
+	"errors"
 	"log/slog"
 	"strings"
 	"uuid"
 
 	"github.com/dihedron/veho/internal/audit"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 )
 
 // roles is the role each method needs (§3); a method missing here is
@@ -31,7 +36,71 @@ var public = map[string]bool{
 }
 
 type requestIDKey struct{}
-type tokenKey struct{}
+type checkKey struct{}
+
+// peerChainMD carries a REST client's certificate chain from the gateway to
+// the gRPC server, which believes it only from the in-process pipe (§4.4).
+const peerChainMD = "x-veho-peer-chain"
+
+// credential picks the caller's credential (§4.4): a client certificate,
+// else the bearer token (an API key, a JWT-SVID or an OIDC token). It
+// returns the check that turns it into a principal, which a stream runs
+// again to re-authorise its caller.
+func (s *Server) credential(ctx context.Context) (func(context.Context) (Principal, error), error) {
+	if chain := peerChain(ctx); len(chain) > 0 && s.ids != nil && s.ids.x509 != nil {
+		return func(ctx context.Context) (Principal, error) {
+			id, err := s.ids.svid(chain)
+			if err != nil {
+				return Principal{}, err
+			}
+			return entitle(ctx, s.api, id)
+		}, nil
+	}
+	token, ok := strings.CutPrefix(first(ctx, "authorization"), "Bearer ")
+	switch {
+	case !ok:
+		return nil, fail(pUnauthenticated, "a credential is required")
+	case strings.HasPrefix(token, keyPrefix):
+		return func(ctx context.Context) (Principal, error) { return authenticate(ctx, s.api, token) }, nil
+	case s.ids == nil:
+		return nil, fail(pUnauthenticated, "invalid credentials")
+	}
+	return func(ctx context.Context) (Principal, error) {
+		id, err := s.ids.bearer(ctx, token)
+		if err != nil {
+			return Principal{}, err
+		}
+		return entitle(ctx, s.api, id)
+	}, nil
+}
+
+// peerChain is the client's certificate chain: the TLS connection's for a
+// gRPC call, the gateway's metadata for a REST one.
+func peerChain(ctx context.Context) []*x509.Certificate {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return nil
+	}
+	if p.Addr != nil && p.Addr.Network() == "bufconn" {
+		var chain []*x509.Certificate
+		for _, v := range strings.Split(first(ctx, peerChainMD), ",") {
+			der, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				return nil
+			}
+			c, err := x509.ParseCertificate(der)
+			if err != nil {
+				return nil
+			}
+			chain = append(chain, c)
+		}
+		return chain
+	}
+	if info, ok := p.AuthInfo.(credentials.TLSInfo); ok {
+		return info.State.PeerCertificates
+	}
+	return nil
+}
 
 func requestID(ctx context.Context) string {
 	id, _ := ctx.Value(requestIDKey{}).(string)
@@ -60,17 +129,20 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	if public[method] {
 		return ctx, nil
 	}
-	token, ok := strings.CutPrefix(first(ctx, "authorization"), "Bearer ")
-	if !ok {
-		return nil, fail(pUnauthenticated, "a credential is required")
-	}
-	p, err := authenticate(ctx, s.api, token)
+	check, err := s.credential(ctx)
 	if err != nil {
-		if err != errBadKey {
+		return nil, err
+	}
+	p, err := check(ctx)
+	if err != nil {
+		if !errors.Is(err, errBadKey) && !errors.Is(err, errAmbiguous) {
 			slog.ErrorContext(ctx, "cannot authenticate", "request_id", id, "error", err)
 			return nil, fail(pUnavailable, "authentication is unavailable")
 		}
-		slog.WarnContext(ctx, "authentication refused", "request_id", id, "method", method)
+		slog.WarnContext(ctx, "authentication refused", "request_id", id, "method", method, "reason", err.Error())
+		if errors.Is(err, errAmbiguous) {
+			return nil, fail(pUnauthenticated, err.Error())
+		}
 		return nil, fail(pUnauthenticated, "invalid credentials")
 	}
 	need, known := roles[method]
@@ -82,7 +154,7 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 		tenant = p.Tenant.String()
 	}
 	ctx = withPrincipal(ctx, p)
-	ctx = context.WithValue(ctx, tokenKey{}, token)
+	ctx = context.WithValue(ctx, checkKey{}, check)
 	ctx = audit.WithRequest(ctx, audit.Request{Principal: p.Name + "@" + tenant, RequestID: id})
 	return ctx, nil
 }
@@ -114,8 +186,11 @@ func (s *Server) stream(srv any, ss grpc.ServerStream, info *grpc.StreamServerIn
 // stillAllowed re-authenticates the caller of a stream (API-11): a key
 // revoked meanwhile ends it.
 func (s *Server) stillAllowed(ctx context.Context, role string) error {
-	token, _ := ctx.Value(tokenKey{}).(string)
-	p, err := authenticate(ctx, s.api, token)
+	check, _ := ctx.Value(checkKey{}).(func(context.Context) (Principal, error))
+	if check == nil {
+		return fail(pUnauthenticated, "the credential is no longer valid")
+	}
+	p, err := check(ctx)
 	if err != nil || !p.may(role) {
 		return fail(pUnauthenticated, "the credential is no longer valid")
 	}

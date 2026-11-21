@@ -413,3 +413,42 @@ $$;
 REVOKE ALL ON FUNCTION veho.authenticate_key(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.authenticate_key(text) TO veho_api;
 GRANT SELECT, INSERT, UPDATE ON veho.principals, veho.api_keys TO veho_api;
+
+-- ---------------------------------------------------------------------------
+-- OIDC and SPIFFE identities (.specs/veho-api-server.md §4.4): an
+-- entitlement gives one subject, or the members of one group, of an issuer
+-- (an OIDC issuer or a SPIFFE trust domain) a role in a tenant, or the
+-- platform-admin role.
+
+CREATE TABLE veho.entitlements (
+	id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id  uuid REFERENCES veho.tenants (id),
+	kind       text NOT NULL CHECK (kind IN ('oidc', 'spiffe')),
+	issuer     text NOT NULL CHECK (issuer <> ''),
+	subject    text CHECK (subject <> ''),
+	"group"    text CHECK ("group" <> ''),
+	role       text NOT NULL CHECK (role IN ('viewer', 'operator', 'admin', 'platform-admin')),
+	created_at timestamptz NOT NULL DEFAULT now(),
+	CHECK ((subject IS NULL) <> ("group" IS NULL)),
+	CHECK ((role = 'platform-admin') = (tenant_id IS NULL))
+);
+CREATE INDEX entitlements_lookup ON veho.entitlements (kind, issuer);
+
+ALTER TABLE veho.entitlements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.entitlements
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+
+-- entitlements_for returns the entitlements of an identity, before its tenant is
+-- known.
+CREATE FUNCTION veho.entitlements_for(p_kind text, p_issuer text, p_subject text, p_groups text[])
+RETURNS TABLE (id uuid, tenant_id uuid, role text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT e.id, e.tenant_id, e.role FROM veho.entitlements e
+	 WHERE e.kind = p_kind AND e.issuer = p_issuer
+	   AND (e.subject = p_subject OR e."group" = ANY (p_groups))
+	   AND (e.tenant_id IS NULL OR (SELECT t.state = 'active' FROM veho.tenants t WHERE t.id = e.tenant_id))
+$$;
+REVOKE ALL ON FUNCTION veho.entitlements_for(text, text, text, text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.entitlements_for(text, text, text, text[]) TO veho_api;
+GRANT SELECT, INSERT, DELETE ON veho.entitlements TO veho_api;

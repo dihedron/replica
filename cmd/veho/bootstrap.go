@@ -99,3 +99,48 @@ func (cmd *APIKeyCreateCommand) Execute([]string) error {
 	fmt.Println(token)
 	return nil
 }
+
+// EntitlementCommand is "veho entitlement".
+type EntitlementCommand struct {
+	Create EntitlementCreateCommand `command:"create" description:"Entitle an OIDC or SPIFFE identity, or a group, to a role in a tenant"`
+}
+
+// EntitlementCreateCommand is "veho entitlement create" (.specs/veho-api-server.md
+// §4.4).
+type EntitlementCreateCommand struct {
+	dbOptions
+	auditOptions
+	Kind          string `long:"kind" required:"true" choice:"oidc" choice:"spiffe" description:"The kind of identity"`
+	Issuer        string `long:"issuer" required:"true" description:"The OIDC issuer URL, or the SPIFFE trust domain"`
+	Subject       string `long:"subject" description:"One identity: the OIDC sub, or the SPIFFE ID"`
+	Group         string `long:"group" description:"The members of an OIDC group"`
+	Tenant        string `long:"tenant" description:"The tenant's name (not with --platform-admin)"`
+	Role          string `long:"role" choice:"viewer" choice:"operator" choice:"admin" description:"The role in the tenant"`
+	PlatformAdmin bool   `long:"platform-admin" description:"A platform administrator, of no tenant"`
+}
+
+// Execute creates the entitlement and prints its ID.
+func (cmd *EntitlementCreateCommand) Execute([]string) error {
+	if (cmd.Subject == "") == (cmd.Group == "") {
+		return errors.New("entitlement create: give --subject or --group")
+	}
+	if cmd.PlatformAdmin == (cmd.Tenant != "") || cmd.PlatformAdmin == (cmd.Role != "") {
+		return errors.New("entitlement create: give --tenant and --role, or --platform-admin")
+	}
+	role := cmd.Role
+	if cmd.PlatformAdmin {
+		role = api.RolePlatformAdmin
+	}
+	return audited(cmd.dbOptions, cmd.auditOptions, "entitlement create", "ENTITLEMENT_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
+		var id uuid.UUID
+		err := conn.QueryRow(ctx, `insert into veho.entitlements (tenant_id, kind, issuer, subject, "group", role)
+			values ((select id from veho.tenants where name = nullif($1, '')), $2, $3, nullif($4, ''), nullif($5, ''), $6) returning id`,
+			cmd.Tenant, cmd.Kind, cmd.Issuer, cmd.Subject, cmd.Group, role).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println(id)
+		return map[string]string{"entitlement": id.String(), "kind": cmd.Kind, "issuer": cmd.Issuer, "subject": cmd.Subject,
+			"group": cmd.Group, "tenant": cmd.Tenant, "role": role}, nil
+	})
+}

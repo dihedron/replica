@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,6 +23,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -48,6 +50,9 @@ type Options struct {
 	// Reauthorise is how often a stream re-checks its caller (API-11);
 	// default a minute.
 	Reauthorise time.Duration
+	// Identities verifies OIDC and SPIFFE credentials; nil accepts API
+	// keys only.
+	Identities *Identities
 }
 
 // Server is the API of a node.
@@ -62,6 +67,7 @@ type Server struct {
 	watches atomic.Int64
 	max     int64
 	reauth  time.Duration
+	ids     *Identities
 	pipe    *bufconn.Listener
 	client  *grpc.ClientConn
 }
@@ -70,7 +76,7 @@ type Server struct {
 // an in-process connection, so that REST goes through the same
 // interceptors (API-8, SEC-23).
 func New(o Options) (*Server, error) {
-	s := &Server{engine: o.Engine, api: o.API, ready: o.Ready, max: int64(o.MaxWatches), health: health.NewServer(), reauth: o.Reauthorise}
+	s := &Server{engine: o.Engine, api: o.API, ready: o.Ready, max: int64(o.MaxWatches), health: health.NewServer(), reauth: o.Reauthorise, ids: o.Identities}
 	if s.reauth <= 0 {
 		s.reauth = time.Minute
 	}
@@ -110,6 +116,16 @@ func New(o Options) (*Server, error) {
 			return "", false
 		}),
 		runtime.WithErrorHandler(problemJSON),
+		runtime.WithMetadata(func(_ context.Context, r *http.Request) metadata.MD {
+			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+				return nil
+			}
+			ders := make([]string, len(r.TLS.PeerCertificates))
+			for i, c := range r.TLS.PeerCertificates {
+				ders[i] = base64.StdEncoding.EncodeToString(c.Raw)
+			}
+			return metadata.Pairs(peerChainMD, strings.Join(ders, ","))
+		}),
 		runtime.WithForwardResponseOption(httpCode),
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
 			MarshalOptions:   protojson.MarshalOptions{UseProtoNames: true},
@@ -183,8 +199,11 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 		Handler:           s.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       5 * time.Minute,
-		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, NextProtos: []string{"h2", "http/1.1"}},
-		ErrorLog:          slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
+		// a client certificate is asked for, not required, and verified as
+		// an X.509-SVID by the interceptors (§4.4)
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{cert}, NextProtos: []string{"h2", "http/1.1"},
+			ClientAuth: tls.RequestClientCert},
+		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 	}
 	go func() {
 		<-ctx.Done()

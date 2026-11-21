@@ -1,15 +1,15 @@
 # veho: the API server (chunk C7)
 
-**Status:** approved 2026-11-21. C7a done. Requirements: `veho-api.md` (API-1 to API-14, the endpoints of §2, the codes of §3), `veho-tenancy.md` §1, §4, §5, §6 (SEC-2 to SEC-4, SEC-12, SEC-16, SEC-18, SEC-20, SEC-21, SEC-23), FR-1 to FR-3, FR-14 to FR-16, NFR-2, NFR-4; threats T-03, T-06, T-34 (later, with the UI), T-36. It fixes what those leave open, and amends them where noted (§10). The engine's `Submit`, `Cancel`, `Retry` and `Status` (C6) and the secrets' `Store` (C3) are the handlers' back end.
+**Status:** approved 2026-11-21. C7a and C7b done. Requirements: `veho-api.md` (API-1 to API-14, the endpoints of §2, the codes of §3), `veho-tenancy.md` §1, §4, §5, §6 (SEC-2 to SEC-4, SEC-12, SEC-16, SEC-18, SEC-20, SEC-21, SEC-23), FR-1 to FR-3, FR-14 to FR-16, NFR-2, NFR-4; threats T-03, T-06, T-34 (later, with the UI), T-36. It fixes what those leave open, and amends them where noted (§10). The engine's `Submit`, `Cancel`, `Retry` and `Status` (C6) and the secrets' `Store` (C3) are the handlers' back end.
 
 ## 1. Steps
 
 | Step | Scope |
 | :--- | :--- |
 | **C7a** Core and jobs | `api/veho/v1/*.proto` (jobs, errors), `make proto`; one TLS listener serving gRPC and the REST gateway; the interceptor chain (§3); authentication by **API key**; the identity tables (§4); `veho tenant` and `veho apikey` (bootstrap, §4.3); `JobService`: create, get, transfers, list, cancel, retry, `WatchJob`, REST long poll; `/healthz`, `/readyz`; idempotency with the request's hash |
-| **C7b** Identities | OIDC bearer JWTs (`coreos/go-oidc/v3`), SPIFFE X.509-SVIDs over mTLS and JWT-SVIDs (`spiffe/go-spiffe/v2`, as ligo); identity bindings for them; streams re-authorised at each refresh (API-11) |
+| **C7b** Identities | OIDC bearer JWTs (`coreos/go-oidc/v3`), SPIFFE X.509-SVIDs over mTLS and JWT-SVIDs (`spiffe/go-spiffe/v2`, as ligo); entitlements for them; streams re-authorised at each refresh (API-11) |
 | **C7c** Policies | `PolicyService`: named policies with immutable versions, grants (`submit`, `read`, `manage`), `:validate`; jobs by reference; inline policies gated by `allow_inline_policies` and `submit_inline` (SEC-21) |
-| **C7d** Administration | `EndpointService` (CRUD, `:test`), `SecretService` (write-only), `TenantService` and `AdminService` (identity bindings, API keys, quotas) for platform and tenant admins; per-tenant and per-principal rate limits (copied from ligo's `internal/ratelimit`); the OpenAPI 3.1 document generated from the protos and linted |
+| **C7d** Administration | `EndpointService` (CRUD, `:test`), `SecretService` (write-only), `TenantService` and `AdminService` (entitlements, API keys, quotas) for platform and tenant admins; per-tenant and per-principal rate limits (copied from ligo's `internal/ratelimit`); the OpenAPI 3.1 document generated from the protos and linted |
 
 `AuditService` (`GET /v1/audit`) is not built: the audit is the system log (`veho-audit.md`); it comes with backlog 32.
 
@@ -40,7 +40,7 @@ The tenant is the principal's, never the request's (SEC-2, API-2).
 veho.principals (id uuid, tenant_id uuid NULL, name text, role text CHECK (role IN ('viewer','operator','admin','platform-admin')),
                  created_at, disabled_at)          -- tenant_id NULL only for platform-admin
 veho.api_keys (id text PRIMARY KEY, principal_id uuid, sha256 bytea, created_at, expires_at, revoked_at, last_used_at)
-veho.identity_bindings (id uuid, tenant_id uuid NULL, kind text CHECK (kind IN ('oidc','spiffe')), issuer text, subject text,
+veho.entitlements (id uuid, tenant_id uuid NULL, kind text CHECK (kind IN ('oidc','spiffe')), issuer text, subject text,
                         "group" text, role text, created_at)   -- C7b
 ```
 
@@ -54,6 +54,16 @@ Row-level security as for the other tenant tables; authentication reads them thr
 ### 4.3 Bootstrap
 
 `veho tenant create <name>` and `veho apikey create --tenant <name> --role <role> --name <name>` (and `--platform-admin`) run as `veho_migrator` with its DSN from the environment, like `veho migrate` and `veho kek`, and print the new key once. They are how the first platform administrator and each tenant's first admin get a key; afterwards the API's `AdminService` (C7d) does the same. Audited.
+
+### 4.4 OIDC and SPIFFE (C7b)
+
+- **Entitlements decide the tenant and the role.** An **entitlement** gives an identity a role in a tenant (or the platform-admin role); the term replaces "identity binding", so as not to clash with ligo's *binding* (§10). An identity is mapped by `veho.entitlements` rows: `(kind, issuer, subject)` for one identity, or `(kind, issuer, group)` for the members of a group, each with a tenant (none for `platform-admin`) and a role. The token's claims never name the tenant (SEC-2): the `tenant_claim` of §7 is dropped (**amendment**). An identity entitled in more than one tenant is refused (`Unauthenticated`, `ambiguous identity`) rather than guessed; within one tenant the highest role of its entitlements applies.
+- **OIDC** (`coreos/go-oidc/v3` v3.21.0): the bearer token of an issuer listed in `api.oidc` (`issuer`, `audience`, `groups_claim` [`groups`], `ca_file` for the issuer's TLS), verified by signature (the issuer's JWKS, fetched at start and refreshed by the library), issuer, audience and expiry. Subject is `sub`; groups the configured claim (a list of strings).
+- **SPIFFE X.509-SVID** (`spiffe/go-spiffe/v2` v2.9.0): the API's TLS asks for a client certificate (`RequestClientCert`); a certificate given is verified against the X.509 bundle of `api.spiffe.trust_domain` (`api.spiffe.x509_bundle_file`) with `x509svid.Verify`; the SPIFFE ID (its URI SAN) is the subject, the trust domain the issuer. A call without a certificate uses its bearer credential, as before. Over REST the gateway passes the verified ID to the gRPC server in internal metadata, which the server accepts **only from the in-process connection** (its peer is the pipe), so that a client cannot claim an ID by sending the header.
+- **JWT-SVID**: a bearer JWT whose `sub` is a `spiffe://` ID of the trust domain, verified against the JWT bundle (`api.spiffe.jwt_bundle_file`, a JWKS) for the audience `api.spiffe.audience` (`jwtsvid.ParseAndValidate`). Other bearer JWTs are OIDC tokens; tokens starting with `veho_` are API keys.
+- **Re-authorisation** of a stream (API-11) re-verifies the token (its expiry included) or the certificate's entitlement every `Reauthorise`.
+- **Bootstrap**: `veho entitlement create --kind oidc|spiffe --issuer <iss> (--subject <sub> | --group <g>) (--tenant <name> --role <role> | --platform-admin)`, as `veho_migrator` like `veho apikey create`; the API to manage entitlements is C7d. Audited.
+- Bundles and issuers are read at start; a bundle file that changes is read again within a minute (SPIRE rotates bundles).
 
 ## 5. Jobs (C7a)
 
@@ -86,7 +96,7 @@ The message of a 500 is "internal error" with the request ID; the detail is logg
 
 ## 7. Configuration
 
-`veho.yaml` gains `api.{listen, tls.cert_file, tls.key_file, tls.client_ca_file (C7b), max_watches}`, and C7b's `api.oidc.{issuer, audience, tenant_claim, groups_claim}` and `api.spiffe.{trust_domain, bundle_file}`. The API starts in `veho serve` after the engine.
+`veho.yaml` gains `api.{listen, tls.cert_file, tls.key_file, tls.client_ca_file (C7b), max_watches}`, and C7b's `api.oidc` (a list of `{issuer, audience, groups_claim, ca_file}`) and `api.spiffe.{trust_domain, x509_bundle_file, jwt_bundle_file, audience}`. The API starts in `veho serve` after the engine.
 
 ## 8. Threat model of C7
 
@@ -112,7 +122,12 @@ The message of a 500 is "internal error" with the request ID; the detail is logg
 | API-T6 | `?wait=` returns at the change or `304` at the end; `WatchJob` streams until settled and ends when the key is revoked (at the next re-authorisation) |
 | API-T7 | Limits: a 2 MiB body `413`, unknown JSON fields `400`, more than `max_watches` streams `429` |
 | API-T8 | `veho tenant create` and `veho apikey create` bootstrap a working key; the key is not in any log line |
-| C7b, C7c, C7d | their own tests, specified in this document when each starts |
+| API-T9 | OIDC (a test issuer serving discovery and JWKS): a token entitled by subject, and one entitled by group, act with their entitlement's tenant and role; a wrong audience, another issuer, an expired token, a bad signature, a subject without an entitlement, an identity entitled in two tenants: `401` |
+| API-T10 | X.509-SVID: a client certificate of the trust domain, entitled, works over gRPC and REST; a certificate of another trust domain or signed by another CA: `401`; a REST client sending the internal metadata header gets nothing from it |
+| API-T11 | JWT-SVID: entitled and valid works; another audience, another trust domain, expired: `401` |
+| API-T12 | A watch whose token expires, or whose entitlement is deleted, ends `Unauthenticated` at the next re-authorisation |
+| API-T13 | `veho entitlement create` makes a working entitlement; one with both subject and group, or neither, is refused |
+| C7c, C7d | their own tests, specified in this document when each starts |
 
 Benchmark: submission latency through the API on the lab with the `rtt40` WAN profile, against NFR-4 (p99 < 1 s). Fuzz: the REST decoding of a job request.
 
@@ -120,4 +135,5 @@ Benchmark: submission latency through the API on the lab with the `rtt40` WAN pr
 
 - `veho-api.md` §2: the source is `{endpoint, path}` (§5); retry of chosen transfers is not in v1; `422` is not returned at submission.
 - `veho-tenancy.md` SEC-16: API keys are hashed with SHA-256 without a pepper (§4.2).
+- `veho-tenancy.md` SEC-20: the tenant of an OIDC or SPIFFE identity comes from its entitlements, not from a claim (§4.4); the term *entitlement* replaces SEC-20's *identity binding*, which would clash with ligo's *binding*.
 - `veho-api.md`: `AuditService` waits for backlog 32.

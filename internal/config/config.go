@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dihedron/veho/internal/secrets"
@@ -35,6 +36,26 @@ type API struct {
 	Listen     string `yaml:"listen"`
 	TLS        TLS    `yaml:"tls"`
 	MaxWatches int    `yaml:"max_watches"`
+	OIDC       []OIDC `yaml:"oidc"`
+	SPIFFE     SPIFFE `yaml:"spiffe"`
+}
+
+// OIDC is an issuer whose bearer tokens the API accepts (§4.4).
+type OIDC struct {
+	Issuer      string `yaml:"issuer"`
+	Audience    string `yaml:"audience"`
+	GroupsClaim string `yaml:"groups_claim"`
+	// CAFile verifies the issuer's TLS; empty, the system's roots.
+	CAFile string `yaml:"ca_file"`
+}
+
+// SPIFFE is the trust domain whose SVIDs the API accepts (§4.4); an empty
+// trust domain turns SPIFFE off.
+type SPIFFE struct {
+	TrustDomain    string `yaml:"trust_domain"`
+	X509BundleFile string `yaml:"x509_bundle_file"`
+	JWTBundleFile  string `yaml:"jwt_bundle_file"`
+	Audience       string `yaml:"audience"`
 }
 
 // TLS names the certificate and key files of a listener.
@@ -219,6 +240,20 @@ func (c *Config) validate() error {
 	check(err == nil, "api.listen %q: want host:port", c.API.Listen)
 	check(c.API.TLS.CertFile != "" && c.API.TLS.KeyFile != "", "api.tls.cert_file and api.tls.key_file are required")
 	check(c.API.MaxWatches > 0, "api.max_watches must be positive")
+	issuers := map[string]bool{}
+	for i := range c.API.OIDC {
+		o := &c.API.OIDC[i]
+		if o.GroupsClaim == "" {
+			o.GroupsClaim = "groups"
+		}
+		check(strings.HasPrefix(o.Issuer, "https://") && !issuers[o.Issuer], "api.oidc[%d].issuer: an https URL is required, once", i)
+		check(o.Audience != "", "api.oidc[%d].audience is required", i)
+		issuers[o.Issuer] = true
+	}
+	if sp := c.API.SPIFFE; sp.TrustDomain != "" {
+		check(sp.X509BundleFile != "" || sp.JWTBundleFile != "", "api.spiffe: x509_bundle_file or jwt_bundle_file is required")
+		check(sp.JWTBundleFile == "" || sp.Audience != "", "api.spiffe.audience is required with jwt_bundle_file")
+	}
 	if c.Metrics.Listen != "off" {
 		_, _, err := net.SplitHostPort(c.Metrics.Listen)
 		check(err == nil, "metrics.listen %q: want host:port or off", c.Metrics.Listen)

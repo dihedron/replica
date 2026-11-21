@@ -125,12 +125,12 @@ resources with the node's network position.
 - **SEC-16** API keys stored hashed, shown once: SHA-256 of a 256-bit random secret, without a pepper, since a slow hash protects guessable passwords, not random keys (`veho-api-server.md` §4.2).
 - **SEC-23** The gRPC interface authenticates every call and every stream (API-11); authorization, quotas, rate limits and audit are the same interceptors for gRPC and for the REST gateway, so there is no path that skips them (T-36).
 - **SEC-20** Identity mechanisms accepted by the API, each mapped to a tenant
-  and a role by an identity binding configured by a tenant admin (never by the
+  and a role by an entitlement configured by a tenant admin (never by the
   caller): **OIDC** bearer JWT (issuer, audience and signature verified; tenant
-  from a configured claim); **API key** (SEC-16); **SPIFFE** identities, as an
+  from its entitlements, not from a claim: `veho-api-server.md` §4.4); **API key** (SEC-16); **SPIFFE** identities, as an
   X.509-SVID presented over mTLS or as a JWT-SVID, verified against the
-  trust bundle of the configured trust domain; the SPIFFE ID is bound to a
-  tenant and role. The same mechanisms authenticate node-to-node calls.
+  trust bundle of the configured trust domain; the SPIFFE ID is entitled to
+  a role in a tenant. The same mechanisms authenticate node-to-node calls.
 - **SEC-21** Policy permissions. A named policy carries grants: a principal or
   a group has `submit` (trigger jobs under it), `read` or `manage` (change it
   and its grants). Submitting by reference requires `submit` on that policy;

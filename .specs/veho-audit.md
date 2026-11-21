@@ -6,7 +6,7 @@
 
 The actions of AUD-1, each as one event:
 
-- state changes: job submit, cancel, retry; policy, grant, endpoint, tenant and identity-binding changes; secret writes and deletes; KEK init, rotate, rewrap and rekey; housekeeping repairs (`SYSTEM_*`);
+- state changes: job submit, cancel, retry; policy, grant, endpoint, tenant and entitlement changes; secret writes and deletes; KEK init, rotate, rewrap and rekey; housekeeping repairs (`SYSTEM_*`);
 - events that change nothing: authentication failures, authorization denials, break-glass.
 
 C4 delivers the package and audits what exists today: the secrets (`Store.Put`, `Store.Delete`) and `veho kek`. Each later chunk audits its own actions with it (C6: jobs and housekeeping; C7: the API, authentication and authorization).

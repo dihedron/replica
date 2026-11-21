@@ -77,11 +77,13 @@ accepted it (or an entire region) fails.
 | Node | A running `veho serve` process (API + workflow executor) |
 | Tenant | Isolation unit: owns endpoints, credentials, policies, jobs, quotas |
 | Endpoint | Tenant-registered storage location config (plugin type, URL, credential ref) |
-| Source | Object reference the client submits (`s3://…`, `glance://…`, …) |
+| Source | The object a job copies, named by the client as an endpoint of its tenant and a path on it (`veho-api-server.md` §5) |
 | Policy | Distribution policy: the additional copies to create (N destinations), the completion rule (M of N, spread over the topology) and the options and the options (`veho-distribution-policy.md`) |
 | Job | One request to replicate one source object according to one policy |
 | Transfer | The copy of the object to one destination; a job has one per destination, in the context of the job's policy |
 | Part | Fixed-size byte range of the object; unit of checkpoint and resume |
+| Entitlement | Gives an identity (an OIDC subject or group, a SPIFFE ID) a role in a tenant, or the platform-admin role; set by an administrator, never by the caller (SEC-20, `veho-api-server.md` §4.4). Not ligo's *binding* (a source's access to a target), nor its *role binding*, whose meaning it shares |
+| Grant | A permission on a named policy: `submit`, `read` or `manage` (SEC-21); never used for entitlements |
 
 ## 5. Functional requirements
 
