@@ -91,10 +91,10 @@ secrets: scanners ## scan the history and the working tree for secrets with gitl
 vuln: ## check go.mod and the code for known vulnerabilities with govulncheck (run before every commit)
 	@# both always run: a finding in one must not hide the other
 	@rc=0; \
-	go run golang.org/x/vuln/cmd/govulncheck@latest -C cmd/replica -scan module || rc=1; \
+	go run golang.org/x/vuln/cmd/govulncheck@latest -C cmd/veho -scan module || rc=1; \
 	go run golang.org/x/vuln/cmd/govulncheck@latest ./... || rc=1; \
 	exit $$rc
 
 # the DBOS spike (test/spikes/dbos) is a disposable harness that needs a
-# PostgreSQL: see .specs/replica-dbos-spike.md; it is promoted into the
+# PostgreSQL: see .specs/veho-dbos-spike.md; it is promoted into the
 # acceptance suite (AC-21) and removed from here when implementation starts

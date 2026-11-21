@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-	"github.com/dihedron/replica/internal/workflow"
+	"github.com/dihedron/veho/internal/workflow"
 )
 
 type FetchTask struct {
@@ -19,7 +19,7 @@ type FetchTask struct {
 
 func Fetch(ctx context.Context, url string, username string, password string) (workflow.Result[[]byte], error) {
 	slog.Debug("Fetching from URL", "url", url, "username", username, "password", password)
-	resp, err := http.Get(url) //nolint:gosec // experimental fetch demo; replica validates source URLs against tenant endpoints (SEC-12)
+	resp, err := http.Get(url) //nolint:gosec // experimental fetch demo; veho validates source URLs against tenant endpoints (SEC-12)
 
 	// SCENARIO A: Transient Network Error: return error to trigger retry
 	if err != nil {

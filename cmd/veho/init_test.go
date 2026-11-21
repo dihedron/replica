@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-// built returns a replica binary: init() reads variables named after the
+// built returns a veho binary: init() reads variables named after the
 // binary, and DotEnvVarName is stamped at build time.
 func built(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "replica")
-	cmd := exec.Command("go", "build", "-ldflags", "-X github.com/dihedron/replica/pkg/metadata.DotEnvVarName=REPLICA_DOTENV", "-o", bin, ".")
+	bin := filepath.Join(t.TempDir(), "veho")
+	cmd := exec.Command("go", "build", "-ldflags", "-X github.com/dihedron/veho/pkg/metadata.DotEnvVarName=VEHO_DOTENV", "-o", bin, ".")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
@@ -42,7 +42,7 @@ func runVersion(t *testing.T, bin string, env ...string) (code int, stderr strin
 func TestLogLevels(t *testing.T) {
 	bin := built(t)
 	for _, v := range []string{"debug", "info", "warn", "error", "off", "bogus"} {
-		if code, stderr := runVersion(t, bin, "REPLICA_LOG_LEVEL="+v); code != 0 {
+		if code, stderr := runVersion(t, bin, "VEHO_LOG_LEVEL="+v); code != 0 {
 			t.Errorf("%s: exit %d: %s", v, code, stderr)
 		}
 	}
@@ -70,9 +70,9 @@ func TestDotEnvLogging(t *testing.T) {
 		{name: "unset, missing", file: missing, want: failed}, // a failure is never lost by default
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			env := []string{"REPLICA_DOTENV=" + tc.file}
+			env := []string{"VEHO_DOTENV=" + tc.file}
 			if tc.level != "" {
-				env = append(env, "REPLICA_LOG_LEVEL="+tc.level)
+				env = append(env, "VEHO_LOG_LEVEL="+tc.level)
 			}
 			code, stderr := runVersion(t, bin, env...)
 			if code != 0 {
@@ -94,7 +94,7 @@ func TestMalformedDotEnvIsNotQuoted(t *testing.T) {
 	bin := built(t)
 	const canary, badLine = "canary-value", "bad line here"
 	bad := filepath.Join(t.TempDir(), ".env")
-	if err := os.WriteFile(bad, []byte(badLine+"\nREPLICA_REDIS_PASSWORD="+canary+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(bad, []byte(badLine+"\nVEHO_REDIS_PASSWORD="+canary+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct {
@@ -102,10 +102,10 @@ func TestMalformedDotEnvIsNotQuoted(t *testing.T) {
 		args []string
 		env  []string
 	}{
-		{"init, no level", []string{"version"}, []string{"REPLICA_DOTENV=" + bad}},
-		{"init, level error", []string{"version"}, []string{"REPLICA_DOTENV=" + bad, "REPLICA_LOG_LEVEL=error"}},
+		{"init, no level", []string{"version"}, []string{"VEHO_DOTENV=" + bad}},
+		{"init, level error", []string{"version"}, []string{"VEHO_DOTENV=" + bad, "VEHO_LOG_LEVEL=error"}},
 		{"version -v, no level", []string{"version", "-v", "--dotenv", bad}, nil},
-		{"version -v, level error", []string{"version", "-v", "--dotenv", bad}, []string{"REPLICA_LOG_LEVEL=error"}},
+		{"version -v, level error", []string{"version", "-v", "--dotenv", bad}, []string{"VEHO_LOG_LEVEL=error"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := exec.Command(bin, tc.args...)
@@ -118,7 +118,7 @@ func TestMalformedDotEnvIsNotQuoted(t *testing.T) {
 	}
 	// the failure itself is still reported
 	cmd := exec.Command(bin, "version")
-	cmd.Env = []string{"HOME=" + t.TempDir(), "REPLICA_DOTENV=" + bad}
+	cmd.Env = []string{"HOME=" + t.TempDir(), "VEHO_DOTENV=" + bad}
 	if out, _ := cmd.CombinedOutput(); !strings.Contains(string(out), "malformed") {
 		t.Errorf("no report of the failure: %s", out)
 	}

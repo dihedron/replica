@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-	"github.com/dihedron/replica/internal/workflow"
+	"github.com/dihedron/veho/internal/workflow"
 )
 
 func SendEmail(ctx dbos.Context, name string, email string, opts ...dbos.StepOption) (string, error) {

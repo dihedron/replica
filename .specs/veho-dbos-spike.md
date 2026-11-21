@@ -1,6 +1,6 @@
-# replica: DBOS spike report
+# veho: DBOS spike report
 
-This file records the experiments that checked the assumptions the design makes about DBOS Transact for Go (`EXT-nn` in `replica_specification.md`). Round 1 ran on v0.11.0, round 2 on v1.9.0, which is the pinned version.
+This file records the experiments that checked the assumptions the design makes about DBOS Transact for Go (`EXT-nn` in `veho_specification.md`). Round 1 ran on v0.11.0, round 2 on v1.9.0, which is the pinned version.
 
 Status: draft, 2026-11-21, for review.
 
@@ -40,7 +40,7 @@ Other v1.9.0 facts that matter:
   by message only unless registered, so `errors.Is/As` will not survive a
   read-back — carry the error *class* in the returned value, not the type.
 - CockroachDB is a supported backend (does not remove the WAN-latency concern,
-  replica-architecture.md §3.3).
+  veho-architecture.md §3.3).
 
 ## Test-harness note (honesty)
 
@@ -53,10 +53,10 @@ setup and verifying `sync_state = quorum`, the test passed (above).
 
 ## Consequences applied to the specs
 
-- replica-job-lifecycle.md §3: acceptance is a **single transaction** (job rows + DBOS enqueue).
-- replica-job-lifecycle.md §6: adoption via `ListWorkflows` + `ResumeWorkflows`; own adoption counter.
-- replica-job-lifecycle.md §7: retry via `WithStepRetryPredicate`.
-- replica-job-lifecycle.md §8: `WithPartitionConcurrency`.
+- veho-job-lifecycle.md §3: acceptance is a **single transaction** (job rows + DBOS enqueue).
+- veho-job-lifecycle.md §6: adoption via `ListWorkflows` + `ResumeWorkflows`; own adoption counter.
+- veho-job-lifecycle.md §7: retry via `WithStepRetryPredicate`.
+- veho-job-lifecycle.md §8: `WithPartitionConcurrency`.
 - 06: no admin server; AC-21 regression suite on each DBOS bump.
 - 07: ADR-5, OI-13 resolved.
 

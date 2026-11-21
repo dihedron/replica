@@ -1,4 +1,4 @@
-module github.com/dihedron/replica
+module github.com/dihedron/veho
 
 go 1.27.4
 

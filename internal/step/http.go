@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-	"github.com/dihedron/replica/internal/workflow"
+	"github.com/dihedron/veho/internal/workflow"
 )
 
 func FetchFromURL(ctx dbos.Context, url string, opts ...dbos.StepOption) ([]byte, error) {
@@ -17,7 +17,7 @@ func FetchFromURL(ctx dbos.Context, url string, opts ...dbos.StepOption) ([]byte
 		ctx,
 		func(ctx context.Context) (workflow.Result[[]byte], error) {
 			slog.Debug("Fetching from URL", "url", url)
-			resp, err := http.Get(url) //nolint:gosec // experimental fetch demo; replica validates source URLs against tenant endpoints (SEC-12)
+			resp, err := http.Get(url) //nolint:gosec // experimental fetch demo; veho validates source URLs against tenant endpoints (SEC-12)
 
 			// SCENARIO A: Transient Network Error: return error to trigger retry
 			if err != nil {

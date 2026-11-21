@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-	"github.com/dihedron/replica/internal/workflow"
+	"github.com/dihedron/veho/internal/workflow"
 )
 
 // DelayedPrint is a step that prints a message one or more times after a delay.

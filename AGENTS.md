@@ -33,14 +33,14 @@
 * `cmd/` - Application entrypoints and main binaries; for details on how the application command lines are structured, see the paragraph on command line arguments
 * `internal/` - Private application and library code.
 * `pkg/` - Public library code (e.g. the build metadata injected at link time, `pkg/metadata`, and the storage plugin API).
-* `.specs/` - Feature design documents and architectural specifications; start from `replica_specification.md`, and see `replica-backlog.md` for the work agreed for later.
+* `.specs/` - Feature design documents and architectural specifications; start from `veho_specification.md`, and see `veho-backlog.md` for the work agreed for later.
 * `test/` - Test tooling: invariants, lab scenarios and the disposable DBOS spike (`test/spikes/dbos`).
 * `docs/` - The Setup, Operator's and Architecture and Design guides, in Markdown (rule 12).
 * `packaging/` - Post-install script, service unit and the public packaging key.
 * `*.mk` - The build: `go.mk`, `help.mk` and `release.mk` are identical in ligo and netcheck (keep them in sync with those copies); `Makefile` and `custom.mk` hold this project's settings and targets. Run `make help`.
 
 ## Project Notes
-* **Durable engine:** DBOS Transact for Go, pinned at v1.9.0, open-source features only (no Conductor, `AutoUpgrade`, `Sharding` or `SuspendMode`: they need a key). Every behaviour the design relies on is an `EXT-nn` assumption in `.specs/replica-dbos-spike.md`; recheck them with the spike on every DBOS version bump.
+* **Durable engine:** DBOS Transact for Go, pinned at v1.9.0, open-source features only (no Conductor, `AutoUpgrade`, `Sharding` or `SuspendMode`: they need a key). Every behaviour the design relies on is an `EXT-nn` assumption in `.specs/veho-dbos-spike.md`; recheck them with the spike on every DBOS version bump.
 * **State store:** one PostgreSQL cluster across three regions with a synchronous quorum standby; application tables live in the DBOS system database so that a job and its workflow commit in one transaction (INV-1). Connect to PostgreSQL directly, not through a transaction-mode pooler.
 * **Idempotency:** every step that touches a storage system must be idempotent per `(transfer, part)`, because a paused executor can still finish its in-flight step after another one has taken over (INV-3).
 

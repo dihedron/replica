@@ -15,12 +15,12 @@ import (
 
 // NOTE: these variables are populated at compile time by using the -ldflags
 // linker flag:
-//   $> go build -ldflags "-X github.com/dihedron/replica/pkg/metadata.GitHash=$(hash)"
+//   $> go build -ldflags "-X github.com/dihedron/veho/pkg/metadata.GitHash=$(hash)"
 // in order to get the package path to the GitHash variable to use in the
 // linker flag, use the nm utility and look for the variable in the built
 // application symbols, then use its path in the linker flag:
-//   $> nm ./dist/linux/amd64/replica-plugin | grep GitHash
-//   00000000015db9c0 b github.com/dihedron/replica/pkg/metadata.GitHash
+//   $> nm ./dist/linux/amd64/veho-plugin | grep GitHash
+//   00000000015db9c0 b github.com/dihedron/veho/pkg/metadata.GitHash
 
 var (
 	// Name is the name of the application or plugin.

@@ -8,7 +8,7 @@
 
 version: 2
 
-project_name: replica
+project_name: veho
 
 env:
   - CGO_ENABLED=0
@@ -21,9 +21,9 @@ before:
     - go generate ./...
 
 builds:
-  - id: replica
-    binary: replica
-    main: ./cmd/replica
+  - id: veho
+    binary: veho
+    main: ./cmd/veho
     goos:
       - linux
       - windows
@@ -65,7 +65,7 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: replica
+  - id: veho
     formats:
       - tar.gz
     name_template: >-
@@ -89,7 +89,7 @@ upx:
     enabled: false
 
     # Filter by build ID.
-    ids: [replica]
+    ids: [veho]
 
     # Filter by GOOS.
     goos: [linux, windows]
@@ -111,18 +111,18 @@ upx:
     #brute: true
 
 nfpms:
-  - id: replica
-    package_name: replica
+  - id: veho
+    package_name: veho
     ids:
-      - replica
+      - veho
     description: |
-      replica replicates large objects, durably and asynchronously, from a
+      veho replicates large objects, durably and asynchronously, from a
       source storage system to destinations in two other regions: it
       records each job in a PostgreSQL cluster spread across the regions,
       resumes it on another node if one fails, retries what fails and
       verifies every copy. Storage backends are plugins; the service is
       multi-tenant.
-    homepage: "https://github.com/dihedron/replica"
+    homepage: "https://github.com/dihedron/veho"
     maintainer: "Andrea Funtò <dihedron.dev@gmail.com>"
     vendor: "Andrea Funtò"
     license: "MIT"
@@ -144,8 +144,8 @@ nfpms:
         key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
         type: origin
     contents:
-      - src: ./packaging/replica.service
-        dst: /usr/lib/systemd/system/replica.service
+      - src: ./packaging/veho.service
+        dst: /usr/lib/systemd/system/veho.service
         file_info:
           mode: 0644
     scripts:
@@ -154,12 +154,12 @@ nfpms:
 # MSI packaging is a GoReleaser Pro feature.
 # If you have GoReleaser Pro, you can uncomment the following section.
 # packagers:
-#   - id: replica-msi
+#   - id: veho-msi
 #     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 #     builds:
-#       - replica
+#       - veho
 #     extra_files:
-#       - src: ./replica.conf
+#       - src: ./veho.conf
 #     upgrade_code: "53c6e944-a35a-4e67-b3b9-8c9e7a8a0a3a"
 #     msi:
 #       component_id: Netcheck

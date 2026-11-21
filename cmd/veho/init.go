@@ -10,7 +10,7 @@ import (
 	"runtime/pprof"
 	"strings"
 
-	"github.com/dihedron/replica/pkg/metadata"
+	"github.com/dihedron/veho/pkg/metadata"
 )
 
 var (

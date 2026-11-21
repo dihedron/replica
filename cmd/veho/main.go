@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dihedron/replica/pkg/metadata"
+	"github.com/dihedron/veho/pkg/metadata"
 	"github.com/jessevdk/go-flags"
 )
 

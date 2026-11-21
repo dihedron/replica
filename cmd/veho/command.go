@@ -8,12 +8,12 @@ import (
 	"time"
 
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
-	"github.com/dihedron/replica/internal/step"
+	"github.com/dihedron/veho/internal/step"
 )
 
 type Command struct {
-	DatabaseURL string `short:"d" long:"database-url" description:"The URL of the database holding durable execution data." optional:"yes" env:"REPLICA_DATABASE_URL" default:"postgres://postgres:dbos@localhost:5432/postgres"`
-	Application string `short:"a" long:"application-name" description:"The name of the application workflow." optional:"yes" env:"REPLICA_APPLICATION" default:"my-durable-app"`
+	DatabaseURL string `short:"d" long:"database-url" description:"The URL of the database holding durable execution data." optional:"yes" env:"VEHO_DATABASE_URL" default:"postgres://postgres:dbos@localhost:5432/postgres"`
+	Application string `short:"a" long:"application-name" description:"The name of the application workflow." optional:"yes" env:"VEHO_APPLICATION" default:"my-durable-app"`
 }
 
 // Execute executes the command.

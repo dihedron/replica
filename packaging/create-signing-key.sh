@@ -9,7 +9,7 @@
 #   packaging/create-signing-key.sh [BACKUP_DIR]
 #
 # The key is created in a throwaway keyring, never in yours. BACKUP_DIR
-# (default: ~/replica-packaging-key) receives the private key and its
+# (default: ~/veho-packaging-key) receives the private key and its
 # revocation certificate: move them to offline storage, they are the only
 # copies outside GitHub's secrets.
 #
@@ -17,7 +17,7 @@
 # Override the key's identity with KEY_UID, its lifetime with KEY_EXPIRY.
 set -euo pipefail
 
-KEY_UID="${KEY_UID:-replica packaging <dihedron.dev@gmail.com>}"
+KEY_UID="${KEY_UID:-veho packaging <dihedron.dev@gmail.com>}"
 # rpm, dnf and debsig-verify on every supported distribution accept RSA
 KEY_ALGO=rsa4096
 KEY_EXPIRY="${KEY_EXPIRY:-3y}"
@@ -36,7 +36,7 @@ public="$repo/packaging/signing-key.asc"
 gh auth status >/dev/null 2>&1 || die "gh is not logged in (gh auth login)"
 slug="$(cd "$repo" && gh repo view --json nameWithOwner -q .nameWithOwner)"
 
-backup="${1:-$HOME/replica-packaging-key}"
+backup="${1:-$HOME/veho-packaging-key}"
 mkdir -p "$backup"
 chmod 700 "$backup"
 [[ ! -e "$backup/private-key.asc" ]] || die "$backup/private-key.asc exists"

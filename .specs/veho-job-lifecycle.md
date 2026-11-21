@@ -1,12 +1,12 @@
-# replica: job lifecycle, workflows and retries
+# veho: job lifecycle, workflows and retries
 
-This file specifies the data model, the state machines, the workflows, resumption, adoption of orphaned work and the retry policy. It is part of `replica_specification.md`.
+This file specifies the data model, the state machines, the workflows, resumption, adoption of orphaned work and the retry policy. It is part of `veho_specification.md`.
 
 Status: draft, 2026-11-21, for review.
 
 ## 1. Data model (application schema)
 
-All tables carry `tenant_id` and are protected by row-level security (replica-tenancy.md).
+All tables carry `tenant_id` and are protected by row-level security (veho-tenancy.md).
 
 ```
 tenants(id, name, state, quotas jsonb, created_at)
@@ -14,9 +14,11 @@ endpoints(id, tenant_id, name, region, driver, config jsonb,
           credential_ref, created_at)            -- no secrets stored inline
 jobs(id uuid, tenant_id, idempotency_key, source_endpoint_id, source_path,
      source_info jsonb,            -- size, etag/version, sha256 once known
-     policy jsonb, state, deadline_at, cancel_requested bool,
+     policy jsonb,                 -- immutable snapshot (veho-distribution-policy.md)
+     policy_ref, satisfied_at, completed_at, settled_at, copies_done int,
+     state, deadline_at, cancel_requested bool,
      created_at, updated_at, finished_at, last_error jsonb)
-transfers(id uuid, job_id, tenant_id, destination_endpoint_id, dest_path,
+transfers(id uuid, job_id, tenant_id, destination_endpoint_id, position jsonb, dest_path,
           state, attempt int, bytes_done bigint, bytes_total bigint,
           resume_token jsonb,        -- driver-specific (e.g. multipart upload id)
           lease_owner, lease_expires_at, fence bigint,
@@ -34,9 +36,14 @@ Job: `ACCEPTED → RUNNING → SUCCEEDED | FAILED | CANCELLED`
 
 - `ACCEPTED`: committed, no transfer started yet.
 - `RUNNING`: at least one transfer started and not all terminal.
-- `SUCCEEDED`: all transfers `SUCCEEDED`.
-- `FAILED`: all transfers terminal and ≥1 `FAILED` (others may be `SUCCEEDED`;
-  per-transfer detail is authoritative). Retryable via API (FR-15).
+- `SUCCEEDED`: the policy is met (`min_copies` of N transfers `SUCCEEDED`, with
+  the spread statements). Other transfers may still run (`on_satisfied:
+  complete`); `completed_at` (all N have a copy) and `settled_at` (all transfers
+  terminal) are set separately.
+- `FAILED`: the rule can no longer be met, or the deadline passed with the rule
+  not met (per-transfer detail is authoritative). Retryable via API (FR-15).
+- The rule is evaluated by `internal/policy` in the transaction that ends a
+  transfer, under a lock on the job row (`veho-distribution-policy.md` §4).
 - `CANCELLED`: cancel requested and all transfers stopped.
 
 Transfer: `PENDING → COPYING → VERIFYING → SUCCEEDED`
@@ -60,7 +67,7 @@ API handler (any node):
   return 202 { job_id }
 ```
 
-Verified on DBOS Go v1.9.0 (replica-dbos-spike.md, EXT-1): the workflow exists only if the
+Verified on DBOS Go v1.9.0 (veho-dbos-spike.md, EXT-1): the workflow exists only if the
 transaction commits, so there is no window in which a job exists without its
 workflow (no outbox needed). Requirements: application tables live in the
 same database as the DBOS system schema; `WithEnqueueTransaction` cannot be
@@ -78,8 +85,11 @@ enqueue), but this is not an expected path.
    grace period → job `FAILED`.
 2. Start one child `Transfer` workflow per destination, ID
    `"{jobID}/{transferID}"`, on queue `transfers`. Run in parallel.
-3. Wait for all children; compute job state; step `finalize` (set
-   terminal state, release quota).
+3. As each child ends, the policy is evaluated in the transaction that ends the
+   transfer (`veho-distribution-policy.md` §5.2), which sets the job state and
+   the milestones `satisfied_at`, `completed_at` and `settled_at`. Wait for all
+   children (or cancel them on `on_satisfied: stop`); step `finalize` (release
+   quota once settled).
 
 ### `Transfer(transferID)`  (queue: `transfers`)
 1. Step `acquire`: take lease, `fence++`.
@@ -108,14 +118,14 @@ as required by DBOS replay semantics.
   `resume_token`.
 - Without it, resume restarts the transfer from byte 0 (still correct, just
   slower).
-- Source reads are range reads; `Source` MUST support `ReadRange` (replica-plugins.md) so any
+- Source reads are range reads; `Source` MUST support `ReadRange` (veho-plugins.md) so any
   part can be re-read independently.
 - Resume token validity is checked (`Sink.Resume` returns `ErrTokenExpired`
   → fall back to restart).
 
 ## 6. Node failure, adoption and fencing
 
-Facts established by the spike (replica-dbos-spike.md): DBOS queues are durable and any
+Facts established by the spike (veho-dbos-spike.md): DBOS queues are durable and any
 listening executor dequeues new work; **nothing detects a dead executor**;
 adoption is explicit (list by executor ID + `ResumeWorkflows`), resumes the *same workflow ID* from
 its last completed step on whichever executor performs the recovery; a paused
@@ -133,7 +143,7 @@ step still finishes. Therefore:
    `last_seen` older than the lease TTL (default 60 s) it lists that
    executor's `PENDING` workflows (`ListWorkflows(WithFilterExecutorIDs(dead),
    WithFilterStatus(PENDING))`) and calls `ResumeWorkflows(ids)` (public,
-   documented API; replica-dbos-spike.md EXT-2b). The workflows return to the queue and any node
+   documented API; veho-dbos-spike.md EXT-2b). The workflows return to the queue and any node
    picks them up. Caveat:
    `ResumeWorkflows` resets DBOS's `recovery_attempts`, so the reconciler keeps
    its own adoption counter per transfer (`transfers.adoptions`, cap e.g. 20 →
@@ -151,11 +161,11 @@ step still finishes. Therefore:
 5. **A live node wrongly declared dead** (e.g. GC pause) is just the zombie
    case in 3.
 6. **Application version**: recovery only applies to workflows of the same
-   `ApplicationVersion` (replica-dbos-spike.md, EXT-5) — see replica-acceptance-matrix.md §3 for upgrades.
+   `ApplicationVersion` (veho-dbos-spike.md, EXT-5) — see veho-acceptance-matrix.md §3 for upgrades.
 
 ## 7. Error taxonomy and retry policy
 
-Plugins classify errors (replica-plugins.md). Core handles by class:
+Plugins classify errors (veho-plugins.md). Core handles by class:
 
 | Class | Examples | Behaviour |
 |-------|----------|-----------|
@@ -168,7 +178,7 @@ Plugins classify errors (replica-plugins.md). Core handles by class:
 Defaults (overridable in policy within tenant limits):
 `initial=2s, multiplier=2, max_interval=15m, jitter=±20%, deadline=7d`.
 
-Implementation note (replica-dbos-spike.md, EXT-6): DBOS v1.9.0 step retry
+Implementation note (veho-dbos-spike.md, EXT-6): DBOS v1.9.0 step retry
 (`WithStepMaxRetries`, `WithStepBaseInterval`, `WithStepBackoffFactor`,
 `WithStepMaxInterval`) is in-process and has no jitter, but supports
 classification through `WithStepRetryPredicate(func(error) bool)`: steps wrap
