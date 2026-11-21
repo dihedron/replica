@@ -30,8 +30,12 @@ var rank = map[string]int{RoleViewer: 1, RoleOperator: 2, RoleAdmin: 3}
 
 // Principal is the authenticated caller.
 type Principal struct {
-	ID   uuid.UUID
+	ID uuid.UUID
+	// Name is the principal as grants name it: key:<name>, oidc:<sub> or
+	// spiffe:<id> (§5.1).
 	Name string
+	// Groups are its OIDC groups.
+	Groups []string
 	// Tenant is nil for a platform administrator.
 	Tenant *uuid.UUID
 	Role   string
@@ -120,5 +124,15 @@ func authenticate(ctx context.Context, pool *pgxpool.Pool, token string) (Princi
 	if subtle.ConstantTimeCompare(given[:], sum) != 1 || !valid {
 		return Principal{}, errBadKey
 	}
+	p.Name = "key:" + p.Name
 	return p, nil
+}
+
+// grantees are the names a grant can give the principal a permission by.
+func (p Principal) grantees() []string {
+	out := []string{p.Name}
+	for _, g := range p.Groups {
+		out = append(out, "group:"+g)
+	}
+	return out
 }

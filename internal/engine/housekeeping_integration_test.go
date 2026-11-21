@@ -44,6 +44,18 @@ func (f fixture) events(action string) int {
 	return n
 }
 
+// jobEvents counts the events of action about job: the lab's database
+// holds other tests' jobs, which housekeeping repairs too.
+func (f fixture) jobEvents(action string, job uuid.UUID) int {
+	n := 0
+	for _, e := range f.audit.Events() {
+		if d, ok := e.Details.(map[string]string); ok && e.Action == action && d["job"] == job.String() {
+			n++
+		}
+	}
+	return n
+}
+
 // ENG-6, ENG-7 in one process: a second executor blocks mid-batch and stops
 // beating; housekeeping on the first adopts its workflows, which finish
 // with the right bytes; the blocked step, released, writes nothing (INV-3).
@@ -82,7 +94,7 @@ func TestAdoption(t *testing.T) {
 	f.sql(t, "update veho.executors set last_seen = now() - interval '1 hour' where id = $1", other.executor)
 	f.launch(t)
 	f.housekeep(t)
-	if f.events("SYSTEM_ZOMBIE_ADOPTED") != 1 {
+	if f.events("SYSTEM_ZOMBIE_ADOPTED") == 0 { // other runs' dead executors may be adopted too
 		t.Errorf("%d adoption events", f.events("SYSTEM_ZOMBIE_ADOPTED"))
 	}
 	close(release) // the zombie's step goes on, and must record nothing
@@ -119,7 +131,7 @@ func TestDeadline(t *testing.T) {
 	f.sql(t, "update veho.jobs set deadline_at = now() - interval '1 second' where id = $1", job)
 	f.housekeep(t)
 	s := f.wait(t, job, isSettled)
-	if s.State != "FAILED" || f.events("SYSTEM_JOB_EXPIRED") != 1 {
+	if s.State != "FAILED" || f.jobEvents("SYSTEM_JOB_EXPIRED", job) != 1 {
 		t.Errorf("job: %+v", s)
 	}
 	for _, tr := range s.Transfers {
@@ -150,10 +162,10 @@ func TestZombies(t *testing.T) {
 	f.sql(t, "update veho.jobs set updated_at = now() - interval '1 hour' where id = any($1)", []uuid.UUID{lost, ended})
 	f.launch(t)
 	f.housekeep(t)
-	if s := f.wait(t, lost, isSettled); s.State != "SUCCEEDED" || f.events("SYSTEM_ZOMBIE_RESTARTED") != 1 {
+	if s := f.wait(t, lost, isSettled); s.State != "SUCCEEDED" || f.jobEvents("SYSTEM_ZOMBIE_RESTARTED", lost) != 1 {
 		t.Errorf("lost workflow: %+v", s)
 	}
-	if s := f.wait(t, ended, isSettled); s.State != "FAILED" || s.Transfers[0].State != "FAILED" || f.events("SYSTEM_ZOMBIE_REPAIRED") != 1 {
+	if s := f.wait(t, ended, isSettled); s.State != "FAILED" || s.Transfers[0].State != "FAILED" || f.jobEvents("SYSTEM_ZOMBIE_REPAIRED", ended) != 1 {
 		t.Errorf("ended workflow: %+v", s)
 	}
 

@@ -187,7 +187,7 @@ func entitle(ctx context.Context, pool *pgxpool.Pool, id identity) (Principal, e
 			best = b
 		}
 	}
-	return Principal{ID: best.ID, Name: id.kind + ":" + id.subject, Role: best.Role, Tenant: best.Tenant}, nil
+	return Principal{ID: best.ID, Name: id.kind + ":" + id.subject, Groups: id.groups, Role: best.Role, Tenant: best.Tenant}, nil
 }
 
 // errAmbiguous refuses an identity entitled in more than one tenant (§4.4).

@@ -21,6 +21,8 @@ CREATE TABLE veho.tenants (
 	name       text NOT NULL UNIQUE CHECK (name <> ''),
 	state      text NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'suspended')),
 	quotas     jsonb NOT NULL DEFAULT '{}',
+	-- the tenant's own settings, such as inline_policies (veho-api-server.md §5.1)
+	settings   jsonb NOT NULL DEFAULT '{}',
 	created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -52,6 +54,8 @@ CREATE TABLE veho.policies (
 	version    int NOT NULL CHECK (version > 0),
 	spec       jsonb NOT NULL,
 	created_at timestamptz NOT NULL DEFAULT now(),
+	-- a deleted policy's versions stay, for the jobs that used them
+	deleted_at timestamptz,
 	UNIQUE (tenant_id, id),
 	UNIQUE (tenant_id, name, version)
 );
@@ -452,3 +456,23 @@ $$;
 REVOKE ALL ON FUNCTION veho.entitlements_for(text, text, text, text[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.entitlements_for(text, text, text, text[]) TO veho_api;
 GRANT SELECT, INSERT, DELETE ON veho.entitlements TO veho_api;
+
+-- ---------------------------------------------------------------------------
+-- Grants on named policies (.specs/veho-api-server.md §5.1, SEC-21): a
+-- grantee (key:<name>, oidc:<sub>, spiffe:<id> or group:<name>) gets submit,
+-- read or manage on a policy, or the tenant-wide submit_inline.
+
+CREATE TABLE veho.policy_grants (
+	tenant_id  uuid NOT NULL REFERENCES veho.tenants (id),
+	policy     text CHECK (policy <> ''),
+	grantee    text NOT NULL CHECK (grantee ~ '^(key|oidc|spiffe|group):.+'),
+	permission text NOT NULL CHECK (permission IN ('submit', 'read', 'manage', 'submit_inline')),
+	created_at timestamptz NOT NULL DEFAULT now(),
+	CHECK ((permission = 'submit_inline') = (policy IS NULL))
+);
+CREATE UNIQUE INDEX policy_grants_unique ON veho.policy_grants (tenant_id, coalesce(policy, ''), grantee, permission);
+
+ALTER TABLE veho.policy_grants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.policy_grants
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+GRANT SELECT, INSERT, DELETE ON veho.policy_grants TO veho_api;

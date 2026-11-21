@@ -1,0 +1,99 @@
+// Named policies and their grants (.specs/veho-api-server.md §5.1).
+//
+// Generate with: make proto
+syntax = "proto3";
+
+package veho.v1;
+
+option go_package = "github.com/dihedron/veho/api/veho/v1;vehov1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+service PolicyService {
+  // CreatePolicy stores version 1 of a name, or its next version.
+  rpc CreatePolicy(CreatePolicyRequest) returns (Policy) {
+    option (google.api.http) = {post: "/v1/policies" body: "*"};
+  }
+  // GetPolicy returns the latest version, or the one asked for.
+  rpc GetPolicy(GetPolicyRequest) returns (Policy) {
+    option (google.api.http) = {get: "/v1/policies/{name}"};
+  }
+  // ListPolicies returns the latest version of each policy the caller sees.
+  rpc ListPolicies(ListPoliciesRequest) returns (ListPoliciesResponse) {
+    option (google.api.http) = {get: "/v1/policies"};
+  }
+  rpc DeletePolicy(PolicyName) returns (Empty) {
+    option (google.api.http) = {delete: "/v1/policies/{name}"};
+  }
+  // ValidatePolicy checks a policy document and stores nothing.
+  rpc ValidatePolicy(ValidatePolicyRequest) returns (ValidatePolicyResponse) {
+    option (google.api.http) = {post: "/v1/policies:validate" body: "*"};
+  }
+  rpc GetGrants(PolicyName) returns (Grants) {
+    option (google.api.http) = {get: "/v1/policies/{name}/grants"};
+  }
+  // SetGrants replaces every grant of a policy.
+  rpc SetGrants(SetGrantsRequest) returns (Grants) {
+    option (google.api.http) = {put: "/v1/policies/{name}/grants" body: "*"};
+  }
+}
+
+message Empty {}
+
+message CreatePolicyRequest {
+  string name = 1;
+  google.protobuf.Struct policy = 2;
+}
+
+message GetPolicyRequest {
+  string name = 1;
+  // 0: the latest.
+  int32 version = 2;
+}
+
+message PolicyName {
+  string name = 1;
+}
+
+message Policy {
+  string name = 1;
+  int32 version = 2;
+  google.protobuf.Struct policy = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message ListPoliciesRequest {}
+
+message ListPoliciesResponse {
+  repeated Policy policies = 1;
+}
+
+message ValidatePolicyRequest {
+  google.protobuf.Struct policy = 1;
+}
+
+message ValidatePolicyResponse {
+  bool valid = 1;
+  // The first problem, when not valid.
+  string code = 2;
+  string message = 3;
+}
+
+message Grant {
+  // key:<name>, oidc:<sub>, spiffe:<id> or group:<name>.
+  string grantee = 1;
+  // submit, read or manage.
+  string permission = 2;
+}
+
+message Grants {
+  string name = 1;
+  repeated Grant grants = 2;
+}
+
+message SetGrantsRequest {
+  string name = 1;
+  repeated Grant grants = 2;
+}

@@ -1,6 +1,6 @@
 # veho: the API server (chunk C7)
 
-**Status:** approved 2026-11-21. C7a and C7b done. Requirements: `veho-api.md` (API-1 to API-14, the endpoints of §2, the codes of §3), `veho-tenancy.md` §1, §4, §5, §6 (SEC-2 to SEC-4, SEC-12, SEC-16, SEC-18, SEC-20, SEC-21, SEC-23), FR-1 to FR-3, FR-14 to FR-16, NFR-2, NFR-4; threats T-03, T-06, T-34 (later, with the UI), T-36. It fixes what those leave open, and amends them where noted (§10). The engine's `Submit`, `Cancel`, `Retry` and `Status` (C6) and the secrets' `Store` (C3) are the handlers' back end.
+**Status:** approved 2026-11-21. C7a to C7c done; C7c (§5.1) was decided under the overnight delegation of 2026-11-22, for review. Requirements: `veho-api.md` (API-1 to API-14, the endpoints of §2, the codes of §3), `veho-tenancy.md` §1, §4, §5, §6 (SEC-2 to SEC-4, SEC-12, SEC-16, SEC-18, SEC-20, SEC-21, SEC-23), FR-1 to FR-3, FR-14 to FR-16, NFR-2, NFR-4; threats T-03, T-06, T-34 (later, with the UI), T-36. It fixes what those leave open, and amends them where noted (§10). The engine's `Submit`, `Cancel`, `Retry` and `Status` (C6) and the secrets' `Store` (C3) are the handlers' back end.
 
 ## 1. Steps
 
@@ -77,6 +77,17 @@ Row-level security as for the other tenant tables; authentication reads them thr
 - **Retry** of chosen transfers (`{"transfers": [...]}`) is not built: `Retry` restarts all the failed and cancelled ones (`veho-engine.md` §4.6). **Amendment.**
 - Submission does not `Stat` the source (NFR-4: p99 < 1 s); a missing source fails the job at once in `resolve` (`veho-engine.md` §4.5), so `422` of `veho-api.md` §3 is not returned at submission. **Amendment.**
 
+### 5.1 Named policies and grants (C7c)
+
+Decided under the overnight delegation of 2026-11-22, for review.
+
+- **Policies** (`PolicyService`): `CreatePolicy(name, policy)` stores version 1, or the next version of an existing name, after validating it as a submission would (the tenant's endpoints and topology); versions are immutable. `GetPolicy(name[, version])` (default the latest), `ListPolicies` (the latest version of each), `DeletePolicy(name)`, refused (`409 in_use`) while a job that is not terminal uses one of its versions; a deleted policy's rows stay (finished jobs reference them) with `deleted_at` set, and are invisible; creating the name again continues its numbering. `ValidatePolicy(policy)` returns the first problem, or none, and stores nothing.
+- **Grants** (`GetGrants`, `SetGrants`): a grant gives a **grantee** a **permission** on a policy: `submit` (submit jobs under it), `read` (see it), `manage` (new versions, grants, delete). A grantee is one principal, named as the API shows it (`key:<name>` for an API key's principal, `oidc:<sub>`, `spiffe:<id>`), or `group:<name>` for the members of an OIDC group. `SetGrants` replaces all the grants of a policy.
+- **Who may do what.** A tenant `admin` may do everything on every policy. Others: `read` (or `submit` or `manage`, which imply it) to see a policy; `submit` to submit a job by reference; `manage` to change it. Creating a new name is for admins. A policy the caller may not see is `404`, as a missing one (SEC-21, INV-4).
+- **Inline policies.** The tenant's setting `inline_policies` (`tenants.settings`): `all` (the default: any operator, as in C7a), `granted` (only principals with the tenant-wide permission `submit_inline`, a grant without a policy), or `none`. A refused inline policy is `403 inline_policy_refused`.
+- **Jobs by reference.** `CreateJob` takes `policy_ref {name, version}` instead of `policy`; without a version, the latest at acceptance. The job stores the reference and a snapshot of the spec (`veho-distribution-policy.md`); the snapshot is validated again, since the endpoints may have changed since the version was stored.
+- **Principals carry their groups** (OIDC), for the grants.
+
 ## 6. Errors
 
 | Back end | gRPC | HTTP | `code` | retryable |
@@ -127,7 +138,11 @@ The message of a 500 is "internal error" with the request ID; the detail is logg
 | API-T11 | JWT-SVID: entitled and valid works; another audience, another trust domain, expired: `401` |
 | API-T12 | A watch whose token expires, or whose entitlement is deleted, ends `Unauthenticated` at the next re-authorisation |
 | API-T13 | `veho entitlement create` makes a working entitlement; one with both subject and group, or neither, is refused |
-| C7c, C7d | their own tests, specified in this document when each starts |
+| API-T14 | Policies: create v1 and v2 of a name, get the latest and v1, list, validate a bad one (its problem, nothing stored); an invalid policy is refused at creation; delete refused while a running job uses it, accepted after, and the name hidden |
+| API-T15 | Grants: an operator without a grant gets `404` for a policy and its submission; with `read` sees it; with `submit` submits by reference; with `manage` adds a version and sets grants; a group grant works for its OIDC members |
+| API-T16 | Inline policies: `all` lets an operator submit one; `granted` refuses it without `submit_inline` and accepts it with; `none` refuses even an admin's |
+| API-T17 | A job by reference stores the reference and the snapshot of the version it used; a later version does not change it |
+| C7d | its own tests, specified in this document when it starts |
 
 Benchmark: submission latency through the API on the lab with the `rtt40` WAN profile, against NFR-4 (p99 < 1 s). Fuzz: the REST decoding of a job request.
 

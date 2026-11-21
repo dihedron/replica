@@ -26,6 +26,14 @@ var roles = map[string]string{
 	"/veho.v1.JobService/CancelJob":     RoleOperator,
 	"/veho.v1.JobService/RetryJob":      RoleOperator,
 	"/veho.v1.JobService/WatchJob":      RoleViewer,
+	// the handlers check the grants (§5.1)
+	"/veho.v1.PolicyService/CreatePolicy":   RoleViewer,
+	"/veho.v1.PolicyService/GetPolicy":      RoleViewer,
+	"/veho.v1.PolicyService/ListPolicies":   RoleViewer,
+	"/veho.v1.PolicyService/DeletePolicy":   RoleViewer,
+	"/veho.v1.PolicyService/ValidatePolicy": RoleViewer,
+	"/veho.v1.PolicyService/GetGrants":      RoleViewer,
+	"/veho.v1.PolicyService/SetGrants":      RoleViewer,
 }
 
 // public methods need no credential.
@@ -155,7 +163,7 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	}
 	ctx = withPrincipal(ctx, p)
 	ctx = context.WithValue(ctx, checkKey{}, check)
-	ctx = audit.WithRequest(ctx, audit.Request{Principal: p.Name + "@" + tenant, RequestID: id})
+	ctx = audit.WithRequest(ctx, audit.Request{Principal: p.Name + "@" + tenant, Groups: p.Groups, RequestID: id})
 	return ctx, nil
 }
 

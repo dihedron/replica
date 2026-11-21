@@ -48,6 +48,7 @@ var backend = []struct {
 	{engine.ErrIdempotencyReuse, problem{codes.AlreadyExists, http.StatusConflict, "idempotency_key_reuse", false}},
 	{engine.ErrState, problem{codes.FailedPrecondition, http.StatusConflict, "invalid_state", false}},
 	{secrets.ErrInUse, problem{codes.FailedPrecondition, http.StatusConflict, "in_use", false}},
+	{engine.ErrInUse, problem{codes.FailedPrecondition, http.StatusConflict, "in_use", false}},
 	{engine.ErrQuota, problem{codes.ResourceExhausted, http.StatusTooManyRequests, "quota_exceeded", true}},
 	{engine.ErrSuspended, problem{codes.PermissionDenied, http.StatusForbidden, "tenant_suspended", false}},
 	{engine.ErrFenced, pUnavailable},
@@ -60,7 +61,7 @@ var httpByReason = func() map[string]int {
 	for _, c := range backend {
 		m[c.p.reason] = c.p.http
 	}
-	for _, p := range []problem{pUnauthenticated, pPermission, pInvalid, pWatches, pNotModified, pUnavailable, pInternal} {
+	for _, p := range []problem{pUnauthenticated, pPermission, pInvalid, pWatches, pNotModified, pUnavailable, pInternal, pInlineRefused} {
 		m[p.reason] = p.http
 	}
 	return m
@@ -88,6 +89,7 @@ var (
 	pNotModified     = problem{codes.Aborted, http.StatusNotModified, "not_modified", false}
 	pUnavailable     = problem{codes.Unavailable, http.StatusServiceUnavailable, "unavailable", true}
 	pInternal        = problem{codes.Internal, http.StatusInternalServerError, "internal", true}
+	pInlineRefused   = problem{codes.PermissionDenied, http.StatusForbidden, "inline_policy_refused", false}
 )
 
 // toStatus is the status of a handler's error: already a status, it stays;

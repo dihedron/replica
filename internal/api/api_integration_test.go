@@ -158,7 +158,8 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 	for name, p := range map[string]struct {
 		tenant *uuid.UUID
 		role   string
-	}{"a-viewer": {&f.a, RoleViewer}, "a-operator": {&f.a, RoleOperator}, "b-operator": {&f.b, RoleOperator}, "platform": {nil, RolePlatformAdmin}} {
+	}{"a-viewer": {&f.a, RoleViewer}, "a-operator": {&f.a, RoleOperator}, "a-admin": {&f.a, RoleAdmin}, "b-operator": {&f.b, RoleOperator},
+		"platform": {nil, RolePlatformAdmin}} {
 		f.keys[name] = f.key(t, p.tenant, p.role, name)
 	}
 	if err := os.WriteFile(filepath.Join(f.srcDir, "obj"), bytes.Repeat([]byte("x"), 1<<20), 0o600); err != nil {
@@ -208,16 +209,24 @@ func (f *fixture) running(t *testing.T, tenant uuid.UUID) string {
 // key inserts a principal and its key, as veho apikey create does.
 func (f *fixture) key(t *testing.T, tenant *uuid.UUID, role, name string) string {
 	t.Helper()
+	token, _ := f.keyAs(t, tenant, role, name+"-"+uuid.New().String()[:8])
+	return token
+}
+
+// keyAs is key with the principal's exact name; it returns the key and
+// the principal's grantee name.
+func (f *fixture) keyAs(t *testing.T, tenant *uuid.UUID, role, name string) (string, string) {
+	t.Helper()
 	token, id, sum := NewKey()
 	ctx := context.Background()
 	var p uuid.UUID
-	if err := f.migrator.QueryRow(ctx, "insert into veho.principals (tenant_id, name, role) values ($1, $2, $3) returning id", tenant, name+"-"+id, role).Scan(&p); err != nil {
+	if err := f.migrator.QueryRow(ctx, "insert into veho.principals (tenant_id, name, role) values ($1, $2, $3) returning id", tenant, name, role).Scan(&p); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.migrator.Exec(ctx, "insert into veho.api_keys (id, principal_id, tenant_id, sha256) values ($1, $2, $3, $4)", id, p, tenant, sum); err != nil {
 		t.Fatal(err)
 	}
-	return token
+	return token, "key:" + name
 }
 
 func (f *fixture) grpc(t *testing.T) vehov1.JobServiceClient {
@@ -350,9 +359,16 @@ func TestJobs(t *testing.T) {
 // every method of the service has a role (T-36).
 func TestAuthentication(t *testing.T) {
 	f := setup(t, Options{})
-	for _, m := range vehov1.JobService_ServiceDesc.Methods {
-		if _, ok := roles["/veho.v1.JobService/"+m.MethodName]; !ok {
-			t.Errorf("%s has no role", m.MethodName)
+	for _, sd := range []grpc.ServiceDesc{vehov1.JobService_ServiceDesc, vehov1.PolicyService_ServiceDesc} {
+		for _, m := range sd.Methods {
+			if _, ok := roles["/"+sd.ServiceName+"/"+m.MethodName]; !ok {
+				t.Errorf("%s/%s has no role", sd.ServiceName, m.MethodName)
+			}
+		}
+		for _, m := range sd.Streams {
+			if _, ok := roles["/"+sd.ServiceName+"/"+m.StreamName]; !ok {
+				t.Errorf("%s/%s has no role", sd.ServiceName, m.StreamName)
+			}
 		}
 	}
 	conn, err := grpc.NewClient(f.addr, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: f.roots, ServerName: "localhost"})))

@@ -58,6 +58,7 @@ type Options struct {
 // Server is the API of a node.
 type Server struct {
 	vehov1.UnimplementedJobServiceServer
+	pol     policies
 	engine  *engine.Engine
 	api     *pgxpool.Pool
 	grpc    *grpc.Server
@@ -87,7 +88,9 @@ func New(o Options) (*Server, error) {
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 30 * time.Second, PermitWithoutStream: false}),
 		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 15 * time.Minute, Time: 2 * time.Minute, Timeout: 20 * time.Second}),
 	)
+	s.pol = policies{s: s}
 	vehov1.RegisterJobServiceServer(s.grpc, s)
+	vehov1.RegisterPolicyServiceServer(s.grpc, s.pol)
 	healthpb.RegisterHealthServer(s.grpc, s.health)
 
 	s.pipe = bufconn.Listen(1 << 20)
@@ -133,6 +136,9 @@ func New(o Options) (*Server, error) {
 		}),
 	)
 	if err := vehov1.RegisterJobServiceHandlerClient(context.Background(), mux, vehov1.NewJobServiceClient(conn)); err != nil {
+		return nil, fmt.Errorf("api: gateway: %w", err)
+	}
+	if err := vehov1.RegisterPolicyServiceHandlerClient(context.Background(), mux, vehov1.NewPolicyServiceClient(conn)); err != nil {
 		return nil, fmt.Errorf("api: gateway: %w", err)
 	}
 	s.gateway = mux

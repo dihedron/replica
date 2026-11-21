@@ -31,6 +31,14 @@ type Request struct {
 	Policy []byte
 	// Labels are the client's own (veho-api-server.md §5).
 	Labels map[string]string
+	// PolicyRef names a stored policy instead of Policy (§5.1).
+	PolicyRef *PolicyRef
+}
+
+// PolicyRef names a version of a named policy; Version 0 is the latest.
+type PolicyRef struct {
+	Name    string `json:"name"`
+	Version int    `json:"version,omitempty"`
 }
 
 // JobInput is the input of ReplicateJob: IDs only (SEC-7, INV-5).
@@ -82,9 +90,15 @@ func JobWorkflowID(job uuid.UUID) string { return "job/" + job.String() }
 // together or not at all (INV-1). It returns the job and whether it is new.
 // A policy the tenant may not submit fails with a *policy.Error.
 func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.UUID, bool, error) {
-	p, err := policy.Parse(r.Policy)
-	if err != nil {
-		return uuid.UUID{}, false, &policy.Error{Code: policy.CodeInvalidPolicy, Message: err.Error()}
+	var p policy.Policy
+	if (r.PolicyRef == nil) == (len(r.Policy) == 0) {
+		return uuid.UUID{}, false, fmt.Errorf("%w: give a policy or a policy reference", ErrInvalid)
+	}
+	if r.PolicyRef == nil {
+		var err error
+		if p, err = policy.Parse(r.Policy); err != nil {
+			return uuid.UUID{}, false, &policy.Error{Code: policy.CodeInvalidPolicy, Message: err.Error()}
+		}
 	}
 	if err := checkLabels(r.Labels); err != nil {
 		return uuid.UUID{}, false, err
@@ -112,6 +126,17 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 			if found, err := sameRequest(ctx, tx, r.IdempotencyKey, sum, &job); found || err != nil {
 				return err
 			}
+		}
+		var ref *uuid.UUID
+		if r.PolicyRef != nil {
+			pv, err := loadPolicy(ctx, tx, r.PolicyRef.Name, r.PolicyRef.Version)
+			if err != nil {
+				return err
+			}
+			if p, err = policy.Parse(pv.Spec); err != nil {
+				return &policy.Error{Code: policy.CodeInvalidPolicy, Message: err.Error()}
+			}
+			ref = &pv.ID
 		}
 		topo, err := LoadTopology(ctx, tx)
 		if err != nil {
@@ -163,10 +188,10 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 		if err != nil {
 			return err
 		}
-		tag, err := tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, idempotency_key, source_endpoint_id, source_path, policy, deadline_at, labels, request_sha256)
-			values ($1, veho.current_tenant(), $2, $3, $4, $5, now() + $6 * interval '1 second', $7, $8)
+		tag, err := tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, idempotency_key, source_endpoint_id, source_path, policy, deadline_at, labels, request_sha256, policy_ref)
+			values ($1, veho.current_tenant(), $2, $3, $4, $5, now() + $6 * interval '1 second', $7, $8, $9)
 			on conflict (tenant_id, idempotency_key) do nothing`,
-			job, key, src.id, r.SourcePath, spec, time.Duration(p.Deadline).Seconds(), labels, sum)
+			job, key, src.id, r.SourcePath, spec, time.Duration(p.Deadline).Seconds(), labels, sum, ref)
 		if err != nil {
 			return err
 		}
@@ -294,14 +319,15 @@ func sameRequest(ctx context.Context, tx pgx.Tx, key string, sum []byte, job *uu
 }
 
 // requestHash is the SHA-256 of the request's canonical form: the source,
-// the normalised policy and the labels, encoded by encoding/json, which
+// the normalised inline policy or the policy reference, and the labels, encoded by encoding/json, which
 // sorts map keys.
 func requestHash(r Request, p policy.Policy) ([]byte, error) {
 	b, err := json.Marshal(struct {
 		Endpoint, Path string
 		Policy         policy.Policy
+		Ref            *PolicyRef
 		Labels         map[string]string
-	}{r.SourceEndpoint, r.SourcePath, p, cmpLabels(r.Labels)})
+	}{r.SourceEndpoint, r.SourcePath, p, r.PolicyRef, cmpLabels(r.Labels)})
 	if err != nil {
 		return nil, err
 	}

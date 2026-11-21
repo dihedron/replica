@@ -52,9 +52,17 @@ message ObjectRef {
 message CreateJobRequest {
   string idempotency_key = 1;
   ObjectRef source = 2;
-  // The policy document of .specs/veho-distribution-policy.md.
+  // An inline policy document (.specs/veho-distribution-policy.md), or
+  // policy_ref: exactly one of them.
   google.protobuf.Struct policy = 3;
   map<string, string> labels = 4;
+  PolicyRef policy_ref = 5;
+}
+
+// PolicyRef names a version of a named policy; version 0 is the latest.
+message PolicyRef {
+  string name = 1;
+  int32 version = 2;
 }
 
 message JobRef {
@@ -102,6 +110,8 @@ message Job {
   string id = 1;
   string state = 2;
   Source source = 3;
+  // The named policy the job was submitted under, if any.
+  PolicyRef policy_ref = 15;
   map<string, string> labels = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;

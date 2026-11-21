@@ -48,19 +48,34 @@ func (s *Server) CreateJob(ctx context.Context, r *vehov1.CreateJobRequest) (*ve
 	if err != nil {
 		return nil, err
 	}
-	if r.GetSource().GetEndpoint() == "" || r.GetSource().GetPath() == "" || r.GetPolicy() == nil {
-		return nil, fail(pInvalid, "source.endpoint, source.path and policy are required")
+	if r.GetSource().GetEndpoint() == "" || r.GetSource().GetPath() == "" || (r.GetPolicy() == nil) == (r.GetPolicyRef() == nil) {
+		return nil, fail(pInvalid, "source.endpoint, source.path and one of policy and policy_ref are required")
 	}
-	pol, err := protojson.Marshal(r.GetPolicy())
-	if err != nil {
-		return nil, fail(pInvalid, "policy: "+err.Error())
+	var (
+		pol []byte
+		ref *engine.PolicyRef
+	)
+	if pr := r.GetPolicyRef(); pr != nil {
+		// submitting under a policy needs submit on it (SEC-21)
+		if err := s.pol.need(ctx, pr.GetName(), engine.PermSubmit); err != nil {
+			return nil, err
+		}
+		ref = &engine.PolicyRef{Name: pr.GetName(), Version: int(pr.GetVersion())}
+	} else {
+		if err := s.pol.mayInline(ctx); err != nil {
+			return nil, err
+		}
+		var err error
+		if pol, err = protojson.Marshal(r.GetPolicy()); err != nil {
+			return nil, fail(pInvalid, "policy: "+err.Error())
+		}
 	}
 	key := r.GetIdempotencyKey()
 	if key == "" {
 		key = first(ctx, "idempotency-key")
 	}
 	id, _, err := s.engine.Submit(ctx, t, engine.Request{IdempotencyKey: key, SourceEndpoint: r.GetSource().GetEndpoint(),
-		SourcePath: r.GetSource().GetPath(), Policy: pol, Labels: r.GetLabels()})
+		SourcePath: r.GetSource().GetPath(), Policy: pol, PolicyRef: ref, Labels: r.GetLabels()})
 	if err != nil {
 		return nil, err
 	}
@@ -247,6 +262,9 @@ func toJob(s engine.JobStatus) *vehov1.Job {
 	}
 	if s.SourceSize != nil {
 		j.Source.Size = *s.SourceSize
+	}
+	if s.PolicyName != nil && s.PolicyVersion != nil {
+		j.PolicyRef = &vehov1.PolicyRef{Name: *s.PolicyName, Version: int32(*s.PolicyVersion)} //nolint:gosec // small
 	}
 	var done, total int64
 	for _, t := range s.Transfers {

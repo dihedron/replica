@@ -117,7 +117,10 @@ type JobStatus struct {
 	CompletedAt    *time.Time
 	SettledAt      *time.Time
 	LastError      json.RawMessage
-	Transfers      []TransferStatus
+	// PolicyName and PolicyVersion name the stored policy, if any.
+	PolicyName    *string
+	PolicyVersion *int
+	Transfers     []TransferStatus
 }
 
 // TransferStatus is one destination's progress.
@@ -135,11 +138,12 @@ type TransferStatus struct {
 }
 
 const jobColumns = `j.id, j.state, e.name, j.source_path, (j.source_info->>'size')::bigint, coalesce(j.source_info->>'version', ''),
-	j.labels, j.copies_done, (select count(*)::int from veho.transfers t where t.job_id = j.id), j.created_at, j.updated_at, j.deadline_at, j.satisfied_at, j.completed_at, j.settled_at, j.last_error`
+	j.labels, j.copies_done, (select count(*)::int from veho.transfers t where t.job_id = j.id), j.created_at, j.updated_at, j.deadline_at, j.satisfied_at, j.completed_at, j.settled_at, j.last_error,
+	(select p.name from veho.policies p where p.id = j.policy_ref), (select p.version from veho.policies p where p.id = j.policy_ref)`
 
 func scanJob(row pgx.Row, s *JobStatus) error {
 	return row.Scan(&s.ID, &s.State, &s.SourceEndpoint, &s.SourcePath, &s.SourceSize, &s.SourceVersion, &s.Labels, &s.Copies, &s.Destinations,
-		&s.CreatedAt, &s.UpdatedAt, &s.DeadlineAt, &s.SatisfiedAt, &s.CompletedAt, &s.SettledAt, &s.LastError)
+		&s.CreatedAt, &s.UpdatedAt, &s.DeadlineAt, &s.SatisfiedAt, &s.CompletedAt, &s.SettledAt, &s.LastError, &s.PolicyName, &s.PolicyVersion)
 }
 
 // Status returns a job and its transfers.
