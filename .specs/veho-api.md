@@ -156,6 +156,7 @@ displays an object is `show`, and the process commands are `serve`, `migrate`,
 | :--- | :--- |
 | `veho serve` | run a node: the API and the workflow executor (one process, any region) |
 | `veho migrate` | apply the schema migrations to the state store |
+| `veho kek show \| init \| rotate \| rewrap \| rekey` | the key-encryption keys of the secrets, as `veho_migrator` with the unwrap key (`veho-secrets.md` §4) |
 | `veho job submit \| show \| list \| wait \| cancel \| retry` | client of the API; `wait` polls until the job is terminal and exits non-zero on `FAILED` |
 | `veho endpoint create \| show \| list \| update \| delete \| test` | tenant endpoints |
 | `veho secret set \| show \| list \| delete` | tenant secrets (the value is read from a file or standard input, never from an argument) |

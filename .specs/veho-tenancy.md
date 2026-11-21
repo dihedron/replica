@@ -53,9 +53,11 @@ Status: draft, 2026-11-21, for review.
   tenant) over static keys, so that fewer static secrets exist at all.
 - **SEC-24** Key hierarchy. Each secret is encrypted with AES-256-GCM under its
   own random **data key** (DEK); the DEK is wrapped by a **key-encryption key**
-  (KEK). The associated data binds the ciphertext to its tenant, secret name,
-  version and KEK version, so a blob moved to another tenant or name does not
-  decrypt. KEKs are versioned.
+  (KEK). The associated data binds the ciphertext to its tenant, secret name and
+  version, and the wrapped DEK to the same and to the KEK version, so a blob
+  moved to another tenant or name does not decrypt, and a KEK rotation
+  re-wraps the DEKs without re-encrypting the values (`veho-secrets.md` §1).
+  KEKs are versioned.
 - **SEC-25** The KEK is stored in the database **only wrapped** by an
   *unwrap key* that is **never in the database** (a database dump or a backup
   must give an attacker nothing: T-28). The wrapped KEKs are in a `kek` table

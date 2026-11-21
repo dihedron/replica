@@ -6,6 +6,7 @@ import "errors"
 // chunks that implement them (.specs/veho-implementation-plan.md).
 type Command struct {
 	Migrate MigrateCommand `command:"migrate" description:"Apply the database migrations embedded in this binary, as veho_migrator"`
+	KEK     KEKCommand     `command:"kek" description:"Manage the key-encryption keys of the secrets, as veho_migrator"`
 }
 
 // Execute runs when no subcommand is given.

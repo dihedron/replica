@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
-	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/internal/store/migrate"
 	"github.com/dihedron/veho/migrations"
 )
@@ -15,23 +13,14 @@ import (
 // migrations that are not yet applied, as veho_migrator. The DSN comes from
 // the environment, never from the command line, where it would show in the
 // process list.
-type MigrateCommand struct {
-	DSNEnv string `long:"dsn-env" default:"VEHO_MIGRATOR_DATABASE_URL" description:"Environment variable holding veho_migrator's DSN (sslmode=verify-full)"`
-
-	insecureDB bool // tests only; never set by a flag
-}
+type MigrateCommand struct{ dbOptions }
 
 // Execute applies what is missing and prints each migration it applied.
 func (cmd *MigrateCommand) Execute([]string) error {
-	dsn := os.Getenv(cmd.DSNEnv)
-	if dsn == "" {
-		return fmt.Errorf("migrate: environment variable %q is not set", cmd.DSNEnv)
-	}
 	ctx := context.Background()
-	conn, err := store.Connect(ctx, dsn, cmd.insecureDB)
+	conn, err := cmd.connect(ctx, "migrate")
 	if err != nil {
-		slog.Error("cannot connect to the database", "error", err)
-		return fmt.Errorf("migrate: %w", err)
+		return err
 	}
 	defer func() { _ = conn.Close(ctx) }()
 	done, err := migrate.Apply(ctx, conn, migrations.FS)

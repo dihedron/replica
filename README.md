@@ -8,7 +8,7 @@ A client submits the URL of an object that is already available to the service (
 
 ## Status
 
-**Early implementation.** Done: the distribution policy engine (`internal/policy`, `internal/topology`), the state store (`internal/store`: roles, schema, row-level security, `veho migrate`, start-up checks), the storage plugins (`pkg/plugin`: the contract, the `file` and S3 drivers, the conformance suite, and the go-plugin process loader with `cmd/veho-plugin-file` and `cmd/veho-plugin-s3`), and the lab (`test/lab`). Next: secrets (C3) and audit (C4), then the engine (C6), per `.specs/veho-implementation-plan.md`; the work agreed for later is in `.specs/veho-backlog.md`. Nothing is usable end to end yet.
+**Early implementation.** Done: the distribution policy engine (`internal/policy`, `internal/topology`), the state store (`internal/store`: roles, schema, row-level security, `veho migrate`, start-up checks), the storage plugins (`pkg/plugin`: the contract, the `file` and S3 drivers, the conformance suite, and the go-plugin process loader with `cmd/veho-plugin-file` and `cmd/veho-plugin-s3`), the secrets (`internal/secrets`: envelope encryption under a versioned KEK, `veho kek`), and the lab (`test/lab`). Next: audit (C4), then the engine (C6), per `.specs/veho-implementation-plan.md`; the work agreed for later is in `.specs/veho-backlog.md`. Nothing is usable end to end yet.
 
 The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three control-plane regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`, with the harness in `test/spikes/dbos`.
 
@@ -31,6 +31,7 @@ The project follows Spec-Driven Development (`AGENTS.md`): code starts from an a
 | `veho-latency-envelope.md` | Supported latency and jitter, degradation, tuning |
 | `veho-audit-housekeeping.md` | Audit log and housekeeping (zombies, retention, pruning) |
 | `veho-store.md` | State store: database roles, schema, row-level security, migrations |
+| `veho-secrets.md` | Secrets: key hierarchy, envelope encryption, KEK rotation, `veho kek` |
 | `veho-lab.md` | The lab: three regions in one LXD VM, emulated WAN, Patroni and etcd, Garage |
 | `veho-implementation-plan.md` | The implementation chunks |
 | `veho-backlog.md` | Work agreed for later |
