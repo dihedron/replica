@@ -1,0 +1,137 @@
+package policy
+
+import (
+	"fmt"
+
+	"github.com/dihedron/veho/internal/topology"
+)
+
+// Codes of the errors Validate returns; they are the stable codes of the API
+// (.specs/veho-distribution-policy.md §4).
+const (
+	CodeInvalidPolicy        = "invalid_policy"
+	CodeTooManyDestinations  = "too_many_destinations"
+	CodeUnknownEndpoint      = "unknown_endpoint"
+	CodeDuplicateDestination = "duplicate_destination"
+	CodeDestinationIsSource  = "destination_is_source"
+	CodeUnsatisfiable        = "unsatisfiable_policy"
+)
+
+// Error is a policy the API refuses (HTTP 422).
+type Error struct {
+	Code    string
+	Message string
+}
+
+func (e *Error) Error() string { return e.Code + ": " + e.Message }
+
+func refuse(code, format string, args ...any) error {
+	return &Error{Code: code, Message: fmt.Sprintf(format, args...)}
+}
+
+// Ref is an object on an endpoint.
+type Ref struct {
+	Endpoint string
+	Path     string
+}
+
+// Env is what a policy is validated against.
+type Env struct {
+	Topology *topology.Topology
+	// Resolve returns the position of a destination endpoint of the submitting
+	// tenant; an endpoint that does not exist and one that belongs to another
+	// tenant are both reported as not found (INV-4).
+	Resolve func(endpoint string) (topology.Position, bool)
+	// Source is the source of the job; no destination may be the same object.
+	Source Ref
+	// MaxDestinations is the tenant's limit on N.
+	MaxDestinations int
+}
+
+// Validate checks the policy, normalized by Parse or Normalize, and returns
+// the first problem as an *Error.
+func (p Policy) Validate(env Env) error {
+	n := len(p.Destinations)
+	switch {
+	case n < 2:
+		return refuse(CodeInvalidPolicy, "at least 2 destinations are required, got %d", n)
+	case env.MaxDestinations > 0 && n > env.MaxDestinations:
+		return refuse(CodeTooManyDestinations, "%d destinations, the limit is %d", n, env.MaxDestinations)
+	}
+	seen := map[Destination]bool{}
+	positions := make([]topology.Position, 0, n)
+	for i, d := range p.Destinations {
+		if d.Endpoint == "" || d.Path == "" {
+			return refuse(CodeInvalidPolicy, "destination %d needs an endpoint and a path", i)
+		}
+		pos, ok := env.Resolve(d.Endpoint)
+		if !ok {
+			return refuse(CodeUnknownEndpoint, "destination %d: unknown endpoint %q", i, d.Endpoint)
+		}
+		if seen[d] {
+			return refuse(CodeDuplicateDestination, "destination %d repeats %q on %q", i, d.Path, d.Endpoint)
+		}
+		seen[d] = true
+		if d.Endpoint == env.Source.Endpoint && d.Path == env.Source.Path {
+			return refuse(CodeDestinationIsSource, "destination %d is the source", i)
+		}
+		positions = append(positions, pos)
+	}
+	if err := p.validateCompletion(env, positions); err != nil {
+		return err
+	}
+	return p.validateOptions()
+}
+
+func (p Policy) validateCompletion(env Env, positions []topology.Position) error {
+	n, min := len(p.Destinations), p.Completion.MinCopies
+	if min < 1 || min > n {
+		return refuse(CodeInvalidPolicy, "min_copies must be between 1 and %d, got %d", n, min)
+	}
+	levels := map[string]bool{}
+	for _, s := range p.Completion.Spread {
+		if !env.Topology.HasLevel(s.Level) {
+			return refuse(CodeInvalidPolicy, "spread names an unknown level %q", s.Level)
+		}
+		if levels[s.Level] {
+			return refuse(CodeInvalidPolicy, "spread names level %q twice", s.Level)
+		}
+		levels[s.Level] = true
+		if s.MinDistinct < 1 {
+			return refuse(CodeInvalidPolicy, "spread on %q: min_distinct must be at least 1", s.Level)
+		}
+		if s.MinDistinct > min {
+			return refuse(CodeUnsatisfiable, "spread on %q asks for %d distinct locations with only %d copies", s.Level, s.MinDistinct, min)
+		}
+		distinct := map[string]struct{}{}
+		for _, pos := range positions {
+			if id, ok := pos[s.Level]; ok {
+				distinct[id] = struct{}{}
+			}
+		}
+		if s.MinDistinct > len(distinct) {
+			return refuse(CodeUnsatisfiable, "spread on %q asks for %d distinct locations, the destinations span %d", s.Level, s.MinDistinct, len(distinct))
+		}
+	}
+	return nil
+}
+
+func (p Policy) validateOptions() error {
+	switch p.OnSatisfied {
+	case OnSatisfiedComplete, OnSatisfiedStop:
+	default:
+		return refuse(CodeInvalidPolicy, "on_satisfied must be %q or %q", OnSatisfiedComplete, OnSatisfiedStop)
+	}
+	switch p.Overwrite {
+	case "fail", "replace", "skip":
+	default:
+		return refuse(CodeInvalidPolicy, "overwrite must be fail, replace or skip")
+	}
+	if p.Verify != "sha256" {
+		return refuse(CodeInvalidPolicy, "verify must be sha256")
+	}
+	if p.Deadline <= 0 || p.Retry.Initial <= 0 || p.Retry.MaxInterval <= 0 || p.Retry.Initial > p.Retry.MaxInterval {
+		return refuse(CodeInvalidPolicy, "deadline and retry durations must be positive, and retry.initial no larger than retry.max_interval")
+	}
+	return nil
+}
