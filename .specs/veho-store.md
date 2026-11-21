@@ -8,7 +8,7 @@ Status: approved 2026-11-21 (roles of §2 and the split of §1); implemented in 
 
 In C2: roles, the schema `veho` with `tenants`, `locations`, `endpoints`, `policies`, `jobs`, `transfers`, `parts` and `executors`, row-level security on the tenant tables, `veho migrate`, the pools, the tenant-scoped transaction, the advisory-lock helper, the start-up checks that concern PostgreSQL (§7).
 
-Not in C2, each in the chunk that uses it, with its own migration: `secrets` and `kek` (C3), the audit tables and functions (C4), `internal/jcs` (C4, the first user of canonical JSON). This differs from the implementation plan, which put all tables in C2: a table without the code that reads it cannot be tested against its spec.
+Not in C2, each in the chunk that uses it (added to `001_core.sql`, §5): `secrets` and `kek` (C3), the audit tables and functions (C4), `internal/jcs` (C4, the first user of canonical JSON). This differs from the implementation plan, which put all tables in C2: a table without the code that reads it cannot be tested against its spec.
 
 ## 2. Roles
 
@@ -81,7 +81,7 @@ Two things must see every tenant: the reconciler (expired leases, `veho-job-life
 
 ## 5. Migrations
 
-- SQL files embedded in the binary (`migrations/NNN_description.sql`), applied in order by `veho migrate` as `veho_migrator` (DSN from the variable `VEHO_MIGRATOR_DATABASE_URL`, or the one named by `--dsn-env`; never on the command line), each in its own transaction, recorded in `veho.schema_migrations (version, name, sha256, applied_at)`, under an advisory lock so that two nodes cannot migrate at once. An applied file whose checksum changed stops the migration: a change is a new file. (Copied from ligo's `internal/store/migrate`.)
+- SQL files embedded in the binary (`migrations/NNN_description.sql`), applied in order by `veho migrate` as `veho_migrator` (DSN from the variable `VEHO_MIGRATOR_DATABASE_URL`, or the one named by `--dsn-env`; never on the command line), each in its own transaction, recorded in `veho.schema_migrations (version, name, sha256, applied_at)`, under an advisory lock so that two nodes cannot migrate at once. An applied file whose checksum changed stops the migration: a change is a new file. (Copied from ligo's `internal/store/migrate`.) **Until a first deployment exists, there is one migration, `001_core.sql`, edited in place** (decision of 2026-11-21): a database created before an edit is recreated (`drop schema veho cascade`, then `veho migrate`); new migration files start with the first release that is deployed.
 - Migrations are expand-only within a release series (`veho-acceptance-matrix.md` §3); `veho serve` refuses to start when the database is ahead of or behind the migrations it carries (`schema_migrations` against its embedded list), naming the difference.
 
 ## 6. Connections

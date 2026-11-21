@@ -1,6 +1,10 @@
--- 001_core: the core tables of .specs/veho-store.md §3, their row-level
--- security (§4) and the privileges of veho_api and veho_worker (§2). Runs as
--- veho_migrator, which owns the schema veho (packaging/postgres/roles.sql).
+-- 001_core: the whole schema until a first deployment exists; until then it
+-- is edited in place, never extended by new migrations. The core tables of
+-- .specs/veho-store.md §3, their row-level security (§4) and the privileges
+-- of veho_api and veho_worker (§2); then the secrets (veho-secrets.md §2),
+-- the engine's lease renewal and the housekeeping's cross-tenant functions
+-- (veho-engine.md §7). Runs as veho_migrator, which owns the schema veho
+-- (packaging/postgres/roles.sql).
 
 GRANT USAGE ON SCHEMA veho TO veho_api, veho_worker;
 -- the start-up check of the schema version (STO-C4)
@@ -223,3 +227,128 @@ GRANT SELECT, INSERT, UPDATE ON veho.jobs, veho.transfers, veho.parts TO veho_ap
 GRANT SELECT ON veho.executors TO veho_api;
 GRANT SELECT ON veho.endpoints, veho.policies TO veho_worker;
 GRANT SELECT, INSERT, UPDATE, DELETE ON veho.jobs, veho.transfers, veho.parts, veho.executors TO veho_worker;
+
+-- ---------------------------------------------------------------------------
+-- the tables of .specs/veho-secrets.md §2. The KEKs are stored
+-- wrapped by an unwrap key that is never in the database (SEC-25); a secret
+-- is a value encrypted under its own data key, wrapped by a KEK (SEC-24).
+
+CREATE TABLE veho.kek (
+	version       int PRIMARY KEY CHECK (version > 0),
+	wrapped       bytea NOT NULL,
+	unwrap_key_id text NOT NULL CHECK (unwrap_key_id <> ''),
+	state         text NOT NULL CHECK (state IN ('active', 'retiring', 'retired')),
+	created_at    timestamptz NOT NULL DEFAULT now(),
+	retired_at    timestamptz
+);
+-- at most one active version
+CREATE UNIQUE INDEX kek_one_active ON veho.kek ((true)) WHERE state = 'active';
+
+CREATE TABLE veho.secrets (
+	tenant_id   uuid NOT NULL REFERENCES veho.tenants (id),
+	name        text NOT NULL CHECK (name ~ '^[a-z0-9][a-z0-9._-]{0,62}$'),
+	version     int NOT NULL CHECK (version > 0),
+	kek_version int NOT NULL REFERENCES veho.kek (version),
+	wrapped_dek bytea NOT NULL,
+	ciphertext  bytea NOT NULL,
+	created_at  timestamptz NOT NULL DEFAULT now(),
+	updated_at  timestamptz NOT NULL DEFAULT now(),
+	PRIMARY KEY (tenant_id, name)
+);
+CREATE INDEX secrets_kek_version ON veho.secrets (kek_version);
+
+ALTER TABLE veho.secrets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.secrets
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+
+-- A secret an endpoint references cannot be deleted (§2). credential_ref is
+-- text, so this trigger stands in for a foreign key; it runs as the caller,
+-- whose row-level security shows the endpoints of the secret's own tenant.
+CREATE FUNCTION veho.secrets_in_use() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	IF EXISTS (SELECT 1 FROM veho.endpoints
+	           WHERE tenant_id = OLD.tenant_id AND credential_ref = 'db://' || OLD.name) THEN
+		RAISE EXCEPTION 'secret % is used by an endpoint', OLD.name USING ERRCODE = '23503';
+	END IF;
+	RETURN OLD;
+END $$;
+CREATE TRIGGER secrets_in_use BEFORE DELETE ON veho.secrets
+	FOR EACH ROW EXECUTE FUNCTION veho.secrets_in_use();
+
+GRANT SELECT ON veho.kek TO veho_api, veho_worker;
+GRANT SELECT, INSERT, UPDATE, DELETE ON veho.secrets TO veho_api;
+GRANT SELECT ON veho.secrets TO veho_worker;
+
+-- ---------------------------------------------------------------------------
+-- what the engine needs across tenants (.specs/veho-engine.md
+-- §7). The heartbeat renews the leases of its executor's transfers, of every
+-- tenant, which row-level security would hide from veho_worker.
+
+CREATE FUNCTION veho.renew_leases(p_executor text, p_ttl interval) RETURNS int
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	WITH renewed AS (
+		UPDATE veho.transfers SET lease_expires_at = now() + p_ttl
+		 WHERE lease_owner = p_executor AND state IN ('COPYING', 'VERIFYING')
+		RETURNING 1
+	)
+	SELECT count(*)::int FROM renewed
+$$;
+REVOKE ALL ON FUNCTION veho.renew_leases(text, interval) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.renew_leases(text, interval) TO veho_worker;
+
+-- ---------------------------------------------------------------------------
+-- the cross-tenant reads and repairs of the housekeeping
+-- loop (.specs/veho-engine.md §7, veho-audit-housekeeping.md §3), as
+-- SECURITY DEFINER functions for veho_worker; each returns the tenant of
+-- what it found, so that the loop acts in that tenant's transaction.
+
+-- Jobs not terminal, quiet for p_stale: their workflow is checked.
+CREATE FUNCTION veho.quiet_jobs(p_stale interval, p_limit int) RETURNS TABLE (tenant_id uuid, job_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT j.tenant_id, j.id FROM veho.jobs j
+	WHERE j.state IN ('ACCEPTED', 'RUNNING') AND j.updated_at < now() - p_stale
+	ORDER BY j.updated_at
+	LIMIT p_limit
+$$;
+
+-- Jobs not terminal past their deadline.
+CREATE FUNCTION veho.expired_jobs(p_limit int) RETURNS TABLE (tenant_id uuid, job_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT j.tenant_id, j.id FROM veho.jobs j
+	WHERE j.state IN ('ACCEPTED', 'RUNNING') AND j.deadline_at < now()
+	ORDER BY j.deadline_at
+	LIMIT p_limit
+$$;
+
+-- Counts an adoption of a transfer (the reconciler's own counter, since
+-- ResumeWorkflows resets DBOS's: EXT-2d) and returns it with the tenant.
+CREATE FUNCTION veho.adopted(p_transfer uuid) RETURNS TABLE (tenant_id uuid, adoptions int)
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	UPDATE veho.transfers SET adoptions = adoptions + 1 WHERE id = p_transfer
+	RETURNING tenant_id, adoptions
+$$;
+
+-- The tenant of a job, for a workflow found by ID.
+CREATE FUNCTION veho.job_tenant(p_job uuid) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$ SELECT tenant_id FROM veho.jobs WHERE id = p_job $$;
+
+-- Jobs and transfers by state, for the metrics; no tenant (T-19).
+CREATE FUNCTION veho.state_counts() RETURNS TABLE (kind text, state text, n bigint)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT 'job', state, count(*) FROM veho.jobs GROUP BY state
+	UNION ALL
+	SELECT 'transfer', state, count(*) FROM veho.transfers GROUP BY state
+$$;
+
+REVOKE ALL ON FUNCTION veho.quiet_jobs(interval, int), veho.expired_jobs(int), veho.adopted(uuid),
+	veho.job_tenant(uuid), veho.state_counts() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.quiet_jobs(interval, int), veho.expired_jobs(int), veho.adopted(uuid),
+	veho.job_tenant(uuid), veho.state_counts() TO veho_worker;

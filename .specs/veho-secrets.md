@@ -1,6 +1,6 @@
 # veho: secrets (chunk C3)
 
-**Status:** approved and implemented 2026-11-21 (`internal/secrets`, `migrations/002_secrets.sql`, `veho kek`). Requirements: `veho-tenancy.md` §3 (SEC-9, SEC-10, SEC-24 to SEC-27, SEC-29); providers: `veho-architecture.md` §7.2 and §7.2.1; threats: `veho-threat-model.md` T-06, T-28, T-30, T-37, R-12. The audit signer (SEC-28) comes with the audit chunk (C4), remote providers (`vault-transit`, `hsm`) and the other loaded ones (`barbican`, `vault-kv`, `shamir`) later (backlog 24, 25).
+**Status:** approved and implemented 2026-11-21 (`internal/secrets`, `migrations/001_core.sql`, `veho kek`). Requirements: `veho-tenancy.md` §3 (SEC-9, SEC-10, SEC-24 to SEC-27, SEC-29); providers: `veho-architecture.md` §7.2 and §7.2.1; threats: `veho-threat-model.md` T-06, T-28, T-30, T-37, R-12. The audit signer (SEC-28) comes with the audit chunk (C4), remote providers (`vault-transit`, `hsm`) and the other loaded ones (`barbican`, `vault-kv`, `shamir`) later (backlog 24, 25).
 
 Copied from ligo's `internal/sealing` (`sealing.go`, `localkek.go`, ligo commit 9f11da9) and adapted: ligo seals one envelope under one KEK; veho adds a versioned KEK stored wrapped in the database, an unwrap key from the platform, tenant-bound associated data and rotation.
 
@@ -25,7 +25,7 @@ Every layer is AES-256-GCM with a random 96-bit nonce stored before the cipherte
 - A DEK encrypts one value, once: every `Put` makes a new DEK. A KEK wraps one DEK per secret version, so random nonces stay far below GCM's bound of 2^32 messages per key for any realistic number of secrets; a KEK is rotated long before that.
 - The unwrap key's **ID** is the first 8 bytes of HMAC-SHA256(unwrap key, `veho-unwrap-key-id`), in hex. It is stored with each KEK row so that a node with the wrong key says so instead of failing with a bare GCM error, and so that an operator sees which key a row needs. It reveals nothing about the key.
 
-## 2. Schema (migration `002_secrets.sql`)
+## 2. Schema (in `001_core.sql`)
 
 ```sql
 CREATE TABLE veho.kek (
