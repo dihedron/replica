@@ -198,7 +198,7 @@ Each invariant MUST have at least one automated test (`veho-acceptance-matrix.md
 - **OI-4 Scale of objects.** Typical and maximum object size? (affects part
   size, `MaxParts` handling, deadline defaults).
 - **OI-5 Auth.** *Decided* (2026-11-21): OIDC JWT, API keys and SPIFFE identities (X.509-SVID over mTLS, JWT-SVID) in v1 (SEC-20); Keystone is not in v1 and can come later as an auth plugin or through OIDC federation. The product also has a Web UI and a CLI for humans to administer it: define policies, define who can trigger each, monitor progress (SEC-22, backlog 19).
-- **OI-6 Glance.** *Decided* (2026-11-21): S3 first (MinIO in the lab); the Glance driver follows once the OpenStack release and upload mechanism (plain PUT, staged upload plus import, multi-store) are known; they decide whether it can resume.
+- **OI-6 Glance.** *Decided* (2026-11-21): S3 first (Garage in the lab); the Glance driver follows once the OpenStack release and upload mechanism (plain PUT, staged upload plus import, multi-store) are known; they decide whether it can resume.
 - **OI-7 Policy richness.** *Decided* (2026-11-21): named, versioned policies are in v1, with per-policy grants (who may trigger which policy; SEC-21). Still open: other policy options (encryption, storage class,
   metadata/tag propagation, retention)?
 - **OI-8 Notifications.** *Decided* (2026-11-21): polling stays the primary mechanism, because only clients reach the servers and never the reverse (no inbound path to clients, no outbound calls to tenant-supplied URLs). To avoid wasted polls, `GET /v1/jobs/{id}` supports long polling (`?wait=<seconds>` with `If-None-Match`): it answers when the job changes or the wait ends, still a client-initiated request. Webhooks stay a later option, off by default, calling only registered endpoints under the SSRF rules (SEC-12, SEC-13), signed and retried from an outbox (backlog 11).
@@ -235,6 +235,7 @@ all partitions at once.
 | `veho-job-lifecycle.md` | Data model, state machines, workflows, adoption, retries |
 | `veho-audit-housekeeping.md` | Audit log (hash chain, checkpoints, export, pruning) and housekeeping (zombie tasks, retention), copied from ligo |
 | `veho-latency-envelope.md` | Supported latency and jitter, degradation, tuning, AC-24 |
+| `veho-lab.md` | The lab: three regions in one LXD VM, the emulated WAN, Patroni and etcd, Garage; `test/lab/lab.sh` |
 | `veho-distribution-policy.md` | Distribution policy: destinations, M of N completion, topology spread |
 | `veho-api.md` | REST API and command line clients |
 | `veho-plugins.md` | Storage plugin interfaces and conformance suite |

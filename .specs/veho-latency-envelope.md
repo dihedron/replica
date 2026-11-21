@@ -69,7 +69,7 @@ Never: accept a job on fewer than the quorum, or promote automatically across re
 
 ## 6. Validation: AC-24
 
-A lab sweep (Toxiproxy between the three regions) measures this file's estimates:
+A lab sweep (the lab's emulated WAN between the three regions, `veho-lab.md` §3) measures this file's estimates:
 
 - RTT: 25, 50, 100, 200, 400 and 800 ms;
 - jitter: none, +/- 10 %, +/- 25 %, +/- 50 % of the RTT, plus a baseline shift at reconnect;

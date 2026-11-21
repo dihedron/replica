@@ -269,7 +269,7 @@ The node verifies, and logs or refuses (configurable severity): that it connects
 
 **Ubuntu 24.04.**
 
-Checked against the Ubuntu 24.04 archive on 2026-11-21: systemd 255 (`LoadCredentialEncrypted` and `systemd-creds` available), PostgreSQL 16.15, Patroni 3.2.2, etcd 3.4.30, chrony 4.5.
+Checked against the Ubuntu 24.04 archive on 2026-11-21: systemd 255 (`LoadCredentialEncrypted` and `systemd-creds` available), PostgreSQL 16.15, Patroni 3.2.2, etcd 3.4.30, chrony 4.5. Patroni 3.2.2 is too old for the synchronous quorum (`synchronous_mode: quorum` needs Patroni 4.0): use PGDG's Patroni 4.1 (checked 2026-11-21, with PostgreSQL 16.16), as the lab does (`veho-lab.md` §4).
 
 - **Packaging.** The `.deb` is the primary package (signed, `veho-acceptance-matrix.md` §7), installing the service unit; the `.rpm` stays a build artifact. The binary is static, so the glibc of the release does not matter. Go is not taken from the archive: the toolchain is the one pinned in `go.mod`.
 - **etcd.** The archive ships 3.4.30; its tuning flags (`heartbeat-interval`, `election-timeout`) are the ones used in §3.3. A newer etcd (3.5 or 3.6, from upstream) is an operator's choice; AC-18 and AC-24 run on the version the deployment uses.

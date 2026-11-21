@@ -140,10 +140,10 @@ driver (built-in or third-party) must pass:
 - resume after process-simulated crash (if `ResumableUpload`)
 - abort leaves no visible object; no object under final name before commit
 - error classification table (induced via fault-injecting proxy, e.g.
-  Toxiproxy/MinIO)
+  the lab's S3 fault proxy in front of Garage, `veho-lab.md` §5)
 - context cancellation latency
 
-Backed in CI by MinIO (S3), a Glance/devstack or stub server, and the
+Backed by Garage (S3, the lab or a local instance), a Glance/devstack or stub server, and the
 `file` driver.
 
 ## 6. Process plugins (go-plugin)

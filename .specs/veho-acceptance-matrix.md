@@ -49,8 +49,7 @@ parallelism / retry. Config is validated at startup; fail fast.
 
 ## 4. Failure scenarios (acceptance, each automated)
 
-Environment: docker-compose / kind with three "regions" (separate networks)
-using Toxiproxy for latency and partitions; MinIO as S3 in each region.
+Environment: the lab (`veho-lab.md`): three "regions" (separate networks) in one LXD VM, the WAN emulated with netem (latency, jitter, loss) and nftables (partitions), Garage as S3 in each region.
 
 | ID | Scenario | Expected |
 |----|----------|----------|
@@ -71,7 +70,7 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
 | AC-15 | Quota exceeded | 429; running jobs unaffected |
 | AC-16 | Cancel mid-transfer | Uploads aborted, no object under final name, `CANCELLED` |
 | AC-17 | Soak: 50 concurrent jobs, random node/DB kills (chaos) | All jobs eventually `SUCCEEDED`, zero duplicates/corruption |
-| AC-18 | WAN stability: 3 Patroni/etcd members with real inter-region RTT (Toxiproxy with the measured per-link one-way latencies of `veho-architecture.md` §3.3, sublink changed at reconnect and between runs, plus the 20, 30 and 40 ms baselines), 24 h idle + light load | No spurious etcd leader change, no Patroni demotion; otherwise fall back per veho-architecture.md §3.3 (4) |
+| AC-18 | WAN stability: 3 Patroni/etcd members with real inter-region RTT (the lab's WAN with the measured per-link one-way latencies of `veho-architecture.md` §3.3, sublink changed at reconnect and between runs, plus the 20, 30 and 40 ms baselines), 24 h idle + light load | No spurious etcd leader change, no Patroni demotion; otherwise fall back per veho-architecture.md §3.3 (4) |
 | AC-19 | Poison pill: workflow that crashes the executor on every attempt | Workflow is parked by DBOS as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`; reconciler detects it, transfer marked `FAILED(Internal)`, alert raised |
 | AC-20 | Rolling upgrade with in-flight transfers | Old-version work drains or is recovered by compatible executors; none stuck `PENDING` |
 | AC-21 | Regression for DBOS behaviours we depend on (transactional enqueue commit/rollback, `ResumeWorkflows` on a `PENDING` orphan, zombie fencing, retry predicate, partitioned queues, multi-host failover), run on every DBOS version bump; promote `test/spikes/dbos` into this suite | Same outcomes as veho-dbos-spike.md |
@@ -79,7 +78,7 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
 | AC-26 | Secrets (`veho-tenancy.md` §3): a dump of the database contains no plaintext secret and no unwrap key; a ciphertext moved to another tenant or name fails to decrypt; the secret API never returns a value; a node without the unwrap key refuses to start; a KEK rotation re-wraps every data key with no failed attempt and the old KEK retires; an unwrap failure makes an attempt `Transient`, not a lost job; the audit key rotates with a checkpoint signed by the old key | No plaintext outside memory; every negative case refused |
 | AC-22 | Release verification: build a release with a throwaway key (`make snapshot` with `GPG_FINGERPRINT` and `GPG_KEY_FILE`); then verify the checksums file against `packaging/signing-key.asc`'s counterpart, every artifact against the checksums, and the `.deb` and `.rpm` signatures; `make release` without the key refuses (T-21) | All verifications pass; the unsigned release is refused |
 | AC-23 | Distribution policy: 9 destinations (3 per region), `min_copies` 7: the job is `SUCCEEDED` at the seventh copy and `FAILED` as soon as 3 destinations fail permanently; `min_copies` 5 with spread `region` 3: 3+2+0 is not done, 2+2+1 is; a policy over AZs and regions (5 AZs across 3 regions); `satisfied_at`, `completed_at` and `settled_at` set separately (a permanent failure settles without completing); destinations in locations with no control-plane node; two transfers that end at the same instant give one consistent verdict; `on_satisfied: stop` cancels the rest, `complete` finishes them and a later failure does not change the job; source in B; invalid policies are refused (`veho-distribution-policy.md` §3) | Verdicts as specified; no lost or double verdict under concurrency |
-| AC-24 | Latency and jitter envelope: Toxiproxy sweep of RTT (25, 50, 100, 200, 400, 800 ms) by jitter (none, ±10 %, ±25 %, ±50 %, baseline shift at reconnect), the profile's timeouts, 1 hour of light load per cell; record elections, demotions, acceptance p50/p99, primary-kill recovery and adoption time (`veho-latency-envelope.md` §6) | No spurious election or demotion in the cells a profile claims; the measurements replace the estimates |
+| AC-24 | Latency and jitter envelope: lab WAN sweep of RTT (25, 50, 100, 200, 400, 800 ms) by jitter (none, ±10 %, ±25 %, ±50 %, baseline shift at reconnect), the profile's timeouts, 1 hour of light load per cell; record elections, demotions, acceptance p50/p99, primary-kill recovery and adoption time (`veho-latency-envelope.md` §6) | No spurious election or demotion in the cells a profile claims; the measurements replace the estimates |
 
 ## 5. Test strategy
 
@@ -87,7 +86,7 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
   fencing SQL.
 - Property-based: part planning (sizes/limits), resume at any part boundary.
 - Plugin conformance suite (veho-plugins.md §4).
-- Integration: Postgres via testcontainers, MinIO, real DBOS.
+- Integration: PostgreSQL and Garage from the lab (or any instance named by the `VEHO_TEST_*` variables), real DBOS.
 - Chaos/acceptance: AT-* above, runnable via `make acceptance`.
 - Each test names the requirement IDs it covers; CI reports uncovered IDs.
 
