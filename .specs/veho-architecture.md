@@ -180,7 +180,7 @@ pkg/plugin/            public plugin API (stable package)
 pkg/plugin/conformance/ reusable plugin test suite
 internal/drivers/{s3,glance,file,http}/
 migrations/            SQL schema migrations (embedded)
-test/spikes/dbos/      the disposable DBOS harness (veho-dbos-spike.md)
+test/dbos/             the DBOS regression suite (AC-21, veho-dbos-spike.md)
 test/lab/              lab scenarios (three regions; veho-acceptance-matrix.md)
 packaging/             postinstall, service unit, signing key
 docs/                  Setup, Operator's and Architecture and Design guides (AGENTS.md, rule 12)

@@ -26,7 +26,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHOULD**, **SHO
 | `FW-nn` | Future work: recorded for later, not part of this version |
 
 ### 0.3 Status of the DBOS assumptions
-Every assumption this design makes about DBOS Transact for Go was checked against v1.9.0 with a running PostgreSQL (`veho-dbos-spike.md`, `test/spikes/dbos`). The checks are to be promoted into the acceptance suite (AC-21) and repeated on every DBOS version bump.
+Every assumption this design makes about DBOS Transact for Go was checked against v1.9.0 with a running PostgreSQL (`veho-dbos-spike.md`). The checks are the regression suite `test/dbos` (AC-21), run on every DBOS version bump.
 
 ## 1. Problem statement
 

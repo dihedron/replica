@@ -15,6 +15,7 @@ import (
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
 	"github.com/dihedron/veho/pkg/plugin/s3"
+	"github.com/dihedron/veho/test/labtest"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -164,5 +165,39 @@ func TestZombies(t *testing.T) {
 	}
 	if _, err := f.e.Status(ctx, f.tenant, ended); err != nil {
 		t.Errorf("a recent job was removed: %v", err)
+	}
+}
+
+// ENG-15: the primary fails over in the middle of a transfer: the job
+// succeeds, every part is recorded once, the bytes are the source's.
+func TestFailoverMidTransfer(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	slow := f.fileEndpoint(t, "a", "flaky", "lab-a")
+	f.fileEndpoint(t, "b", "file", "lab-b")
+	f.flaky.set(func(int) error { time.Sleep(300 * time.Millisecond); return nil })
+	f.launch(t)
+	job, name := f.submitRun(t, srcDir, 40*mib, destPolicy(2, "", "a", "b"))
+	f.wait(t, job, func(s JobStatus) bool {
+		for _, tr := range s.Transfers {
+			if tr.Endpoint == "a" && tr.BytesDone > 0 {
+				return true
+			}
+		}
+		return false
+	})
+	labtest.Switchover(t)
+	s := f.wait(t, job, isSettled)
+	if s.State != "SUCCEEDED" {
+		t.Fatalf("job: %+v", s)
+	}
+	same(t, filepath.Join(srcDir, name), filepath.Join(slow, "copy", name))
+	var parts, distinct int
+	if err := store.InTenant(ctx, f.api, f.tenant, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `select count(*), count(distinct (transfer_id, part_no)) from veho.parts p join veho.transfers t on t.id = p.transfer_id
+			where t.job_id = $1`, job).Scan(&parts, &distinct)
+	}); err != nil || parts != 16 || distinct != 16 {
+		t.Errorf("%d parts (%d distinct), want 16: %v", parts, distinct, err)
 	}
 }

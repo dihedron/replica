@@ -1,6 +1,6 @@
 # veho: the engine (chunk C6)
 
-**Status:** approved 2026-11-21. C6a to C6d done (C6b and C6c in one commit: the policy evaluation and `resolve`, which the spec put in C6c, are what C6b's transfers and tests need). Requirements: `veho-job-lifecycle.md` (all), `veho-distribution-policy.md` §5, `veho-audit-housekeeping.md` §3 (housekeeping; the audit sealer is backlog 32), FR-5 to FR-15, NFR-1, NFR-3, NFR-5, INV-1 to INV-6; DBOS facts: `veho-dbos-spike.md` (EXT-1 to EXT-6). Patterns copied from ligo 9f11da9 (`internal/workflows`: `engine.go` error sanitising, `executors.go`, `sweeper.go`; `internal/config`), adapted.
+**Status:** approved 2026-11-21. C6 done (C6b and C6c in one commit: the policy evaluation and `resolve`, which the spec put in C6c, are what C6b's transfers and tests need). Requirements: `veho-job-lifecycle.md` (all), `veho-distribution-policy.md` §5, `veho-audit-housekeeping.md` §3 (housekeeping; the audit sealer is backlog 32), FR-5 to FR-15, NFR-1, NFR-3, NFR-5, INV-1 to INV-6; DBOS facts: `veho-dbos-spike.md` (EXT-1 to EXT-6). Patterns copied from ligo 9f11da9 (`internal/workflows`: `engine.go` error sanitising, `executors.go`, `sweeper.go`; `internal/config`), adapted.
 
 This document fixes the decisions the lifecycle leaves open, and amends it where noted. The HTTP and gRPC API is C7: C6 exposes `Submit`, `Cancel`, `Retry` and `Status` as Go functions, which C7's handlers call.
 
@@ -14,7 +14,7 @@ C6 is built and committed in five steps, each with its tests, like C2 and C5:
 | **C6b** Transfer | the `Transfer` workflow (§4): lease and fence per step, the part plan, begin or resume, part batches streamed and checkpointed, commit, verify; credentials per attempt from `internal/secrets`; driver resolution (§6); the retry loop (§5) |
 | **C6c** Job | the `ReplicateJob` workflow: resolve the source, start the transfers, finalize; policy evaluation in the transaction that ends a transfer (§4.3); `on_satisfied`; `Cancel`, `Retry`, `Status`; the deadline |
 | **C6d** Housekeeping | the loop of `veho-audit-housekeeping.md` §3 under `TryLock`: adoption of a dead executor's work, the zombie kinds, expired leases, retention; `SYSTEM_*` audit events; Prometheus metrics on `veho serve` |
-| **C6e** DBOS suite | the spike's experiments (EXT-1 to EXT-6) promoted into an integration suite (AC-21) that runs on every DBOS version bump, and `test/spikes/dbos` deleted; the multi-region cases on the lab (an executor killed and adopted from another region, a failover of the primary mid-transfer) |
+| **C6e** DBOS suite | the spike's experiments (EXT-1 to EXT-5, and replay in place of EXT-6) promoted into an integration suite (`test/dbos`, AC-21) that runs on every DBOS version bump, and `test/spikes/dbos` deleted; a failover of the primary mid-transfer on the lab (ENG-15). Adoption across regions needs veho nodes inside the lab's regions (L3, C9): here the executors run on the host, so ENG-6 and ENG-7 run in one process (`TestAdoption`) and EXT-2c with real processes stopped by `SIGSTOP` (`test/dbos`) |
 
 ## 2. Configuration and process (C6a)
 

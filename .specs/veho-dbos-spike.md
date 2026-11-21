@@ -62,6 +62,8 @@ setup and verifying `sync_state = quorum`, the test passed (above).
 
 ## Reproduce
 
+The harness is gone: its experiments are the regression suite `test/dbos` (AC-21), run with `test/lab/lab.sh test ./test/dbos`. EXT-6 (the step retry predicate) is no longer used by the design, whose retries are the workflow's loop (`veho-engine.md` §5); the suite checks instead that a restarted executor resumes after the last completed step without running the completed ones again. The commands of the spike were:
+
 ```
 go build -o /tmp/spike ./test/spikes/dbos
 spike worker <executorID> <dsn>                        # ADOPT=<deadID> adopts its PENDING work
