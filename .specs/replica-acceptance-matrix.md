@@ -74,6 +74,7 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
 | AC-18 | WAN stability: 3 Patroni/etcd members with real inter-region RTT + jitter (Toxiproxy), 24 h idle + light load | No spurious etcd leader change, no Patroni demotion; otherwise fall back per replica-architecture.md §3.3 (4) |
 | AC-19 | Poison pill: workflow that crashes the executor on every attempt | Workflow is parked by DBOS as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`; reconciler detects it, transfer marked `FAILED(Internal)`, alert raised |
 | AC-21 | Regression for DBOS behaviours we depend on (transactional enqueue commit/rollback, `ResumeWorkflows` on a `PENDING` orphan, zombie fencing, retry predicate, partitioned queues, multi-host failover), run on every DBOS version bump; promote `test/spikes/dbos` into this suite | Same outcomes as replica-dbos-spike.md |
+| AC-22 | Release verification: build a release with a throwaway key (`make snapshot` with `GPG_FINGERPRINT` and `GPG_KEY_FILE`); then verify the checksums file against `packaging/signing-key.asc`'s counterpart, every artifact against the checksums, and the `.deb` and `.rpm` signatures; `make release` without the key refuses (T-21) | All verifications pass; the unsigned release is refused |
 | AC-20 | Rolling upgrade with in-flight transfers | Old-version work drains or is recovered by compatible executors; none stuck `PENDING` |
 
 ## 5. Test strategy
@@ -91,3 +92,13 @@ using Toxiproxy for latency and partitions; MinIO as S3 in each region.
 ≤ 50 concurrent transfers cluster-wide; objects up to 5 TiB; DB write rate
 dominated by part commits (~1 commit per batch of 4 × 64 MiB ≈ 256 MiB, i.e.
 for 1 Gbit/s ≈ 0.5 commits/s per transfer — negligible).
+
+## 7. Releases and their verification
+
+Releases are signed (T-21, `replica-threat-model.md`). The packaging key is an RSA 4096 GPG key created once by `packaging/create-signing-key.sh` on a trusted machine, in a throwaway keyring: it publishes the public half as `packaging/signing-key.asc` (committed), stores the private half and its passphrase as the repository secrets `GPG_PRIVATE_KEY` and `GPG_PASSPHRASE`, and writes the private key and a revocation certificate to a backup directory that goes to offline storage.
+
+- `make release` requires `GPG_FINGERPRINT` and `GPG_KEY_FILE` (`signing-check` refuses half a configuration); `make snapshot` signs when both are set and skips signing otherwise.
+- `.goreleaser.yaml` signs the checksums file (a detached, armored signature, `checksums.txt.asc`) and the `rpm` and `deb` packages. The checksums file covers every archive, package, SBOM and, once they exist, the release documents.
+- `release.yml` imports the key, checks that the published public key is the one that signs, writes the key for `nfpm`, runs `make release` and removes the key.
+- An operator verifies a release by importing `packaging/signing-key.asc`, checking the fingerprint against the one in the release notes, running `gpg --verify checksums.txt.asc checksums.txt` and `sha256sum --check checksums.txt`. The Setup Guide repeats this.
+- The key expires in three years by default (`KEY_EXPIRY`); rotating it means removing `packaging/signing-key.asc` on purpose and running the script again.

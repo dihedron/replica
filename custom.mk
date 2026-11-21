@@ -27,13 +27,13 @@ compile: lint go-dev ## build for the default linux/amd64 platform
 snapshot: signing-check lint go-snapshot ## build a snapshot version for the supported platforms (signed if GPG_FINGERPRINT and GPG_KEY_FILE are set)
 
 .PHONY: release
-release: signing-check lint ## build a release version (requires a valid tag)
+release: signing-check lint ## build a release version (requires a valid tag and the packaging key)
+	@test -n "$(GPG_FINGERPRINT)" || { echo "a release must be signed: set GPG_FINGERPRINT and GPG_KEY_FILE" >&2; exit 1; }
 	@$(MAKE) --no-print-directory go-release
 
-# signing-check: once the packaging key exists (.specs/replica-backlog.md,
-# item 8) it signs the checksums file through gpg (GPG_FINGERPRINT) and the
-# packages through nfpm (GPG_KEY_FILE, its armored private key): both or
-# neither, so that no build is half signed
+# signing-check: the packaging key (T-21) signs the checksums file through gpg
+# (GPG_FINGERPRINT) and the packages through nfpm (GPG_KEY_FILE, its armored
+# private key): both or neither, so that no build is half signed
 .PHONY: signing-check
 signing-check:
 	@if [ -n "$(GPG_FINGERPRINT)" ] && [ ! -r "$(GPG_KEY_FILE)" ]; then echo "GPG_FINGERPRINT is set but GPG_KEY_FILE is not a readable key file" >&2; exit 1; fi

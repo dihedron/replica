@@ -124,6 +124,10 @@ step still finishes. Therefore:
 
 1. **Executor registry**: each node has a unique stable executor ID and
    heartbeats into `executors(id, region, last_seen, app_version)` every 10 s.
+   `last_seen` and the lease expiry are timestamps of the **database's clock**
+   (`now()` in the writing statement), and the reconciler compares them with
+   the database's clock too, never with a node's, so that clock skew between
+   nodes cannot make a live executor look dead (T-27).
 2. **Reconciler** (every node, every 30 s; idempotent, so no leader needed; an
    advisory lock MAY reduce duplicate work): for executors with
    `last_seen` older than the lease TTL (default 60 s) it lists that

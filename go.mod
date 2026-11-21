@@ -1,6 +1,6 @@
 module github.com/dihedron/replica
 
-go 1.26.1
+go 1.27.4
 
 require (
 	github.com/dbos-inc/dbos-transact-golang v1.9.0

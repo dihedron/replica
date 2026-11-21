@@ -1,6 +1,6 @@
 # replica: tenancy and security
 
-This file specifies multitenancy and security: isolation, secrets, quotas and URL safety. It is part of `replica_specification.md`. The threat model (OI-14) is not yet written.
+This file specifies multitenancy and security: isolation, secrets, quotas and URL safety. It is part of `replica_specification.md`. The threat model is `replica-threat-model.md`.
 
 Status: draft, 2026-11-21, for review.
 

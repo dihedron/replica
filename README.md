@@ -22,6 +22,7 @@ The project follows Spec-Driven Development (`AGENTS.md`): code starts from an a
 | `replica-api.md` | REST API and command line |
 | `replica-plugins.md` | Storage plugin interfaces and conformance suite |
 | `replica-tenancy.md` | Multitenancy and security |
+| `replica-threat-model.md` | Threat model (STRIDE) and accepted residual risks |
 | `replica-acceptance-matrix.md` | Observability, deployment, acceptance scenarios |
 | `replica-dbos-spike.md` | The DBOS experiments |
 | `replica-backlog.md` | Work agreed for later |
@@ -34,6 +35,7 @@ make lint       # gofmt, go vet and golangci-lint (the version CI runs)
 make            # lint, then build for the default platform (needs goreleaser)
 go test ./...   # the tests
 make secrets    # gitleaks and TruffleHog, before every commit (needs docker or podman)
+make snapshot   # all platforms; signed when GPG_FINGERPRINT and GPG_KEY_FILE are set (see .specs/replica-acceptance-matrix.md §7)
 make vuln       # govulncheck, before every commit
 ```
 

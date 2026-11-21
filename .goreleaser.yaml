@@ -113,30 +113,43 @@ upx:
 nfpms:
   - id: replica
     package_name: replica
-    homepage: "https://github.com/dihedron"
-    maintainer: "Andrea Funtò <dihedron.dev@gmail.com>"
+    ids:
+      - replica
     description: |
-      replica is a simple command line tool (CLI)
-      to explore durable execution in Golang.    
+      replica replicates large objects, durably and asynchronously, from a
+      source storage system to destinations in two other regions: it
+      records each job in a PostgreSQL cluster spread across the regions,
+      resumes it on another node if one fails, retries what fails and
+      verifies every copy. Storage backends are plugins; the service is
+      multi-tenant.
+    homepage: "https://github.com/dihedron/replica"
+    maintainer: "Andrea Funtò <dihedron.dev@gmail.com>"
     vendor: "Andrea Funtò"
     license: "MIT"
     formats:
       - rpm
       - deb
       - apk
-    ids:
-      - replica
-#    contents:
-#      - src: ./{{.ProjectName}}.conf
-#        dst: /etc/{{.ProjectName}}.conf
-#        type: config
-#        expand: true
-    scripts:
-      postinstall: ./packaging/postinstall.sh
     epoch: "1"
     release: "1"
     section: default
     priority: "optional"
+    # signed with the packaging key when GPG_KEY_FILE names its armored
+    # private key (passphrase in NFPM_PASSPHRASE); unsigned otherwise
+    rpm:
+      signature:
+        key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
+    deb:
+      signature:
+        key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
+        type: origin
+    contents:
+      - src: ./packaging/replica.service
+        dst: /usr/lib/systemd/system/replica.service
+        file_info:
+          mode: 0644
+    scripts:
+      postinstall: ./packaging/postinstall.sh
 
 # MSI packaging is a GoReleaser Pro feature.
 # If you have GoReleaser Pro, you can uncomment the following section.
@@ -154,7 +167,8 @@ nfpms:
 
 source:
   enabled: true
-  name_template: "{{ .ProjectName }}_{{ .Version }}_source.tar.gz"
+  # the archive extension is appended by goreleaser
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
 
 changelog:
   sort: asc
@@ -165,10 +179,29 @@ changelog:
 sboms:
   - cmd: syft
     documents:
-      - "${artifact}.spdx.json"
+      - "${artifact}.cdx.json"
     args: ["$artifact", "--output", "cyclonedx-json=$document", "-vvv"]
     artifacts: package
     disable: false
+
+# the checksums file covers every archive, package and SBOM: its detached
+# signature, made with the packaging key whose fingerprint is in
+# GPG_FINGERPRINT, vouches for all of them. make snapshot skips it when
+# GPG_FINGERPRINT is unset; make release requires it.
+signs:
+  - id: checksums
+    artifacts: checksum
+    signature: "${artifact}.asc"
+    args:
+      - --batch
+      - --yes
+      - --local-user
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - --armor
+      - --output
+      - "${signature}"
+      - --detach-sign
+      - "${artifact}"
 
 release:
   footer: |

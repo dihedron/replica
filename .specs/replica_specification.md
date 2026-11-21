@@ -2,7 +2,7 @@
 
 - **Document Version:** `0.1.0`
 - **Status:** Draft, for review; not yet approved for implementation (`AGENTS.md`, rule 1)
-- **Target Stack:** Go 1.26.1+, PostgreSQL 15+ (`pgx/v5`), DBOS Transact for Go (pinned at v1.9.0; open-source features only), Patroni with etcd for the state store's failover, `github.com/jessevdk/go-flags`, `log/slog`; storage backends as plugins (S3, OpenStack Glance, local files for tests)
+- **Target Stack:** Go 1.27.4+, PostgreSQL 15+ (`pgx/v5`), DBOS Transact for Go (pinned at v1.9.0; open-source features only), Patroni with etcd for the state store's failover, `github.com/jessevdk/go-flags`, `log/slog`; storage backends as plugins (S3, OpenStack Glance, local files for tests)
 - **Purpose:** Requirements, decisions and open issues for Spec-Driven Development; the topic specifications listed in §10 hold the detail
 
 ---
@@ -19,7 +19,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHOULD**, **SHO
 | `SEC-nn`, `PLG-nn`, `API-nn` | Security, plugin and API requirement, in the topic specifications |
 | `ADR-nn` | Architectural decision (§7) |
 | `INV-nn` | System invariant (MUST hold at all times; each MUST have at least one automated test; §8) |
-| `T-nn` | Threat (the threat model, OI-14, is not yet written) |
+| `T-nn`, `R-nn` | Threat and accepted residual risk (`replica-threat-model.md`) |
 | `AC-nn` | Acceptance scenario (`replica-acceptance-matrix.md` §4) |
 | `EXT-nn` | External API assumption, verified against the pinned SDK (`replica-dbos-spike.md`) |
 | `OI-nn` | Open issue to decide before implementing the affected component (§9) |
@@ -215,7 +215,7 @@ Each invariant MUST have at least one automated test (`replica-acceptance-matrix
   sites? This decides whether WAN-tuned etcd (replica-architecture.md §3.3 option 1) is viable or we
   start from the operator-approved failover fallback (option 4).
 - **OI-13 DBOS version.** *Resolved*: upgraded to v1.9.0 and the spike re-run (replica-dbos-spike.md).
-- **OI-14 Threat model.** `AGENTS.md` (rule 3) asks for a threat model in the specification of a complex solution. None is written yet; `replica-tenancy.md` holds the security requirements it would start from. To be drafted and reviewed before the first implementation chunk.
+- **OI-14 Threat model.** *Drafted* (2026-11-21): `replica-threat-model.md` (STRIDE, 30 threats, 9 accepted residual risks). To be reviewed with the answers to the other open issues, which can add or remove threats.
 
 ### 9.1 Resolved: the DBOS spike
 
@@ -240,6 +240,7 @@ all partitions at once.
 | `replica-api.md` | REST API and command line clients |
 | `replica-plugins.md` | Storage plugin interfaces and conformance suite |
 | `replica-tenancy.md` | Multitenancy and security |
+| `replica-threat-model.md` | Threat model (STRIDE) and accepted residual risks |
 | `replica-acceptance-matrix.md` | Observability, deployment, acceptance scenarios |
 | `replica-dbos-spike.md` | The DBOS experiments |
 | `replica-backlog.md` | Work agreed for later |
