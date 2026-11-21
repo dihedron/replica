@@ -2,7 +2,7 @@
 
 This file specifies the lab: a disposable, self-contained test environment that simulates three regions on one machine, for the integration tests, the acceptance scenarios (`veho-acceptance-matrix.md` §4) and the overnight runs (AGENTS.md rules 10 and 14). It is part of `veho_specification.md`, and replaces the docker-compose environment that §4 of the acceptance matrix sketched.
 
-Status: draft, 2026-11-21, for review.
+Status: approved 2026-11-21; L1 and L2 built.
 
 ## 1. Goals
 
@@ -64,7 +64,7 @@ The lab VM routes between the region bridges; on each bridge's egress it classif
 - **etcd.** One member per region on `db-X`, client and peer URLs on the region address, the v3 API only; heartbeat and election timeout from `lab.env` (defaults 100 ms and 1000 ms, as decided in `veho-architecture.md` §3.3). Plain HTTP inside the lab (TLS for etcd belongs to the Setup Guide, not to what the lab tests).
 - **Patroni.** One cluster (`scope: veho`) over the three members, `etcd3` DCS. Bootstrap DCS settings: `ttl` 30, `loop_wait` 10, `retry_timeout` 10 (from `lab.env`), `synchronous_mode: quorum`, `synchronous_node_count: 1`, `use_pg_rewind`, data checksums. Tag `failover_priority`: 2 for `db-b` and `db-c`, 1 for `db-a`, so that the primary prefers B or C (`veho-architecture.md` §3.3, reading); `db-b` bootstraps the cluster. The REST API is plain HTTP on port 8008.
 - **PostgreSQL.** TLS 1.3 only for clients and replication, server certificates from the lab CA with the region address and the lab VM's address as SANs. `pg_hba`: the replication user from the region subnets; the veho roles from the region subnets and from the lab network (the proxies keep the client's address); the superuser over the Unix socket only. TCP keepalives as in ligo (a lost host's sessions end in about two minutes).
-- **Database and roles.** The lab creates the database `veho` and the role `veho_migrator`, its owner, with a random password kept in the state directory. Every other role, and every object in the database, is created by `veho migrate` (C2): the lab does not duplicate the schema.
+- **Database and roles.** The lab runs `packaging/postgres/roles.sql` (`veho-store.md` §2), as an operator would, with random passwords kept in the state directory; `lab.sh env` exports a DSN per role (`VEHO_TEST_DATABASE_URL` for the migrator, `VEHO_TEST_API_`, `_WORKER_` and `_DBOS_DATABASE_URL`). The objects in the database come from `veho migrate`: the lab does not duplicate the schema.
 
 ## 5. The S3 destinations
 
@@ -84,7 +84,7 @@ Settings in `test/lab/lab.env`, overridden by `lab.local.env` (git-ignored) and 
 | `up` | builds the lab, or completes a partial one (idempotent), then takes the baseline snapshot when there is none |
 | `down` | destroys the VM, its snapshots, the project, network, pool and the state, after confirmation |
 | `status` | the instances, the Patroni cluster, the WAN profile, what `env.json` recorded |
-| `env` | the environment of the tests on the host, as `export` lines: `VEHO_TEST_DATABASE_URL` (multi-host DSN over the three published ports, `target_session_attrs=read-write`, `sslmode=verify-full`), and per region `VEHO_TEST_S3_X_ENDPOINT`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY` |
+| `env` | the environment of the tests on the host, as `export` lines: `VEHO_TEST_DATABASE_URL` and `VEHO_TEST_{API,WORKER,DBOS}_DATABASE_URL` (multi-host DSNs over the three published ports, `target_session_attrs=read-write`, `sslmode=verify-full`), and per region `VEHO_TEST_S3_X_ENDPOINT`, `_REGION`, `_ACCESS_KEY`, `_SECRET_KEY` |
 | `test [-run R] [pkg...]` | `go test -tags integration -p 1` with that environment |
 | `wan show`, `wan set PROFILE`, `wan set --link ...`, `wan partition X[-Y]`, `wan heal` | the WAN (§3) |
 | `psql [--region X] [args]` | psql as `veho_migrator` over TLS (default: the primary) |
@@ -105,7 +105,7 @@ The tests take their environment only from `VEHO_TEST_*` variables and skip when
 - **LAB-7** `VEHO_TEST_DATABASE_URL` connects from the host to the primary over TLS with verification, and follows a `patronictl switchover`.
 - **LAB-8** Each Garage cluster accepts a put and a get with the lab key on each of its buckets, through the published endpoint.
 - **LAB-9** `lab.sh reset` returns the lab to the baseline (empty database `veho`, empty buckets, profile `fiber1`, no partition) in minutes, not a rebuild.
-- **LAB-10** The lab's scripts pass `shellcheck`; `lab.sh selftest` checks LAB-4 to LAB-8 on a running lab.
+- **LAB-10** The lab's scripts pass `shellcheck` (run it from its container if it is not installed: `docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:v0.10.0 -x lab.sh lib/*.sh` in `test/lab`); `lab.sh selftest` checks LAB-4 to LAB-8 on a running lab.
 
 ## 8. Steps
 

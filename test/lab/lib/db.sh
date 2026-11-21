@@ -278,30 +278,42 @@ db_superuser() {
 	inner_exec "$leader" runuser -u postgres -- psql -X "$@"
 }
 
-# db_database creates the database veho and its owner veho_migrator, once.
+# DB_ROLES: the roles of packaging/postgres/roles.sql, without the prefix.
+DB_ROLES=(migrator dbos api worker)
+
+# db_database creates the roles, the database veho and its schemas with
+# packaging/postgres/roles.sql, once.
 db_database() {
-	if [[ "$(db_superuser -tAc "select 1 from pg_database where datname = 'veho'")" == 1 ]]; then
-		info "database veho exists"
+	if [[ "$(db_superuser -tAc "select 1 from pg_roles where rolname = 'veho_worker'" </dev/null)" == 1 ]]; then
+		info "database veho and its roles exist"
 		return
 	fi
-	db_superuser -q -v ON_ERROR_STOP=1 -v pw="$(password veho_migrator)" <<'SQL' || die "cannot create the database veho"
-create role veho_migrator login createrole password :'pw';
-create database veho owner veho_migrator;
-revoke all on database veho from public;
-SQL
-	info "database veho and its owner veho_migrator created"
+	db_superuser -q -v migrator_password="$(password veho_migrator)" -v dbos_password="$(password veho_dbos)" \
+		-v api_password="$(password veho_api)" -v worker_password="$(password veho_worker)" -f - \
+		<"$REPO_DIR/packaging/postgres/roles.sql" || die "cannot create the database veho and its roles"
+	info "database veho and roles veho_migrator, veho_dbos, veho_api, veho_worker created (packaging/postgres/roles.sql)"
 }
 
-# db_dsn [HOSTS ROOTCERT]: veho_migrator's DSN to the primary, verifying the
-# server with the lab CA; by default from the lab host, over the published
-# ports of the three regions.
+# db_dsn [ROLE [HOSTS ROOTCERT]]: the DSN of veho_ROLE (default migrator) to
+# the primary, verifying the server with the lab CA; by default from the lab
+# host, over the published ports of the three regions.
 db_dsn() {
-	local hosts="${1:-}" x
+	local role="${1:-migrator}" hosts="${2:-}" x
 	if [[ -z "$hosts" ]]; then
 		for x in "${REGIONS[@]}"; do hosts+="${hosts:+,}$(lxd_ip):$(published_port "$LAB_PG_PORT_BASE" "$x")"; done
 	fi
-	printf 'postgres://veho_migrator:%s@%s/veho?sslmode=verify-full&sslrootcert=%s&target_session_attrs=read-write' \
-		"$(password veho_migrator)" "$hosts" "${2:-$LAB_STATE_DIR/pki/ca.crt}"
+	printf 'postgres://veho_%s:%s@%s/veho?sslmode=verify-full&sslrootcert=%s&target_session_attrs=read-write' \
+		"$role" "$(password "veho_$role")" "$hosts" "${3:-$LAB_STATE_DIR/pki/ca.crt}"
+}
+
+# db_env: the database environment of the tests on the host.
+db_env() {
+	local role upper
+	printf 'export VEHO_TEST_DATABASE_URL=%q\n' "$(db_dsn migrator)"
+	for role in dbos api worker; do
+		upper="$(tr '[:lower:]' '[:upper:]' <<<"$role")"
+		printf 'export VEHO_TEST_%s_DATABASE_URL=%q\n' "$upper" "$(db_dsn "$role")"
+	done
 }
 
 # db_psql [--region X] ARGS: psql as veho_migrator over TLS, run in db-b (or
@@ -315,7 +327,7 @@ db_psql() {
 	else
 		for x in "${REGIONS[@]}"; do hosts+="${hosts:+,}$(inner_ip "db-$x"):5432"; done
 	fi
-	dsn="$(db_dsn "$hosts" /etc/veho-lab/ca.crt)"
+	dsn="$(db_dsn migrator "$hosts" /etc/veho-lab/ca.crt)"
 	# one member: that member, primary or standby
 	[[ "$hosts" == *,* ]] || dsn="${dsn%&target_session_attrs=read-write}"
 	inner_exec "$in" psql -X "$dsn" "$@"

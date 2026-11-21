@@ -86,7 +86,7 @@ selftest_db() {
 		ok "LAB-6 two quorum standbys stream" || fail "LAB-6 $repl quorum standbys in pg_stat_replication"
 	# LAB-7, through the published ports, as the tests on the host connect
 	for x in "${REGIONS[@]}"; do hosts+="${hosts:+,}$(lxd_ip):$(published_port "$LAB_PG_PORT_BASE" "$x")"; done
-	published() { inner_exec db-a psql -X "$(db_dsn "$hosts" /etc/veho-lab/ca.crt)" -tAc "select inet_server_addr()::text || ' ' || pg_is_in_recovery()" 2>/dev/null; }
+	published() { inner_exec db-a psql -X "$(db_dsn migrator "$hosts" /etc/veho-lab/ca.crt)" -tAc "select inet_server_addr()::text || ' ' || pg_is_in_recovery()" 2>/dev/null; }
 	published="$(published)"
 	[[ "$published" == "$(inner_ip "$leader")/32 false" ]] &&
 		ok "LAB-7 published DSN reaches the primary $leader over TLS" || fail "LAB-7 published DSN answered \"$published\""

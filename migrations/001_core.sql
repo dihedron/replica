@@ -1,0 +1,225 @@
+-- 001_core: the core tables of .specs/veho-store.md §3, their row-level
+-- security (§4) and the privileges of veho_api and veho_worker (§2). Runs as
+-- veho_migrator, which owns the schema veho (packaging/postgres/roles.sql).
+
+GRANT USAGE ON SCHEMA veho TO veho_api, veho_worker;
+-- the start-up check of the schema version (STO-C4)
+GRANT SELECT ON veho.schema_migrations TO veho_api, veho_worker;
+
+-- The tenant of the transaction (§4.1): NULL when unset or empty, so that a
+-- statement without a tenant sees and changes nothing.
+CREATE FUNCTION veho.current_tenant() RETURNS uuid
+LANGUAGE sql STABLE
+AS $$ SELECT nullif(current_setting('veho.tenant_id', true), '')::uuid $$;
+
+CREATE TABLE veho.tenants (
+	id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	name       text NOT NULL UNIQUE CHECK (name <> ''),
+	state      text NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'suspended')),
+	quotas     jsonb NOT NULL DEFAULT '{}',
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- The topology (veho-distribution-policy.md §2): platform configuration.
+CREATE TABLE veho.locations (
+	id         text PRIMARY KEY CHECK (id <> ''),
+	level      text NOT NULL CHECK (level <> ''),
+	parent_id  text REFERENCES veho.locations (id),
+	created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE veho.endpoints (
+	id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id      uuid NOT NULL REFERENCES veho.tenants (id),
+	name           text NOT NULL CHECK (name <> ''),
+	location_id    text NOT NULL REFERENCES veho.locations (id),
+	driver         text NOT NULL CHECK (driver <> ''),
+	config         jsonb NOT NULL DEFAULT '{}',
+	credential_ref text,
+	created_at     timestamptz NOT NULL DEFAULT now(),
+	UNIQUE (tenant_id, id),
+	UNIQUE (tenant_id, name)
+);
+
+CREATE TABLE veho.policies (
+	id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id  uuid NOT NULL REFERENCES veho.tenants (id),
+	name       text NOT NULL CHECK (name <> ''),
+	version    int NOT NULL CHECK (version > 0),
+	spec       jsonb NOT NULL,
+	created_at timestamptz NOT NULL DEFAULT now(),
+	UNIQUE (tenant_id, id),
+	UNIQUE (tenant_id, name, version)
+);
+
+CREATE TABLE veho.jobs (
+	id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id          uuid NOT NULL,
+	idempotency_key    text,
+	source_endpoint_id uuid NOT NULL,
+	source_path        text NOT NULL,
+	source_info        jsonb NOT NULL DEFAULT '{}',
+	policy             jsonb NOT NULL,
+	policy_ref         uuid,
+	state              text NOT NULL DEFAULT 'ACCEPTED'
+		CHECK (state IN ('ACCEPTED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED')),
+	copies_done        int NOT NULL DEFAULT 0 CHECK (copies_done >= 0),
+	satisfied_at       timestamptz,
+	completed_at       timestamptz,
+	settled_at         timestamptz,
+	deadline_at        timestamptz,
+	cancel_requested   boolean NOT NULL DEFAULT false,
+	created_at         timestamptz NOT NULL DEFAULT now(),
+	updated_at         timestamptz NOT NULL DEFAULT now(),
+	finished_at        timestamptz,
+	last_error         jsonb,
+	UNIQUE (tenant_id, id),
+	UNIQUE (tenant_id, idempotency_key),
+	FOREIGN KEY (tenant_id, source_endpoint_id) REFERENCES veho.endpoints (tenant_id, id),
+	FOREIGN KEY (tenant_id, policy_ref) REFERENCES veho.policies (tenant_id, id)
+);
+CREATE INDEX jobs_tenant_state ON veho.jobs (tenant_id, state, created_at);
+
+CREATE TABLE veho.transfers (
+	id                      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id               uuid NOT NULL,
+	job_id                  uuid NOT NULL,
+	destination_endpoint_id uuid NOT NULL,
+	position                jsonb NOT NULL,
+	dest_path               text NOT NULL,
+	state                   text NOT NULL DEFAULT 'PENDING'
+		CHECK (state IN ('PENDING', 'COPYING', 'VERIFYING', 'RETRY_WAIT', 'SUCCEEDED', 'FAILED', 'CANCELLED')),
+	attempt                 int NOT NULL DEFAULT 0 CHECK (attempt >= 0),
+	adoptions               int NOT NULL DEFAULT 0 CHECK (adoptions >= 0),
+	bytes_done              bigint NOT NULL DEFAULT 0 CHECK (bytes_done >= 0),
+	bytes_total             bigint CHECK (bytes_total >= 0),
+	resume_token            jsonb,
+	lease_owner             text,
+	lease_expires_at        timestamptz,
+	fence                   bigint NOT NULL DEFAULT 0,
+	last_error              jsonb,
+	started_at              timestamptz,
+	finished_at             timestamptz,
+	UNIQUE (tenant_id, id),
+	UNIQUE (job_id, destination_endpoint_id),
+	FOREIGN KEY (tenant_id, job_id) REFERENCES veho.jobs (tenant_id, id) ON DELETE CASCADE,
+	FOREIGN KEY (tenant_id, destination_endpoint_id) REFERENCES veho.endpoints (tenant_id, id)
+);
+CREATE INDEX transfers_tenant_state ON veho.transfers (tenant_id, state);
+CREATE INDEX transfers_lease ON veho.transfers (lease_expires_at) WHERE state IN ('COPYING', 'VERIFYING');
+
+CREATE TABLE veho.parts (
+	tenant_id   uuid NOT NULL,
+	transfer_id uuid NOT NULL,
+	part_no     int NOT NULL CHECK (part_no >= 0),
+	"offset"    bigint NOT NULL CHECK ("offset" >= 0),
+	length      bigint NOT NULL CHECK (length >= 0),
+	sha256      bytea NOT NULL CHECK (length(sha256) = 32),
+	etag        text,
+	state       text NOT NULL DEFAULT 'committed' CHECK (state IN ('committed')),
+	PRIMARY KEY (transfer_id, part_no),
+	FOREIGN KEY (tenant_id, transfer_id) REFERENCES veho.transfers (tenant_id, id) ON DELETE CASCADE
+);
+
+CREATE TABLE veho.executors (
+	id          text PRIMARY KEY CHECK (id <> ''),
+	region      text NOT NULL,
+	app_version text NOT NULL,
+	started_at  timestamptz NOT NULL DEFAULT now(),
+	last_seen   timestamptz NOT NULL DEFAULT now()
+);
+
+-- Immutable columns (DP-9, STO-6): a job's identity, source and policy, a
+-- transfer's identity, destination and position never change.
+CREATE FUNCTION veho.jobs_immutable() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	IF (NEW.id, NEW.tenant_id, NEW.idempotency_key, NEW.source_endpoint_id, NEW.source_path, NEW.policy, NEW.policy_ref, NEW.created_at)
+		IS DISTINCT FROM
+		(OLD.id, OLD.tenant_id, OLD.idempotency_key, OLD.source_endpoint_id, OLD.source_path, OLD.policy, OLD.policy_ref, OLD.created_at) THEN
+		RAISE EXCEPTION 'jobs: identity, source and policy are immutable' USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END $$;
+CREATE TRIGGER jobs_immutable BEFORE UPDATE ON veho.jobs FOR EACH ROW EXECUTE FUNCTION veho.jobs_immutable();
+
+CREATE FUNCTION veho.transfers_immutable() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	IF (NEW.id, NEW.tenant_id, NEW.job_id, NEW.destination_endpoint_id, NEW.position, NEW.dest_path)
+		IS DISTINCT FROM
+		(OLD.id, OLD.tenant_id, OLD.job_id, OLD.destination_endpoint_id, OLD.position, OLD.dest_path) THEN
+		RAISE EXCEPTION 'transfers: identity, destination and position are immutable' USING ERRCODE = 'integrity_constraint_violation';
+	END IF;
+	RETURN NEW;
+END $$;
+CREATE TRIGGER transfers_immutable BEFORE UPDATE ON veho.transfers FOR EACH ROW EXECUTE FUNCTION veho.transfers_immutable();
+
+-- Row-level security (§4.2). The owner, veho_migrator, is exempt (no FORCE):
+-- that is what lets the SECURITY DEFINER functions below cross tenants, and
+-- the owner is not used at run time otherwise.
+ALTER TABLE veho.tenants ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.tenants
+	USING (id = veho.current_tenant());
+
+ALTER TABLE veho.endpoints ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.jobs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.transfers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.parts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.endpoints
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.policies
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.jobs
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.transfers
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.parts
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+
+-- Platform operations (§4.2), for the API's platform-admin calls.
+CREATE FUNCTION veho.create_tenant(p_name text) RETURNS uuid
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$ INSERT INTO veho.tenants (name) VALUES (p_name) RETURNING id $$;
+
+CREATE FUNCTION veho.put_location(p_id text, p_level text, p_parent text) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	INSERT INTO veho.locations (id, level, parent_id) VALUES (p_id, p_level, p_parent)
+	ON CONFLICT (id) DO UPDATE SET level = EXCLUDED.level, parent_id = EXCLUDED.parent_id
+$$;
+
+-- What crosses tenants (§4.3): identifiers and tenants only.
+CREATE FUNCTION veho.expired_transfers(p_limit int) RETURNS TABLE (tenant_id uuid, transfer_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT t.tenant_id, t.id FROM veho.transfers t
+	WHERE t.state IN ('COPYING', 'VERIFYING') AND t.lease_expires_at < now()
+	ORDER BY t.lease_expires_at
+	LIMIT p_limit
+$$;
+
+CREATE FUNCTION veho.settled_jobs_before(p_before timestamptz, p_limit int) RETURNS TABLE (tenant_id uuid, job_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT j.tenant_id, j.id FROM veho.jobs j
+	WHERE j.settled_at < p_before
+	ORDER BY j.settled_at
+	LIMIT p_limit
+$$;
+
+REVOKE ALL ON FUNCTION veho.create_tenant(text), veho.put_location(text, text, text),
+	veho.expired_transfers(int), veho.settled_jobs_before(timestamptz, int) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.create_tenant(text), veho.put_location(text, text, text) TO veho_api;
+GRANT EXECUTE ON FUNCTION veho.expired_transfers(int), veho.settled_jobs_before(timestamptz, int) TO veho_worker;
+
+-- Privileges (§2).
+GRANT SELECT ON veho.tenants, veho.locations TO veho_api, veho_worker;
+GRANT SELECT, INSERT, UPDATE, DELETE ON veho.endpoints, veho.policies TO veho_api;
+GRANT SELECT, INSERT, UPDATE ON veho.jobs, veho.transfers, veho.parts TO veho_api;
+GRANT SELECT ON veho.executors TO veho_api;
+GRANT SELECT ON veho.endpoints, veho.policies TO veho_worker;
+GRANT SELECT, INSERT, UPDATE, DELETE ON veho.jobs, veho.transfers, veho.parts, veho.executors TO veho_worker;

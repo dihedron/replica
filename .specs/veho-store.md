@@ -2,7 +2,7 @@
 
 This file specifies chunk C2 (`veho-implementation-plan.md`): the database roles, the schema of the core tables, row-level security, migrations, the connection pools and the start-up checks. It is part of `veho_specification.md` and settles the threat model's open point on "the exact roles and privileges of the database" (`veho-threat-model.md`, T-03, T-17).
 
-Status: draft, 2026-11-21, for review.
+Status: approved 2026-11-21 (roles of §2 and the split of §1); implemented in C2.
 
 ## 1. Scope
 
@@ -18,11 +18,11 @@ Created by operations, once, as a superuser, with `packaging/postgres/roles.sql`
 | :--- | :--- | :--- | :--- |
 | `veho_migrator` | the database `veho`, the schema `veho` and every object in it | DDL; nothing at run time | `veho migrate` |
 | `veho_dbos` | the schema `dbos` (DBOS creates its tables there at launch) | DBOS's own tables | the DBOS context of every node |
-| `veho_api` | nothing | DML on the tenant tables under row-level security; `SELECT` on `locations` and `executors`; `INSERT`, `SELECT`, `UPDATE` on DBOS's tables (transactional enqueue, EXT-1) | the API handlers |
-| `veho_worker` | nothing | DML on `jobs`, `transfers`, `parts` under row-level security; `SELECT` on `tenants`, `endpoints`, `policies`, `locations`; DML on `executors`; the housekeeping functions (§4.3) | workflow steps, the reconciler, housekeeping |
+| `veho_api` | nothing | under row-level security: all DML on `endpoints` and `policies`, `SELECT`, `INSERT`, `UPDATE` (no `DELETE`) on `jobs`, `transfers`, `parts`; `SELECT` on `locations` and `executors`; `INSERT`, `SELECT`, `UPDATE` on DBOS's tables (transactional enqueue, EXT-1) | the API handlers |
+| `veho_worker` | nothing | all DML on `jobs`, `transfers`, `parts` under row-level security; `SELECT` on `tenants`, `endpoints`, `policies`, `locations`; DML on `executors`; the housekeeping functions (§4.3) | workflow steps, the reconciler, housekeeping |
 
-- None is a superuser or has `BYPASSRLS`; only `veho_migrator` and `veho_dbos` own objects, and owners are subject to row-level security too (`FORCE ROW LEVEL SECURITY`).
-- `PUBLIC` loses every privilege on the database and the schemas. `search_path` is set per role (`veho, dbos` for the application roles), so no statement depends on `public`.
+- None is a superuser or has `BYPASSRLS`; only `veho_migrator` and `veho_dbos` own objects. The owner of the tables, `veho_migrator`, is exempt from row-level security (no `FORCE`): that is what lets the `SECURITY DEFINER` functions of §4.2 and §4.3 work, and the owner is not used at run time otherwise.
+- `PUBLIC` loses every privilege on the database and the schemas. `search_path` is set per role (`veho, dbos` for the API, `veho` for the worker and the migrator, `dbos` for DBOS), and the application qualifies every name anyway. `roles.sql` creates the schemas; migration 001 grants `USAGE` on `veho` again, so a schema recreated by the migrator (as the tests do) works.
 - DBOS's tables are created by `veho_dbos` after the roles exist; `roles.sql` therefore sets `ALTER DEFAULT PRIVILEGES FOR ROLE veho_dbos IN SCHEMA dbos` for `veho_api` and `veho_worker`, so that the grants follow every table DBOS creates or adds in a later version.
 - Why two application roles (SEC-5, T-03): the API acts for an authenticated tenant; the worker acts for the tenant of a transfer. Both are scoped by row-level security; the worker cannot create or change endpoints, policies or tenants, so a bug in a step cannot rewrite configuration, and the API cannot touch `executors`.
 
@@ -59,7 +59,7 @@ executors(id text PK, region text, app_version text, started_at, last_seen)
 ```
 
 - **Cross-tenant references are impossible** by construction: every reference between tenant tables is a composite foreign key on `(tenant_id, id)` (SEC-6).
-- `jobs.policy` and `transfers.position` are immutable snapshots (DP-9): a trigger refuses an `UPDATE` that changes them, and `jobs.source_*`, `tenant_id` and `id`.
+- `jobs.policy` and `transfers.position` are immutable snapshots (DP-9): a trigger refuses, with SQLSTATE 23000, an `UPDATE` that changes `jobs.id`, `tenant_id`, `idempotency_key`, `source_endpoint_id`, `source_path`, `policy`, `policy_ref` or `created_at`, or `transfers.id`, `tenant_id`, `job_id`, `destination_endpoint_id`, `position` or `dest_path`. `jobs.source_info` stays mutable: the size and digests are known only after the first read.
 - Indexes beyond the keys: `transfers (tenant_id, state)`, `transfers (lease_expires_at) WHERE state IN (COPYING, VERIFYING)`, `jobs (tenant_id, state, created_at)`.
 - `ON DELETE CASCADE` only from a job to its transfers and parts, for retention (`veho-audit-housekeeping.md` §3); nothing else cascades.
 
@@ -71,7 +71,7 @@ The application sets the tenant per transaction: `SELECT set_config('veho.tenant
 
 ### 4.2 Policies
 
-On every tenant table (`endpoints`, `policies`, `jobs`, `transfers`, `parts`): `ENABLE` and `FORCE ROW LEVEL SECURITY`, and one policy `USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant())` for the application roles. `tenants` is visible to the API and the worker only for the current tenant (`id = veho.current_tenant()`).
+On every tenant table (`endpoints`, `policies`, `jobs`, `transfers`, `parts`): `ENABLE ROW LEVEL SECURITY` and one policy `USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant())` for the application roles. `tenants` is visible to the API and the worker only for the current tenant (`id = veho.current_tenant()`).
 
 Platform operations (creating a tenant, registering a location) are API calls of the `platform-admin` role (SEC-4). They run as `veho_api` through `SECURITY DEFINER` functions owned by `veho_migrator` (`veho.create_tenant`, `veho.put_location`), which check their arguments and cannot be used to read another tenant's rows.
 
@@ -81,7 +81,7 @@ Two things must see every tenant: the reconciler (expired leases, `veho-job-life
 
 ## 5. Migrations
 
-- SQL files embedded in the binary (`migrations/NNN_description.sql`), applied in order by `veho migrate` as `veho_migrator`, each in its own transaction, recorded in `veho.schema_migrations (version, name, sha256, applied_at)`, under an advisory lock so that two nodes cannot migrate at once. An applied file whose checksum changed stops the migration: a change is a new file. (Copied from ligo's `internal/store/migrate`.)
+- SQL files embedded in the binary (`migrations/NNN_description.sql`), applied in order by `veho migrate` as `veho_migrator` (DSN from the variable `VEHO_MIGRATOR_DATABASE_URL`, or the one named by `--dsn-env`; never on the command line), each in its own transaction, recorded in `veho.schema_migrations (version, name, sha256, applied_at)`, under an advisory lock so that two nodes cannot migrate at once. An applied file whose checksum changed stops the migration: a change is a new file. (Copied from ligo's `internal/store/migrate`.)
 - Migrations are expand-only within a release series (`veho-acceptance-matrix.md` §3); `veho serve` refuses to start when the database is ahead of or behind the migrations it carries (`schema_migrations` against its embedded list), naming the difference.
 
 ## 6. Connections
@@ -117,4 +117,4 @@ The checks of the unwrap key (C3) and of the clock (C6) join this list in their 
 - **STO-9** The start-up checks pass on the lab, and fail (in tests) on a standby, on `synchronous_commit = local` and on an empty `synchronous_standby_names`.
 - **STO-10** A job inserted and a DBOS workflow enqueued in one `veho_api` transaction commit or roll back together (INV-1, EXT-1), with the roles of §2.
 
-Tests: integration tests, tag `integration`, against `VEHO_TEST_DATABASE_URL` (as `veho_migrator`), `VEHO_TEST_API_DATABASE_URL` and `VEHO_TEST_WORKER_DATABASE_URL`, skipped when unset; the lab sets them (`lab.sh env`). Unit tests for the DSN checks and the migration scan. A fuzz test of the migration file scanner is not worth it (fixed inputs).
+Tests: integration tests, tag `integration`, against `VEHO_TEST_DATABASE_URL` (as `veho_migrator`), `VEHO_TEST_API_DATABASE_URL`, `VEHO_TEST_WORKER_DATABASE_URL` and `VEHO_TEST_DBOS_DATABASE_URL`, skipped when unset; the lab sets them (`lab.sh env`). Unit tests for the DSN checks and the migration scan. A fuzz test of the migration file scanner is not worth it (fixed inputs).

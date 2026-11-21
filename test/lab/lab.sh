@@ -121,7 +121,7 @@ cmd_status() {
 
 cmd_env() {
 	require_lab
-	printf 'export VEHO_TEST_DATABASE_URL=%q\n' "$(db_dsn)"
+	db_env
 	s3_env
 }
 

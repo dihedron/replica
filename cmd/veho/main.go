@@ -22,22 +22,19 @@ func main() {
 	}
 
 	command := Command{}
-	if args, err := flags.Parse(&command); err != nil {
-		switch flagsErr := err.(type) {
-		case flags.ErrorType:
-			if flagsErr == flags.ErrHelp {
-				os.Exit(0)
-			}
-			os.Exit(1)
-		case *flags.Error:
-			fmt.Fprintf(os.Stderr, "error: %s (%T)\n", err, err)
-			os.Exit(1)
-		default:
-			os.Exit(1)
+	parser := flags.NewParser(&command, flags.HelpFlag|flags.PassDoubleDash)
+	// without a subcommand, the root's Execute explains what to run
+	parser.SubcommandsOptional = true
+	if _, err := parser.Parse(); err != nil {
+		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type == flags.ErrHelp {
+			_, _ = fmt.Fprintln(os.Stdout, err)
+			os.Exit(0)
 		}
-	} else {
-		err = command.Execute(args)
-		if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	if parser.Active == nil {
+		if err := command.Execute(nil); err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}

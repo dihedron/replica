@@ -2,10 +2,11 @@ package main
 
 import "errors"
 
-// Command is the root of the command line. The subcommands (serve, migrate,
-// job, policy, ...) are added by the chunks that implement them
-// (.specs/veho-implementation-plan.md).
-type Command struct{}
+// Command is the root of the command line. The subcommands are added by the
+// chunks that implement them (.specs/veho-implementation-plan.md).
+type Command struct {
+	Migrate MigrateCommand `command:"migrate" description:"Apply the database migrations embedded in this binary, as veho_migrator"`
+}
 
 // Execute runs when no subcommand is given.
 func (cmd *Command) Execute(_ []string) error {

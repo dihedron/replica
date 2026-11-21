@@ -8,7 +8,7 @@ A client submits the URL of an object that is already available to the service (
 
 ## Status
 
-**Specification phase.** There is no implementation yet: `internal/step` and `internal/workflow` are experiments with DBOS that the implementation will replace. The specification is a draft waiting for review (`.specs/veho_specification.md`), and the work agreed for later is in `.specs/veho-backlog.md`.
+**Early implementation.** Done: the distribution policy engine (`internal/policy`, `internal/topology`), the state store (`internal/store`: roles, schema, row-level security, `veho migrate`, start-up checks) and the lab (`test/lab`). Next: secrets (C3), audit (C4) and plugins (C5), per `.specs/veho-implementation-plan.md`; the work agreed for later is in `.specs/veho-backlog.md`. Nothing is usable end to end yet.
 
 The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three control-plane regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`, with the harness in `test/spikes/dbos`.
 
@@ -30,8 +30,23 @@ The project follows Spec-Driven Development (`AGENTS.md`): code starts from an a
 | `veho-distribution-policy.md` | Distribution policy: destinations, M of N completion, topology spread |
 | `veho-latency-envelope.md` | Supported latency and jitter, degradation, tuning |
 | `veho-audit-housekeeping.md` | Audit log and housekeeping (zombies, retention, pruning) |
+| `veho-store.md` | State store: database roles, schema, row-level security, migrations |
+| `veho-lab.md` | The lab: three regions in one LXD VM, emulated WAN, Patroni and etcd, Garage |
 | `veho-implementation-plan.md` | The implementation chunks |
 | `veho-backlog.md` | Work agreed for later |
+
+## Testing
+
+```bash
+go test ./...                    # unit tests
+test/lab/lab.sh preflight        # can this machine run the lab? (Linux, LXD 5.21+, KVM)
+test/lab/lab.sh up               # three regions: etcd, Patroni, PostgreSQL 16, Garage (about 10 minutes)
+test/lab/lab.sh selftest         # latency, partitions, quorum, failover, S3
+test/lab/lab.sh test             # integration tests (-tags integration) against the lab
+test/lab/lab.sh reset            # back to the empty baseline in about a minute
+```
+
+The integration tests read their databases and S3 endpoints from `VEHO_TEST_*` variables (`test/lab/lab.sh env`) and skip when they are unset. See `.specs/veho-lab.md`.
 
 ## Building
 

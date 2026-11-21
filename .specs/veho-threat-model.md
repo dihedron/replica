@@ -100,5 +100,5 @@ Every threat that names an acceptance scenario is checked there (`veho-acceptanc
 
 - the retention policy of the DBOS tables, jobs and audit entries (T-28), and its acceptance scenario;
 - the quota catalog (T-11, T-22), which `veho-tenancy.md` §4 lists but does not number;
-- the exact roles and privileges of the database (T-03, T-17), to be written with the migrations;
+- the exact roles and privileges of the database (T-03, T-17): **settled** in `veho-store.md` §2 (approved 2026-11-21);
 - the hash chain of the audit log (T-18), if the review wants it in v1.
