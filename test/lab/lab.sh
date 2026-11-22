@@ -52,8 +52,9 @@ commands:
                             nodes deploy, then the daytime acceptance suite
                             (go test -tags acceptance ./test/acceptance)
   campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long
-                            the long campaigns (AC-17, AC-18, AC-1 and AC-8
-                            at full size), overnight; logs in .evidence/
+                            the long campaigns (AC-17, AC-18, AC-1 at 4 GiB
+                            and AC-8 for 30 minutes), overnight; logs in
+                            .evidence/
   node start|stop|restart NAME
   node kill NAME [--stay-down]
                             SIGKILL veho; --stay-down keeps it down until

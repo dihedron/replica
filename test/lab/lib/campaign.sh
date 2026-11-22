@@ -43,15 +43,17 @@ campaign_soak() {
 	LAB_SOAK_DURATION="$duration" LAB_SOAK_JOBS="$jobs" campaign_go "$dir" 24h -run TestCampaignSoak
 }
 
-# campaign_long DIR: AC-1 at 10 GiB and AC-8 with a 30-minute outage; the
-# copies need 30 GiB in the lab VM.
+# campaign_long DIR: AC-1 at 4 GiB and AC-8 with a 30-minute outage. The
+# matrix asks for 10 GiB, whose copies would need 30 GiB in the lab VM and
+# its disk grown past what the host has free; 4 GiB (64 parts, 12 GiB of
+# copies) was decided on 2026-11-22 (veho-lab-l3.md §6).
 campaign_long() {
 	local dir="$1" free
 	free="$(lxd exec lxd -- df --output=avail -BG / | tail -1 | tr -dc 0-9)"
-	((free >= 35)) || die "campaign long: the lab VM has ${free} GiB free, 35 are needed (LAB_LXD_DISK)"
-	section "Campaign long: AC-1 at 10 GiB, AC-8 with a 30-minute outage"
+	((free >= 16)) || die "campaign long: the lab VM has ${free} GiB free, 16 are needed"
+	section "Campaign long: AC-1 at 4 GiB, AC-8 with a 30-minute outage"
 	wan_set fiber1 >/dev/null
-	LAB_AC1_SIZE=10737418240 LAB_AC8_OUTAGE=30m campaign_go "$dir" 4h -run 'TestAC01|TestAC08'
+	LAB_AC1_SIZE=4294967296 LAB_AC8_OUTAGE=30m campaign_go "$dir" 4h -run 'TestAC01|TestAC08'
 }
 
 # campaign_wan24 DIR: AC-18. Light load (one job at a time, no chaos) while

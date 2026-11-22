@@ -119,9 +119,9 @@ The lab is a test environment on one machine. Its threats concern the developer'
 | `soak` (AC-17) | 8 h | 50 concurrent jobs, kept at that level (sizes 64 MiB to 2 GiB, random policies over the 9 destinations). A chaos loop every 2 to 10 min at random: kill a node (half with `--stay-down`, for 5 min), pause a node past its lease, kill the Patroni leader, partition a region for 2 min, a 503 fault for 5 min | Every job `SUCCEEDED`; every object's digest equals the source's; no duplicate final write (the proxy's log); no transfer left `RUNNING` without a live executor |
 | `wan24` (AC-18) | 24 h | Idle, plus 1 job a minute, profile `fiber1`, switched to `fiber2` and back every 2 h; then 1 h each at `rtt20`, `rtt30`, `rtt40` | No etcd leader change and no Patroni failover in the logs |
 | `envelope` (AC-24) | 3 nights of about 10 h | 6 RTTs × 5 jitter levels = 30 cells of 1 h of light load, 10 cells a night | Per cell: elections, demotions, acceptance p50 and p99, primary-kill recovery and adoption time, written to `veho-latency-envelope.md` §6 |
-| `long` (AC-1, AC-8) | 2 h | AC-1 at 10 GiB; AC-8 with a 30 min outage | As in §4 |
+| `long` (AC-1, AC-8) | 2 h | AC-1 at 4 GiB (**amended** 2026-11-22: 10 GiB needs the lab VM's disk grown past what the host has free); AC-8 with a 30 min outage | As in §4 |
 
-AC-1 at 10 GiB writes 30 GiB in the lab VM (the source and two copies). The VM's disk is 40 GiB by default, so `long` needs `LAB_LXD_DISK=80GiB`, which `lab.sh` grows with the VM stopped.
+AC-1 at 10 GiB would write 30 GiB in the lab VM (the source and two copies), which needs its disk grown to 80 GiB; the host had 38 GB free, so `long` runs AC-1 at 4 GiB (64 parts, 12 GiB written), which exercises the same paths. A 10 GiB run waits for a host with room.
 
 ## 7. Tests of C9 itself
 
