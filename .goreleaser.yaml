@@ -148,6 +148,11 @@ nfpms:
         dst: /usr/lib/systemd/system/veho.service
         file_info:
           mode: 0644
+      # run once by the database administrator (the Setup Guide)
+      - src: ./packaging/postgres/roles.sql
+        dst: /usr/share/veho/postgres/roles.sql
+        file_info:
+          mode: 0644
     scripts:
       postinstall: ./packaging/postinstall.sh
 
@@ -184,6 +189,13 @@ sboms:
     artifacts: package
     disable: false
 
+checksum:
+  name_template: "checksums.txt"
+  # the release documents too (make release builds them first): the signature
+  # of the checksums file then covers them like the packages (T-21)
+  extra_files:
+    - glob: ./build/docs/*.pdf
+
 # the checksums file covers every archive, package and SBOM: its detached
 # signature, made with the packaging key whose fingerprint is in
 # GPG_FINGERPRINT, vouches for all of them. make snapshot skips it when
@@ -204,6 +216,9 @@ signs:
       - "${artifact}"
 
 release:
+  # the release documents (make release builds them first): .specs/veho-docs.md
+  extra_files:
+    - glob: ./build/docs/*.pdf
   footer: |
     ---
     Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
