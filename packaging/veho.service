@@ -1,0 +1,44 @@
+[Unit]
+Description=veho, durable replication of large objects across regions
+After=network-online.target
+Wants=network-online.target
+# never give up restarting: the back-off below keeps it cheap
+StartLimitIntervalSec=0
+
+[Service]
+User=veho
+Group=veho
+# VEHO_* settings: the state store's addresses, the identity provider, the
+# secret backends (.specs/veho-acceptance-matrix.md §2); root-owned, 0640
+EnvironmentFile=/etc/veho/veho.env
+ExecStart=/usr/bin/veho serve
+KillSignal=SIGTERM
+# a transfer checkpoints at the end of the part it is copying (.specs/veho-job-lifecycle.md §4)
+TimeoutStopSec=60
+Restart=on-failure
+# back off from 5s to 5min while a dependency (the state store without a quorum) keeps it down
+RestartSec=5
+RestartSteps=10
+RestartMaxDelaySec=300
+
+# confinement (.specs/veho-threat-model.md, T-19 and T-24)
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallFilter=@system-service
+# no core dumps: a node holds tenants' credentials in memory
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

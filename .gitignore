@@ -32,4 +32,17 @@ go.work.sum
 # .idea/
 # .vscode/
 
+# Release documents and their intermediate files (docs/build.sh)
+build/
+
+# Profiling data
+*.prof
+*.pprof
+*.mprof
+
+# lab test environment (test/lab)
+test/lab/.state/
+test/lab/.evidence/
+test/lab/lab.local.env
+
 _test/.env

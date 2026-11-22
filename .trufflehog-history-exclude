@@ -1,0 +1,6 @@
+# Paths TruffleHog skips in the history scans (CI and "make secrets"),
+# relative to the repository root. Keep this list to findings that are known
+# to be fake and cannot be removed without rewriting history.
+# - commit ba8ed02 (C2) has a fake multi-host DSN with password "x" in this test;
+#   the password was removed later, but the commit is still in history
+^internal/store/store_test\.go$

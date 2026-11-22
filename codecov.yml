@@ -1,0 +1,16 @@
+# Codecov: test tooling (the disposable DBOS spike) is left out of the
+# coverage figures, as in sonar-project.properties.
+ignore:
+  - "test/spikes/**"
+
+# The same bar as SonarCloud's gate on new code; the project may dip by 1%
+# (error-only branches) without failing a pull request.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%

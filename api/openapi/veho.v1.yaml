@@ -1,0 +1,1619 @@
+openapi: 3.1.0
+info:
+  title: veho API
+  version: v1
+  description: >-
+    Durable replication of large objects to many destinations. Generated from api/veho/v1/*.proto (.specs/veho-api-server.md); gRPC serves the same services. Errors are RFC 9457 problem+json documents with a stable code.
+
+
+    ## veho.v1.PolicyService
+
+
+    PolicyService manages named policies and who may use them.
+
+
+    ## veho.v1.EndpointService
+
+
+    EndpointService manages the tenant's storage endpoints.
+
+
+    ## veho.v1.SecretService
+
+
+    SecretService manages the tenant's secrets: write-only (SEC-9).
+
+
+    ## veho.v1.TenantService
+
+
+    TenantService manages the tenants: platform administrators only.
+
+
+    ## veho.v1.AdminService
+
+
+    AdminService administers the caller's tenant: its API keys, its
+
+     entitlements and its settings.
+
+    ## veho.v1.JobService
+
+
+    JobService accepts, shows, cancels and retries replication jobs.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://veho.example:8443
+security:
+  - bearer: []
+components:
+  responses:
+    Problem:
+      description: An error, as RFC 9457 problem+json (.specs/veho-api-server.md §6).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - code
+        - retryable
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+          description: The stable reason of the error, as in the gRPC ErrorInfo.
+        retryable:
+          type: boolean
+    google.protobuf.Struct:
+      type: object
+      additionalProperties:
+        $ref: '#/components/schemas/google.protobuf.Value'
+      description: A JSON object whose property values may be any JSON value.
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - "2023-01-15T01:30:15.01Z"
+        - "2024-12-25T12:00:00Z"
+      format: date-time
+      description: A point in time in RFC 3339 format, with up to nanosecond precision. Output uses UTC (`Z`); input may use an offset from UTC.
+    google.protobuf.Value:
+      oneOf:
+        - type: "null"
+        - type: number
+        - type: string
+        - type: boolean
+        - type: array
+        - type: object
+          additionalProperties: true
+      description: 'Any JSON value: `null`, number, string, boolean, array, or object.'
+    veho.v1.ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        principal:
+          type: string
+          title: principal
+        role:
+          type: string
+          title: role
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        expires_at:
+          title: expires_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        revoked_at:
+          title: revoked_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        last_used_at:
+          title: last_used_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: ApiKey
+      additionalProperties: false
+    veho.v1.Copies:
+      type: object
+      properties:
+        done:
+          type: integer
+          title: done
+          format: int32
+        total:
+          type: integer
+          title: total
+          format: int32
+      title: Copies
+      additionalProperties: false
+    veho.v1.CreateJobRequest:
+      type: object
+      properties:
+        idempotency_key:
+          type: string
+          title: idempotency_key
+        source:
+          title: source
+          $ref: '#/components/schemas/veho.v1.ObjectRef'
+        policy:
+          title: policy
+          description: |-
+            An inline policy document (.specs/veho-distribution-policy.md), or
+             policy_ref: exactly one of them.
+          $ref: '#/components/schemas/google.protobuf.Struct'
+        labels:
+          type: object
+          title: labels
+          additionalProperties:
+            type: string
+            title: value
+        policy_ref:
+          title: policy_ref
+          $ref: '#/components/schemas/veho.v1.PolicyRef'
+      title: CreateJobRequest
+      additionalProperties: false
+    veho.v1.CreateKeyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+          description: The principal's name, unique in the tenant.
+        role:
+          type: string
+          title: role
+        expires_in:
+          type: string
+          title: expires_in
+          format: int64
+          description: Seconds from now; 0 never expires.
+      title: CreateKeyRequest
+      additionalProperties: false
+    veho.v1.CreatePolicyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        policy:
+          title: policy
+          $ref: '#/components/schemas/google.protobuf.Struct'
+      title: CreatePolicyRequest
+      additionalProperties: false
+    veho.v1.CreateTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+      title: CreateTenantRequest
+      additionalProperties: false
+    veho.v1.CreatedKey:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        key:
+          type: string
+          title: key
+          description: 'The key: shown once.'
+      title: CreatedKey
+      additionalProperties: false
+    veho.v1.Empty:
+      type: object
+      title: Empty
+      additionalProperties: false
+    veho.v1.Endpoint:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        driver:
+          type: string
+          title: driver
+        location:
+          type: string
+          title: location
+        config:
+          title: config
+          $ref: '#/components/schemas/google.protobuf.Struct'
+        credential_ref:
+          type: string
+          title: credential_ref
+          description: db://<secret name>, or empty.
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Endpoint
+      additionalProperties: false
+    veho.v1.EndpointTest:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          title: ok
+        step:
+          type: string
+          title: step
+          description: 'The step that failed: open, stat, write, delete.'
+        code:
+          type: string
+          title: code
+        message:
+          type: string
+          title: message
+      title: EndpointTest
+      additionalProperties: false
+    veho.v1.Entitlement:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        kind:
+          type: string
+          title: kind
+          description: oidc or spiffe.
+        issuer:
+          type: string
+          title: issuer
+        subject:
+          type: string
+          title: subject
+        group:
+          type: string
+          title: group
+        role:
+          type: string
+          title: role
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Entitlement
+      additionalProperties: false
+    veho.v1.Grant:
+      type: object
+      properties:
+        grantee:
+          type: string
+          title: grantee
+          description: key:<name>, oidc:<sub>, spiffe:<id> or group:<name>.
+        permission:
+          type: string
+          title: permission
+          description: submit, read or manage.
+      title: Grant
+      additionalProperties: false
+    veho.v1.Grants:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        grants:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Grant'
+          title: grants
+      title: Grants
+      additionalProperties: false
+    veho.v1.Job:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        state:
+          type: string
+          title: state
+        source:
+          title: source
+          $ref: '#/components/schemas/veho.v1.Source'
+        policy_ref:
+          title: policy_ref
+          description: The named policy the job was submitted under, if any.
+          $ref: '#/components/schemas/veho.v1.PolicyRef'
+        labels:
+          type: object
+          title: labels
+          additionalProperties:
+            type: string
+            title: value
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updated_at:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        deadline_at:
+          title: deadline_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        satisfied_at:
+          title: satisfied_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        completed_at:
+          title: completed_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        settled_at:
+          title: settled_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        copies:
+          title: copies
+          $ref: '#/components/schemas/veho.v1.Copies'
+        progress:
+          oneOf:
+            - type: number
+              format: double
+            - type: string
+              enum:
+                - NaN
+                - Infinity
+                - -Infinity
+          title: progress
+        last_error:
+          title: last_error
+          $ref: '#/components/schemas/veho.v1.Problem'
+        transfers:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Transfer'
+          title: transfers
+      title: Job
+      additionalProperties: false
+    veho.v1.ListEndpointsResponse:
+      type: object
+      properties:
+        endpoints:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Endpoint'
+          title: endpoints
+      title: ListEndpointsResponse
+      additionalProperties: false
+    veho.v1.ListEntitlementsResponse:
+      type: object
+      properties:
+        entitlements:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Entitlement'
+          title: entitlements
+      title: ListEntitlementsResponse
+      additionalProperties: false
+    veho.v1.ListJobsResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Job'
+          title: jobs
+        next_cursor:
+          type: string
+          title: next_cursor
+      title: ListJobsResponse
+      additionalProperties: false
+    veho.v1.ListKeysResponse:
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.ApiKey'
+          title: keys
+      title: ListKeysResponse
+      additionalProperties: false
+    veho.v1.ListPoliciesResponse:
+      type: object
+      properties:
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Policy'
+          title: policies
+      title: ListPoliciesResponse
+      additionalProperties: false
+    veho.v1.ListSecretsResponse:
+      type: object
+      properties:
+        secrets:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Secret'
+          title: secrets
+      title: ListSecretsResponse
+      additionalProperties: false
+    veho.v1.ListTenantsResponse:
+      type: object
+      properties:
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Tenant'
+          title: tenants
+      title: ListTenantsResponse
+      additionalProperties: false
+    veho.v1.ListTransfersResponse:
+      type: object
+      properties:
+        transfers:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Transfer'
+          title: transfers
+      title: ListTransfersResponse
+      additionalProperties: false
+    veho.v1.ObjectRef:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          title: endpoint
+        path:
+          type: string
+          title: path
+      title: ObjectRef
+      additionalProperties: false
+      description: ObjectRef is an object on one of the tenant's endpoints.
+    veho.v1.Policy:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        version:
+          type: integer
+          title: version
+          format: int32
+        policy:
+          title: policy
+          $ref: '#/components/schemas/google.protobuf.Struct'
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Policy
+      additionalProperties: false
+    veho.v1.PolicyRef:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        version:
+          type: integer
+          title: version
+          format: int32
+      title: PolicyRef
+      additionalProperties: false
+      description: PolicyRef names a version of a named policy; version 0 is the latest.
+    veho.v1.Problem:
+      type: object
+      properties:
+        code:
+          type: string
+          title: code
+        message:
+          type: string
+          title: message
+      title: Problem
+      additionalProperties: false
+      description: Problem is a job's or a transfer's last error.
+    veho.v1.Quotas:
+      type: object
+      properties:
+        max_destinations:
+          type: integer
+          title: max_destinations
+          format: int32
+        max_active_jobs:
+          type: integer
+          title: max_active_jobs
+          format: int32
+      title: Quotas
+      additionalProperties: false
+    veho.v1.Secret:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        version:
+          type: integer
+          title: version
+          format: int32
+        kek_version:
+          type: integer
+          title: kek_version
+          format: int32
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        updated_at:
+          title: updated_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Secret
+      additionalProperties: false
+      description: 'Secret is what the API shows of a secret: never its value.'
+    veho.v1.Source:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          title: endpoint
+        path:
+          type: string
+          title: path
+        size:
+          type: string
+          title: size
+          format: int64
+        version:
+          type: string
+          title: version
+      title: Source
+      additionalProperties: false
+    veho.v1.Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        name:
+          type: string
+          title: name
+        state:
+          type: string
+          title: state
+          description: active or suspended.
+        quotas:
+          title: quotas
+          $ref: '#/components/schemas/veho.v1.Quotas'
+        settings:
+          title: settings
+          $ref: '#/components/schemas/veho.v1.TenantSettings'
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Tenant
+      additionalProperties: false
+    veho.v1.TenantSettings:
+      type: object
+      properties:
+        inline_policies:
+          type: string
+          title: inline_policies
+          description: all, granted or none.
+      title: TenantSettings
+      additionalProperties: false
+    veho.v1.Transfer:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        endpoint:
+          type: string
+          title: endpoint
+        path:
+          type: string
+          title: path
+        position:
+          type: object
+          title: position
+          additionalProperties:
+            type: string
+            title: value
+        state:
+          type: string
+          title: state
+        bytes_done:
+          type: string
+          title: bytes_done
+          format: int64
+        bytes_total:
+          type: string
+          title: bytes_total
+          format: int64
+        attempt:
+          type: integer
+          title: attempt
+          format: int32
+        last_error:
+          title: last_error
+          $ref: '#/components/schemas/veho.v1.Problem'
+        finished_at:
+          title: finished_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Transfer
+      additionalProperties: false
+    veho.v1.ValidatePolicyRequest:
+      type: object
+      properties:
+        policy:
+          title: policy
+          $ref: '#/components/schemas/google.protobuf.Struct'
+      title: ValidatePolicyRequest
+      additionalProperties: false
+    veho.v1.ValidatePolicyResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+          title: valid
+        code:
+          type: string
+          title: code
+          description: The first problem, when not valid.
+        message:
+          type: string
+          title: message
+      title: ValidatePolicyResponse
+      additionalProperties: false
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: An API key (veho_...), an OIDC token or a JWT-SVID; or a client X.509-SVID over mTLS.
+paths:
+  /v1/admin/entitlements:
+    get:
+      tags:
+        - veho.v1.AdminService
+      summary: ListEntitlements
+      operationId: veho.v1.AdminService.ListEntitlements
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListEntitlementsResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.AdminService
+      summary: CreateEntitlement
+      operationId: veho.v1.AdminService.CreateEntitlement
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.Entitlement'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Entitlement'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/entitlements/{id}:
+    delete:
+      tags:
+        - veho.v1.AdminService
+      summary: DeleteEntitlement
+      operationId: veho.v1.AdminService.DeleteEntitlement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/keys:
+    get:
+      tags:
+        - veho.v1.AdminService
+      summary: ListKeys
+      operationId: veho.v1.AdminService.ListKeys
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListKeysResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.AdminService
+      summary: CreateKey
+      description: CreateKey returns the key in this answer only.
+      operationId: veho.v1.AdminService.CreateKey
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.CreateKeyRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.CreatedKey'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/keys/{id}:revoke:
+    post:
+      tags:
+        - veho.v1.AdminService
+      summary: RevokeKey
+      operationId: veho.v1.AdminService.RevokeKey
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/settings:
+    get:
+      tags:
+        - veho.v1.AdminService
+      summary: GetSettings
+      operationId: veho.v1.AdminService.GetSettings
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.TenantSettings'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    put:
+      tags:
+        - veho.v1.AdminService
+      summary: UpdateSettings
+      operationId: veho.v1.AdminService.UpdateSettings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.TenantSettings'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.TenantSettings'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/endpoints:
+    get:
+      tags:
+        - veho.v1.EndpointService
+      summary: ListEndpoints
+      operationId: veho.v1.EndpointService.ListEndpoints
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListEndpointsResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.EndpointService
+      summary: CreateEndpoint
+      operationId: veho.v1.EndpointService.CreateEndpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.Endpoint'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Endpoint'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/endpoints/{name}:
+    get:
+      tags:
+        - veho.v1.EndpointService
+      summary: GetEndpoint
+      operationId: veho.v1.EndpointService.GetEndpoint
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Endpoint'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    put:
+      tags:
+        - veho.v1.EndpointService
+      summary: UpdateEndpoint
+      description: |-
+        UpdateEndpoint changes the location, configuration and credential
+         reference; the name and driver stay.
+      operationId: veho.v1.EndpointService.UpdateEndpoint
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                driver:
+                  type: string
+                  title: driver
+                location:
+                  type: string
+                  title: location
+                config:
+                  title: config
+                  $ref: '#/components/schemas/google.protobuf.Struct'
+                credential_ref:
+                  type: string
+                  title: credential_ref
+                  description: db://<secret name>, or empty.
+                created_at:
+                  title: created_at
+                  $ref: '#/components/schemas/google.protobuf.Timestamp'
+              title: Endpoint
+              additionalProperties: false
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Endpoint'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags:
+        - veho.v1.EndpointService
+      summary: DeleteEndpoint
+      operationId: veho.v1.EndpointService.DeleteEndpoint
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/endpoints/{name}:test:
+    post:
+      tags:
+        - veho.v1.EndpointService
+      summary: TestEndpoint
+      description: TestEndpoint probes the endpoint with its credentials.
+      operationId: veho.v1.EndpointService.TestEndpoint
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.EndpointTest'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/jobs:
+    get:
+      tags:
+        - veho.v1.JobService
+      summary: ListJobs
+      operationId: veho.v1.JobService.ListJobs
+      parameters:
+        - name: state
+          in: query
+          description: A state, or empty for all.
+          schema:
+            type: string
+            title: state
+        - name: since
+          in: query
+          description: Jobs created at or after since (RFC 3339).
+          schema:
+            type: string
+            examples:
+              - "2023-01-15T01:30:15.01Z"
+              - "2024-12-25T12:00:00Z"
+            format: date-time
+        - name: source_endpoint
+          in: query
+          schema:
+            type: string
+            title: source_endpoint
+        - name: label.key
+          in: query
+          schema:
+            type: string
+            title: key
+        - name: label.value
+          in: query
+          schema:
+            type: string
+            title: value
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            title: limit
+            format: int32
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            title: cursor
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListJobsResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.JobService
+      summary: CreateJob
+      description: |-
+        CreateJob accepts a job (202); the Idempotency-Key header or the
+         idempotency_key field makes a repeated request return the first job.
+      operationId: veho.v1.JobService.CreateJob
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.CreateJobRequest'
+        required: true
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Job'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/jobs/{id}:
+    get:
+      tags:
+        - veho.v1.JobService
+      summary: GetJob
+      description: |-
+        GetJob returns a job; over REST, ?wait=<seconds> with If-None-Match
+         holds the request until the job changes (304 at the end).
+      operationId: veho.v1.JobService.GetJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+        - name: wait
+          in: query
+          description: REST long poll (seconds, at most 60), with If-None-Match.
+          schema:
+            type: integer
+            title: wait
+            format: int32
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Job'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/jobs/{id}/transfers:
+    get:
+      tags:
+        - veho.v1.JobService
+      summary: ListTransfers
+      operationId: veho.v1.JobService.ListTransfers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListTransfersResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/jobs/{id}:cancel:
+    post:
+      tags:
+        - veho.v1.JobService
+      summary: CancelJob
+      operationId: veho.v1.JobService.CancelJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Job'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/jobs/{id}:retry:
+    post:
+      tags:
+        - veho.v1.JobService
+      summary: RetryJob
+      description: RetryJob restarts the failed and cancelled transfers of a FAILED job.
+      operationId: veho.v1.JobService.RetryJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Job'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/jobs/{id}:watch:
+    get:
+      tags:
+        - veho.v1.JobService
+      summary: WatchJob
+      description: WatchJob streams the job each time it changes, until it settles.
+      operationId: veho.v1.JobService.WatchJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Job'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/policies:
+    get:
+      tags:
+        - veho.v1.PolicyService
+      summary: ListPolicies
+      description: ListPolicies returns the latest version of each policy the caller sees.
+      operationId: veho.v1.PolicyService.ListPolicies
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListPoliciesResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.PolicyService
+      summary: CreatePolicy
+      description: CreatePolicy stores version 1 of a name, or its next version.
+      operationId: veho.v1.PolicyService.CreatePolicy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.CreatePolicyRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Policy'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/policies/{name}:
+    get:
+      tags:
+        - veho.v1.PolicyService
+      summary: GetPolicy
+      description: GetPolicy returns the latest version, or the one asked for.
+      operationId: veho.v1.PolicyService.GetPolicy
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+        - name: version
+          in: query
+          description: '0: the latest.'
+          schema:
+            type: integer
+            title: version
+            format: int32
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Policy'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags:
+        - veho.v1.PolicyService
+      summary: DeletePolicy
+      operationId: veho.v1.PolicyService.DeletePolicy
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/policies/{name}/grants:
+    get:
+      tags:
+        - veho.v1.PolicyService
+      summary: GetGrants
+      operationId: veho.v1.PolicyService.GetGrants
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Grants'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    put:
+      tags:
+        - veho.v1.PolicyService
+      summary: SetGrants
+      description: SetGrants replaces every grant of a policy.
+      operationId: veho.v1.PolicyService.SetGrants
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grants:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/veho.v1.Grant'
+                  title: grants
+              title: SetGrantsRequest
+              additionalProperties: false
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Grants'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/policies:validate:
+    post:
+      tags:
+        - veho.v1.PolicyService
+      summary: ValidatePolicy
+      description: ValidatePolicy checks a policy document and stores nothing.
+      operationId: veho.v1.PolicyService.ValidatePolicy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.ValidatePolicyRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ValidatePolicyResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/secrets:
+    get:
+      tags:
+        - veho.v1.SecretService
+      summary: ListSecrets
+      operationId: veho.v1.SecretService.ListSecrets
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListSecretsResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/secrets/{name}:
+    get:
+      tags:
+        - veho.v1.SecretService
+      summary: GetSecret
+      operationId: veho.v1.SecretService.GetSecret
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Secret'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    put:
+      tags:
+        - veho.v1.SecretService
+      summary: PutSecret
+      operationId: veho.v1.SecretService.PutSecret
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value:
+                  type: string
+                  title: value
+                  format: byte
+                  description: 'The value: never in any answer.'
+              title: PutSecretRequest
+              additionalProperties: false
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Secret'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags:
+        - veho.v1.SecretService
+      summary: DeleteSecret
+      operationId: veho.v1.SecretService.DeleteSecret
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/tenants:
+    get:
+      tags:
+        - veho.v1.TenantService
+      summary: ListTenants
+      operationId: veho.v1.TenantService.ListTenants
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListTenantsResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.TenantService
+      summary: CreateTenant
+      operationId: veho.v1.TenantService.CreateTenant
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.CreateTenantRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Tenant'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/tenants/{id}:
+    get:
+      tags:
+        - veho.v1.TenantService
+      summary: GetTenant
+      operationId: veho.v1.TenantService.GetTenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Tenant'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    patch:
+      tags:
+        - veho.v1.TenantService
+      summary: UpdateTenant
+      description: UpdateTenant sets the state and the quotas; empty fields stay.
+      operationId: veho.v1.TenantService.UpdateTenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                state:
+                  type: string
+                  title: state
+                quotas:
+                  title: quotas
+                  $ref: '#/components/schemas/veho.v1.Quotas'
+              title: UpdateTenantRequest
+              additionalProperties: false
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Tenant'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+tags:
+  - name: veho.v1.PolicyService
+    description: PolicyService manages named policies and who may use them.
+  - name: veho.v1.EndpointService
+    description: EndpointService manages the tenant's storage endpoints.
+  - name: veho.v1.SecretService
+    description: 'SecretService manages the tenant''s secrets: write-only (SEC-9).'
+  - name: veho.v1.TenantService
+    description: 'TenantService manages the tenants: platform administrators only.'
+  - name: veho.v1.AdminService
+    description: |-
+      AdminService administers the caller's tenant: its API keys, its
+       entitlements and its settings.
+  - name: veho.v1.JobService
+    description: JobService accepts, shows, cancels and retries replication jobs.

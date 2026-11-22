@@ -1,0 +1,253 @@
+// The administration of veho's API (.specs/veho-api-server.md §5.2):
+// endpoints, secrets, tenants, and a tenant's keys, entitlements and
+// settings.
+//
+// Generate with: make proto
+syntax = "proto3";
+
+package veho.v1;
+
+option go_package = "github.com/dihedron/veho/api/veho/v1;vehov1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "veho/v1/policies.proto";
+
+// EndpointService manages the tenant's storage endpoints.
+service EndpointService {
+  rpc CreateEndpoint(Endpoint) returns (Endpoint) {
+    option (google.api.http) = {post: "/v1/endpoints" body: "*"};
+  }
+  rpc GetEndpoint(EndpointName) returns (Endpoint) {
+    option (google.api.http) = {get: "/v1/endpoints/{name}"};
+  }
+  rpc ListEndpoints(ListEndpointsRequest) returns (ListEndpointsResponse) {
+    option (google.api.http) = {get: "/v1/endpoints"};
+  }
+  // UpdateEndpoint changes the location, configuration and credential
+  // reference; the name and driver stay.
+  rpc UpdateEndpoint(Endpoint) returns (Endpoint) {
+    option (google.api.http) = {put: "/v1/endpoints/{name}" body: "*"};
+  }
+  rpc DeleteEndpoint(EndpointName) returns (Empty) {
+    option (google.api.http) = {delete: "/v1/endpoints/{name}"};
+  }
+  // TestEndpoint probes the endpoint with its credentials.
+  rpc TestEndpoint(EndpointName) returns (EndpointTest) {
+    option (google.api.http) = {post: "/v1/endpoints/{name}:test" body: "*"};
+  }
+}
+
+message Endpoint {
+  string name = 1;
+  string driver = 2;
+  string location = 3;
+  google.protobuf.Struct config = 4;
+  // db://<secret name>, or empty.
+  string credential_ref = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message EndpointName {
+  string name = 1;
+}
+
+message ListEndpointsRequest {}
+
+message ListEndpointsResponse {
+  repeated Endpoint endpoints = 1;
+}
+
+message EndpointTest {
+  bool ok = 1;
+  // The step that failed: open, stat, write, delete.
+  string step = 2;
+  string code = 3;
+  string message = 4;
+}
+
+// SecretService manages the tenant's secrets: write-only (SEC-9).
+service SecretService {
+  rpc PutSecret(PutSecretRequest) returns (Secret) {
+    option (google.api.http) = {put: "/v1/secrets/{name}" body: "*"};
+  }
+  rpc GetSecret(SecretName) returns (Secret) {
+    option (google.api.http) = {get: "/v1/secrets/{name}"};
+  }
+  rpc ListSecrets(ListSecretsRequest) returns (ListSecretsResponse) {
+    option (google.api.http) = {get: "/v1/secrets"};
+  }
+  rpc DeleteSecret(SecretName) returns (Empty) {
+    option (google.api.http) = {delete: "/v1/secrets/{name}"};
+  }
+}
+
+message PutSecretRequest {
+  string name = 1;
+  // The value: never in any answer.
+  bytes value = 2;
+}
+
+message SecretName {
+  string name = 1;
+}
+
+// Secret is what the API shows of a secret: never its value.
+message Secret {
+  string name = 1;
+  int32 version = 2;
+  int32 kek_version = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message ListSecretsRequest {}
+
+message ListSecretsResponse {
+  repeated Secret secrets = 1;
+}
+
+// TenantService manages the tenants: platform administrators only.
+service TenantService {
+  rpc CreateTenant(CreateTenantRequest) returns (Tenant) {
+    option (google.api.http) = {post: "/v1/tenants" body: "*"};
+  }
+  rpc GetTenant(TenantID) returns (Tenant) {
+    option (google.api.http) = {get: "/v1/tenants/{id}"};
+  }
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse) {
+    option (google.api.http) = {get: "/v1/tenants"};
+  }
+  // UpdateTenant sets the state and the quotas; empty fields stay.
+  rpc UpdateTenant(UpdateTenantRequest) returns (Tenant) {
+    option (google.api.http) = {patch: "/v1/tenants/{id}" body: "*"};
+  }
+}
+
+message Tenant {
+  string id = 1;
+  string name = 2;
+  // active or suspended.
+  string state = 3;
+  Quotas quotas = 4;
+  TenantSettings settings = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message Quotas {
+  int32 max_destinations = 1;
+  int32 max_active_jobs = 2;
+}
+
+message TenantSettings {
+  // all, granted or none.
+  string inline_policies = 1;
+}
+
+message CreateTenantRequest {
+  string name = 1;
+}
+
+message TenantID {
+  string id = 1;
+}
+
+message ListTenantsRequest {}
+
+message ListTenantsResponse {
+  repeated Tenant tenants = 1;
+}
+
+message UpdateTenantRequest {
+  string id = 1;
+  string state = 2;
+  Quotas quotas = 3;
+}
+
+// AdminService administers the caller's tenant: its API keys, its
+// entitlements and its settings.
+service AdminService {
+  // CreateKey returns the key in this answer only.
+  rpc CreateKey(CreateKeyRequest) returns (CreatedKey) {
+    option (google.api.http) = {post: "/v1/admin/keys" body: "*"};
+  }
+  rpc ListKeys(ListKeysRequest) returns (ListKeysResponse) {
+    option (google.api.http) = {get: "/v1/admin/keys"};
+  }
+  rpc RevokeKey(KeyID) returns (Empty) {
+    option (google.api.http) = {post: "/v1/admin/keys/{id}:revoke" body: "*"};
+  }
+  rpc CreateEntitlement(Entitlement) returns (Entitlement) {
+    option (google.api.http) = {post: "/v1/admin/entitlements" body: "*"};
+  }
+  rpc ListEntitlements(ListEntitlementsRequest) returns (ListEntitlementsResponse) {
+    option (google.api.http) = {get: "/v1/admin/entitlements"};
+  }
+  rpc DeleteEntitlement(EntitlementID) returns (Empty) {
+    option (google.api.http) = {delete: "/v1/admin/entitlements/{id}"};
+  }
+  rpc GetSettings(GetSettingsRequest) returns (TenantSettings) {
+    option (google.api.http) = {get: "/v1/admin/settings"};
+  }
+  rpc UpdateSettings(TenantSettings) returns (TenantSettings) {
+    option (google.api.http) = {put: "/v1/admin/settings" body: "*"};
+  }
+}
+
+message CreateKeyRequest {
+  // The principal's name, unique in the tenant.
+  string name = 1;
+  string role = 2;
+  // Seconds from now; 0 never expires.
+  int64 expires_in = 3;
+}
+
+message CreatedKey {
+  string id = 1;
+  // The key: shown once.
+  string key = 2;
+}
+
+message ApiKey {
+  string id = 1;
+  string principal = 2;
+  string role = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  google.protobuf.Timestamp revoked_at = 6;
+  google.protobuf.Timestamp last_used_at = 7;
+}
+
+message ListKeysRequest {}
+
+message ListKeysResponse {
+  repeated ApiKey keys = 1;
+}
+
+message KeyID {
+  string id = 1;
+}
+
+message Entitlement {
+  string id = 1;
+  // oidc or spiffe.
+  string kind = 2;
+  string issuer = 3;
+  string subject = 4;
+  string group = 5;
+  string role = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message ListEntitlementsRequest {}
+
+message ListEntitlementsResponse {
+  repeated Entitlement entitlements = 1;
+}
+
+message EntitlementID {
+  string id = 1;
+}
+
+message GetSettingsRequest {}

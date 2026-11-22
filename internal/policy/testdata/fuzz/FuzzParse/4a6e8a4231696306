@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"destinAtions\":[{\"endpoint\":\"0000000\",\"pAth\":\"0\"},{\"endpoint\":\"0000000\",\"pAth\":\"0\"}],\"Completion\":{\"min_Copies\":0,\"spreAd\":[]}}")

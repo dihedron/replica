@@ -1,0 +1,50 @@
+# The parts of the OpenAPI document the protos do not give; make proto
+# merges the generated paths and schemas into it.
+openapi: 3.1.0
+info:
+  title: veho API
+  version: v1
+  description: >-
+    Durable replication of large objects to many destinations. Generated from
+    api/veho/v1/*.proto (.specs/veho-api-server.md); gRPC serves the same
+    services. Errors are RFC 9457 problem+json documents with a stable code.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://veho.example:8443
+security:
+  - bearer: []
+components:
+  responses:
+    Problem:
+      description: An error, as RFC 9457 problem+json (.specs/veho-api-server.md §6).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status, code, retryable]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
+          type: string
+          description: The stable reason of the error, as in the gRPC ErrorInfo.
+        retryable:
+          type: boolean
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: An API key (veho_...), an OIDC token or a JWT-SVID; or a client X.509-SVID over mTLS.

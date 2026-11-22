@@ -1,9 +1,10 @@
-_APPLICATION_NAME := replica
+
+_APPLICATION_NAME := veho
 _APPLICATION_VERSION_MAJOR := 0
 _APPLICATION_VERSION_MINOR := 0
 _APPLICATION_VERSION_PATCH := 1
 _APPLICATION_VERSION=$(_APPLICATION_VERSION_MAJOR).$(_APPLICATION_VERSION_MINOR).$(_APPLICATION_VERSION_PATCH)
-_APPLICATION_DESCRIPTION := Explore durable execution in Golang,
+_APPLICATION_DESCRIPTION := Durable, asynchronous replication of large objects across three regions.
 _APPLICATION_COPYRIGHT := 2026 © Andrea Funtò
 _APPLICATION_LICENSE := MIT
 _APPLICATION_LICENSE_URL := https://opensource.org/license/mit/
@@ -11,10 +12,12 @@ _APPLICATION_MAINTAINER=dihedron.dev@gmail.com
 _APPLICATION_VENDOR=dihedron.dev@gmail.com
 _APPLICATION_PRODUCER_URL=https://github.com/dihedron/
 _APPLICATION_DOWNLOAD_URL=$(_APPLICATION_PRODUCER_URL)$(_APPLICATION_NAME)
-_APPLICATION_METADATA_PACKAGE=$$(grep "module .*" go.mod | sed 's/module //gi')/metadata
-#_APPLICATION_DOTENV_VAR_NAME=
+_APPLICATION_METADATA_PACKAGE=$$(grep "module .*" go.mod | sed 's/module //gi')/pkg/metadata
+_APPLICATION_DOTENV_VAR_NAME=VEHO_DOTENV
+
 
 include help.mk
 include go.mk
+include release.mk
 -include custom.mk
-
+# Add custom targets below...

@@ -1,0 +1,148 @@
+// The jobs of veho's API (.specs/veho-api.md, .specs/veho-api-server.md §5).
+// The protobuf definitions are the source of truth (API-1): the REST
+// gateway is generated from their google.api.http annotations.
+//
+// Generate with: make proto
+syntax = "proto3";
+
+package veho.v1;
+
+option go_package = "github.com/dihedron/veho/api/veho/v1;vehov1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// JobService accepts, shows, cancels and retries replication jobs.
+service JobService {
+  // CreateJob accepts a job (202); the Idempotency-Key header or the
+  // idempotency_key field makes a repeated request return the first job.
+  rpc CreateJob(CreateJobRequest) returns (Job) {
+    option (google.api.http) = {post: "/v1/jobs" body: "*"};
+  }
+  // GetJob returns a job; over REST, ?wait=<seconds> with If-None-Match
+  // holds the request until the job changes (304 at the end).
+  rpc GetJob(GetJobRequest) returns (Job) {
+    option (google.api.http) = {get: "/v1/jobs/{id}"};
+  }
+  rpc ListTransfers(JobRef) returns (ListTransfersResponse) {
+    option (google.api.http) = {get: "/v1/jobs/{id}/transfers"};
+  }
+  rpc ListJobs(ListJobsRequest) returns (ListJobsResponse) {
+    option (google.api.http) = {get: "/v1/jobs"};
+  }
+  rpc CancelJob(JobRef) returns (Job) {
+    option (google.api.http) = {post: "/v1/jobs/{id}:cancel" body: "*"};
+  }
+  // RetryJob restarts the failed and cancelled transfers of a FAILED job.
+  rpc RetryJob(JobRef) returns (Job) {
+    option (google.api.http) = {post: "/v1/jobs/{id}:retry" body: "*"};
+  }
+  // WatchJob streams the job each time it changes, until it settles.
+  rpc WatchJob(JobRef) returns (stream Job) {
+    option (google.api.http) = {get: "/v1/jobs/{id}:watch"};
+  }
+}
+
+// ObjectRef is an object on one of the tenant's endpoints.
+message ObjectRef {
+  string endpoint = 1;
+  string path = 2;
+}
+
+message CreateJobRequest {
+  string idempotency_key = 1;
+  ObjectRef source = 2;
+  // An inline policy document (.specs/veho-distribution-policy.md), or
+  // policy_ref: exactly one of them.
+  google.protobuf.Struct policy = 3;
+  map<string, string> labels = 4;
+  PolicyRef policy_ref = 5;
+}
+
+// PolicyRef names a version of a named policy; version 0 is the latest.
+message PolicyRef {
+  string name = 1;
+  int32 version = 2;
+}
+
+message JobRef {
+  string id = 1;
+}
+
+message GetJobRequest {
+  string id = 1;
+  // REST long poll (seconds, at most 60), with If-None-Match.
+  int32 wait = 2;
+}
+
+message Source {
+  string endpoint = 1;
+  string path = 2;
+  int64 size = 3;
+  string version = 4;
+}
+
+// Problem is a job's or a transfer's last error.
+message Problem {
+  string code = 1;
+  string message = 2;
+}
+
+message Transfer {
+  string id = 1;
+  string endpoint = 2;
+  string path = 3;
+  map<string, string> position = 4;
+  string state = 5;
+  int64 bytes_done = 6;
+  int64 bytes_total = 7;
+  int32 attempt = 8;
+  Problem last_error = 9;
+  google.protobuf.Timestamp finished_at = 10;
+}
+
+message Copies {
+  int32 done = 1;
+  int32 total = 2;
+}
+
+message Job {
+  string id = 1;
+  string state = 2;
+  Source source = 3;
+  // The named policy the job was submitted under, if any.
+  PolicyRef policy_ref = 15;
+  map<string, string> labels = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  google.protobuf.Timestamp deadline_at = 7;
+  google.protobuf.Timestamp satisfied_at = 8;
+  google.protobuf.Timestamp completed_at = 9;
+  google.protobuf.Timestamp settled_at = 10;
+  Copies copies = 11;
+  double progress = 12;
+  Problem last_error = 13;
+  repeated Transfer transfers = 14;
+}
+
+message ListTransfersResponse {
+  repeated Transfer transfers = 1;
+}
+
+message ListJobsRequest {
+  // A state, or empty for all.
+  string state = 1;
+  // Jobs created at or after since (RFC 3339).
+  google.protobuf.Timestamp since = 2;
+  string source_endpoint = 3;
+  // label[<key>]=<value> over REST.
+  map<string, string> label = 4;
+  int32 limit = 5;
+  string cursor = 6;
+}
+
+message ListJobsResponse {
+  repeated Job jobs = 1;
+  string next_cursor = 2;
+}

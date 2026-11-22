@@ -1,50 +1,120 @@
 # Add custom targets below...
 
 #
-# compile is the default target; it builds the 
+# compile is the default target; it builds the
 # application for the default platform (linux/amd64)
 #
 .DEFAULT_GOAL := compile
 
-.PHONY: compile 
-compile: go-dev ## build for the default linux/amd64 platform
+# GOLANGCI_LINT_VERSION is the golangci-lint the lint target expects: the one
+# the golangci-lint workflow runs
+GOLANGCI_LINT_VERSION := 2.14
 
-.PHONY: snapshot 
-snapshot: go-snapshot ## build a snapshot version for the supported platforms
+.PHONY: lint
+lint: ## check that the code is clean (gofmt, go vet, golangci-lint); every build runs it first
+	@echo "Checking the code..."
+	@unformatted="$$(gofmt -l cmd internal pkg test)"; \
+		if [ -n "$$unformatted" ]; then echo "not formatted with gofmt (run gofmt -w):" >&2; echo "$$unformatted" >&2; exit 1; fi
+	@go vet ./...
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "golangci-lint is not installed: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$(GOLANGCI_LINT_VERSION).0" >&2; exit 1; }
+	@golangci-lint version 2>/dev/null | grep -q "version $(GOLANGCI_LINT_VERSION)\." || echo "warning: golangci-lint is not v$(GOLANGCI_LINT_VERSION), which CI runs: its findings may differ" >&2
+	@golangci-lint run ./...
 
-.PHONY: release 
-release: go-release ## build a release version (requires a valid tag)
+.PHONY: compile
+compile: lint go-dev ## build for the default linux/amd64 platform
 
-.PHONY: clean 
-clean: ## clean the binary directory 
+.PHONY: snapshot
+snapshot: signing-check lint go-snapshot ## build a snapshot version for the supported platforms (signed if GPG_FINGERPRINT and GPG_KEY_FILE are set)
+
+.PHONY: release
+release: signing-check lint ## build a release version (requires a valid tag and the packaging key)
+	@test -n "$(GPG_FINGERPRINT)" || { echo "a release must be signed: set GPG_FINGERPRINT and GPG_KEY_FILE" >&2; exit 1; }
+	@$(MAKE) --no-print-directory go-release
+
+# signing-check: the packaging key (T-21) signs the checksums file through gpg
+# (GPG_FINGERPRINT) and the packages through nfpm (GPG_KEY_FILE, its armored
+# private key): both or neither, so that no build is half signed
+.PHONY: signing-check
+signing-check:
+	@if [ -n "$(GPG_FINGERPRINT)" ] && [ ! -r "$(GPG_KEY_FILE)" ]; then echo "GPG_FINGERPRINT is set but GPG_KEY_FILE is not a readable key file" >&2; exit 1; fi
+	@if [ -z "$(GPG_FINGERPRINT)" ] && [ -n "$(GPG_KEY_FILE)" ]; then echo "GPG_KEY_FILE is set but GPG_FINGERPRINT is not" >&2; exit 1; fi
+
+.PHONY: clean
+clean: ## clean the binary directory
 	@rm -rf dist
 
-#
-# The following targets are used to create a new release of the application;
-# they extract the latest tag (in the format vX.Y.Z), increment the major,
-# minor or patch version number, and create a new tag with the new version.
-#
-.PHONY: new-major-release
-new-major-release: ## create a new major release (e.g. v1.2.3 -> v2.0.0)
-	$(eval OLD_VERSION=$(shell git describe --tags --abbrev=0 || echo "v0.0.0"))
-	$(eval NEW_VERSION=$(shell echo $(OLD_VERSION) | awk -F. '{print $$1"."$$2"."$$3}' | awk -F. '{print "v"$$1+1".0.0"}' | sed 's/vv/v/g'))
-	@echo "New major release: $(OLD_VERSION) -> $(NEW_VERSION)"
-	@git tag -a $(NEW_VERSION) -m "Release version $(NEW_VERSION)"
-	@git push origin tag $(NEW_VERSION)
+# FUZZTIME is how long make fuzz runs each fuzz target
+FUZZTIME ?= 30s
 
-.PHONY: new-minor-release
-new-minor-release: ## create a new minor release (e.g. v1.2.3 -> v1.3.0)
-	$(eval OLD_VERSION=$(shell git describe --tags --abbrev=0 || echo "v0.0.0"))
-	$(eval NEW_VERSION=$(shell echo $(OLD_VERSION) | awk -F. '{print $$1"."$$2"."$$3}' | awk -F. '{print "v"$$1"."$$2+1".0"}' | sed 's/vv/v/g'))
-	@echo "New minor release: $(OLD_VERSION) -> $(NEW_VERSION)"
-	@git tag -a $(NEW_VERSION) -m "Release version $(NEW_VERSION)"
-	@git push origin tag $(NEW_VERSION)
+.PHONY: fuzz
+fuzz: ## run every fuzz target for FUZZTIME each (default 30s); go test runs their seeds anyway
+	@for pkg in $$(go list ./...); do \
+		for target in $$(go test -list '^Fuzz' "$$pkg" | grep '^Fuzz'); do \
+			echo "$$pkg $$target"; \
+			go test "$$pkg" -run '^$$' -fuzz "^$$target$$" -fuzztime $(FUZZTIME) || exit 1; \
+		done; \
+	done
 
-.PHONY: new-revision-release
-new-revision-release: ## create a new revision release (e.g. v1.2.3 -> v1.2.4)
-	$(eval OLD_VERSION=$(shell git describe --tags --abbrev=0 || echo "v0.0.0"))
-	$(eval NEW_VERSION=$(shell echo $(OLD_VERSION) | awk -F. '{print $$1"."$$2"."$$3}' | awk -F. '{print "v"$$1"."$$2"."$$3+1}' | sed 's/vv/v/g'))
-	@echo "New revision release: $(OLD_VERSION) -> $(NEW_VERSION)"
-	@git tag -a $(NEW_VERSION) -m "Release version $(NEW_VERSION)"
-	@git push origin tag $(NEW_VERSION)
+# CONTAINER runs the secret scanners; podman works as well
+CONTAINER ?= docker
 
+# the scanners run at their latest release; CI pins its versions
+# (.github/workflows/ci.yml), and "make scanners" shows when they fall behind:
+# versions that differ disagree on findings
+GITLEAKS_IMAGE := zricethezav/gitleaks:latest
+TRUFFLEHOG_IMAGE := ghcr.io/trufflesecurity/trufflehog:latest
+
+.PHONY: scanners
+scanners: ## pull the latest secret scanners and compare their versions with CI's pins (run before every commit)
+	@$(CONTAINER) pull -q $(GITLEAKS_IMAGE) >/dev/null
+	@$(CONTAINER) pull -q $(TRUFFLEHOG_IMAGE) >/dev/null
+	@echo "gitleaks:   latest $$($(CONTAINER) run --rm $(GITLEAKS_IMAGE) version | tr -d v), CI $$(sed -n 's/.*GITLEAKS_VERSION: *//p' .github/workflows/ci.yml)"
+	@echo "TruffleHog: latest $$($(CONTAINER) run --rm $(TRUFFLEHOG_IMAGE) --version 2>&1 | awk '{print $$2}'), CI $$(sed -n 's/.*trufflehog@.*# *v//p' .github/workflows/ci.yml)"
+
+.PHONY: secrets
+secrets: scanners ## scan the history and the working tree for secrets with gitleaks and TruffleHog, as CI does (run before every commit)
+	@echo "gitleaks: history..."
+	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(GITLEAKS_IMAGE) git /repo --config /repo/.gitleaks.toml --no-banner --redact
+	@echo "gitleaks: working tree..."
+	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(GITLEAKS_IMAGE) dir /repo --config /repo/.gitleaks.toml --no-banner --redact
+	@echo "TruffleHog: history..."
+	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(TRUFFLEHOG_IMAGE) git file:///repo --exclude-paths=/repo/.trufflehog-history-exclude --results=verified,unknown --fail --no-update
+	@echo "TruffleHog: working tree..."
+	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(TRUFFLEHOG_IMAGE) filesystem /repo --exclude-paths=/repo/.trufflehog-exclude --results=verified,unknown --fail --no-update
+
+# govulncheck runs through "go run" so that it is always built with the
+# current toolchain (a binary built with an older Go cannot read newer sources);
+# "-scan module" flags every vulnerable module in go.mod, called or not, as
+# CI's dependency review does (-C: module scans fail in a directory without
+# Go files, such as the root)
+.PHONY: vuln
+vuln: ## check go.mod and the code for known vulnerabilities with govulncheck (run before every commit)
+	@# both always run: a finding in one must not hide the other
+	@rc=0; \
+	go run golang.org/x/vuln/cmd/govulncheck@latest -C cmd/veho -scan module || rc=1; \
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./... || rc=1; \
+	exit $$rc
+
+# proto regenerates the Go code of the process plugins' service; the
+# generated files are committed (protoc 3.21+, protoc-gen-go v1.36,
+# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.33,
+# protoc-gen-connect-openapi v0.30)
+.PHONY: proto
+proto: ## regenerate pkg/plugin/process/proto, api/veho/v1 (with the REST gateway) and api/openapi/veho.v1.yaml from the .proto files
+	@cd pkg/plugin/process/proto && protoc --go_out=. --go_opt=paths=source_relative \
+		--go-grpc_out=. --go-grpc_opt=paths=source_relative plugin.proto
+	@protoc -I api -I api/third_party --go_out=api --go_opt=paths=source_relative \
+		--go-grpc_out=api --go-grpc_opt=paths=source_relative \
+		--grpc-gateway_out=api --grpc-gateway_opt=paths=source_relative \
+		--connect-openapi_out=api/openapi \
+		--connect-openapi_opt=features=google.api.http,path=veho.v1.yaml,base=api/openapi/base.yaml,with-proto-names,trim-unused-types,with-service-descriptions \
+		api/veho/v1/*.proto
+	@go run ./internal/tools/openapi api/openapi/veho.v1.yaml
+
+REDOCLY_VERSION := 1.34.3
+.PHONY: openapi-lint
+openapi-lint: ## lint api/openapi/veho.v1.yaml with Redocly CLI; warnings fail too (needs npx)
+	@command -v npx >/dev/null 2>&1 || { echo "npx is not installed: install Node.js" >&2; exit 1; }
+	@out="$$(REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true npx --yes @redocly/cli@$(REDOCLY_VERSION) lint api/openapi/veho.v1.yaml 2>&1)"; status=$$?; \
+		echo "$$out" | grep -v "^npm notice"; \
+		[ $$status -eq 0 ] && ! echo "$$out" | grep -q "You have [0-9]* warning"
