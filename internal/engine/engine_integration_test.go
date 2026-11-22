@@ -117,6 +117,10 @@ func setup(t *testing.T) fixture {
 	if err := f.api.QueryRow(ctx, "select veho.create_tenant($1)", "test-"+uuid.New().String()).Scan(&f.tenant); err != nil {
 		t.Fatal(err)
 	}
+	// the tests retry every 100ms: below the default floor of FR-12's bounds
+	if _, err := f.migrator.Exec(ctx, `update veho.tenants set quotas = '{"min_retry_initial": "50ms"}' where id = $1`, f.tenant); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.InTenant(ctx, f.api, f.tenant, func(tx pgx.Tx) error {
 		for name, loc := range map[string]string{"src": "lab-a", "d1": "lab-a", "d2": "lab-b"} {
 			if _, err := tx.Exec(ctx, "insert into veho.endpoints (tenant_id, name, location_id, driver) values ($1, $2, $3, 'file')", f.tenant, name, loc); err != nil {
@@ -211,6 +215,18 @@ func TestSubmitRefused(t *testing.T) {
 			t.Errorf("%s: %v, want a policy error", p, err)
 		}
 	}
+	// FR-12: with the default bounds (1s to 1h), a backoff outside them is refused
+	if _, err := f.migrator.Exec(ctx, `update veho.tenants set quotas = '{}' where id = $1`, f.tenant); err != nil {
+		t.Fatal(err)
+	}
+	for _, retry := range []string{`{"initial": "100ms"}`, `{"max_interval": "2h"}`} {
+		p := `{"destinations": [{"endpoint": "d1", "path": "x"}], "retry": ` + retry + `}`
+		if _, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "a", Policy: []byte(p)}); err == nil {
+			t.Errorf("retry %s: accepted", retry)
+		} else if pe, ok := errors.AsType[*policy.Error](err); !ok || pe.Code != policy.CodeInvalidPolicy {
+			t.Errorf("retry %s: %v, want invalid_policy", retry, err)
+		}
+	}
 	if _, err := f.migrator.Exec(ctx, `update veho.tenants set quotas = '{"max_active_jobs": 1}' where id = $1`, f.tenant); err != nil {
 		t.Fatal(err)
 	}
@@ -257,5 +273,29 @@ func TestHeartbeat(t *testing.T) {
 	f.e.beat(ctx, now.Add(4*time.Second))
 	if f.e.Fenced() {
 		t.Error("still fenced after a good beat")
+	}
+}
+
+// FR-12: a tenant's bounds must keep the policy defaults (2s, 15m) valid.
+func TestRetryBounds(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		q  Quotas
+		ok bool
+	}{
+		{Quotas{MinRetryInitial: policy.Duration(500 * time.Millisecond), MaxRetryInterval: policy.Duration(2 * time.Hour)}, true},
+		{Quotas{MinRetryInitial: policy.Duration(2 * time.Second), MaxRetryInterval: policy.Duration(15 * time.Minute)}, true},
+		{Quotas{MinRetryInitial: policy.Duration(5 * time.Second)}, false},
+		{Quotas{MaxRetryInterval: policy.Duration(10 * time.Minute)}, false},
+		{Quotas{MinRetryInitial: policy.Duration(-time.Second)}, false},
+	} {
+		got, err := f.e.UpdateTenant(ctx, f.tenant, nil, &tc.q)
+		switch {
+		case tc.ok && (err != nil || got.Quotas != tc.q):
+			t.Errorf("%+v: %+v, %v", tc.q, got.Quotas, err)
+		case !tc.ok && !errors.Is(err, ErrInvalid):
+			t.Errorf("%+v: %v, want ErrInvalid", tc.q, err)
+		}
 	}
 }

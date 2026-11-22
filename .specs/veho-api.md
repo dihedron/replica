@@ -55,7 +55,7 @@ Two interfaces to one service: **gRPC** (protobuf over HTTP/2) and **REST/JSON**
 ```json
 { "id": "6f1c…", "state": "ACCEPTED", "created_at": "…" }
 ```
-- The policy is specified in `veho-distribution-policy.md`: N >= 2
+- The policy is specified in `veho-distribution-policy.md`: N >= 1
   destinations (the location of each comes from its registered endpoint), the
   completion rule `min_copies` of N plus spread statements over the levels of
   the topology, and `on_satisfied`. The source is external and is not counted.
@@ -94,7 +94,7 @@ Clients SHOULD poll with `ETag`/`If-None-Match`; response includes
 `Retry-After` hinting the next poll.
 
 ### Get transfers
-`GET /v1/jobs/{id}/transfers` → `200`: the `transfers` array of the job view, one entry per destination (N >= 2), with the same fields and the same staleness. Use it to follow the progress across all replicas without fetching the whole job.
+`GET /v1/jobs/{id}/transfers` → `200`: the `transfers` array of the job view, one entry per destination (N >= 1), with the same fields and the same staleness. Use it to follow the progress across all replicas without fetching the whole job.
 
 ### List jobs
 `GET /v1/jobs?state=&since=&source=&label.ticket=&limit=&cursor=`

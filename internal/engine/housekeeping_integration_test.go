@@ -4,7 +4,10 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -111,6 +114,51 @@ func TestAdoption(t *testing.T) {
 	}
 }
 
+// A node stopped by its signal (the context given to New is cancelled, then
+// Shutdown) leaves its running workflows PENDING for adoption: a cancelled
+// context must not cancel them durably, which would fail their transfers
+// (found by AC-4 in the lab).
+func TestStopLeavesWorkPending(t *testing.T) {
+	f := setup(t)
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	f.fileEndpoint(t, "a", "flaky", "lab-a")
+	f.fileEndpoint(t, "b", "file", "lab-b")
+	sig, stop := context.WithCancel(context.Background())
+	defer stop()
+	other, err := New(sig, Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
+		Version: "test", Audit: &audit.Recorder{}, Secrets: f.secrets,
+		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Heartbeat(sig); err != nil {
+		t.Fatal(err)
+	}
+	blocked := make(chan struct{})
+	var once sync.Once
+	f.flaky.set(func(int) error {
+		once.Do(func() { close(blocked) })
+		time.Sleep(200 * time.Millisecond)
+		return nil
+	})
+	if err := other.Launch(); err != nil {
+		t.Fatal(err)
+	}
+	job, _ := f.submitRun(t, srcDir, 12*mib, destPolicy(2, "", "a", "b"))
+	<-blocked // a transfer runs on the other node
+	stop()    // SIGTERM
+	_ = other.Shutdown(time.Second)
+	var cancelled int
+	if err := f.api.QueryRow(context.Background(), "select count(*) from dbos.workflow_status where workflow_uuid like 'transfer/%' and status = 'CANCELLED' and executor_id = $1",
+		other.executor).Scan(&cancelled); err != nil {
+		t.Fatal(err)
+	}
+	if cancelled != 0 {
+		t.Errorf("%d transfer workflows cancelled by the stop, want 0", cancelled)
+	}
+	_ = job
+}
+
 // ENG-12: a job past its deadline is FAILED and its transfers cancelled.
 func TestDeadline(t *testing.T) {
 	f := setup(t)
@@ -177,6 +225,41 @@ func TestZombies(t *testing.T) {
 	}
 	if _, err := f.e.Status(ctx, f.tenant, ended); err != nil {
 		t.Errorf("a recent job was removed: %v", err)
+	}
+}
+
+// AC-19: a poison pill, a workflow DBOS parked as
+// MAX_RECOVERY_ATTEMPTS_EXCEEDED, is found by housekeeping: its transfers end
+// FAILED with class Internal, the job is decided, the repair audited.
+func TestPoisonPill(t *testing.T) {
+	f := setup(t)
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	f.fileEndpoint(t, "a", "file", "lab-a")
+	f.fileEndpoint(t, "b", "file", "lab-b")
+	job, _ := f.submitRun(t, srcDir, 1*mib, destPolicy(2, "", "a", "b"))
+	// as DBOS does after too many recoveries; only veho_dbos may write its tables
+	dbosConn, err := pgx.Connect(context.Background(), os.Getenv("VEHO_TEST_DBOS_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dbosConn.Close(context.Background()) }()
+	if _, err := dbosConn.Exec(context.Background(), "update dbos.workflow_status set status = 'MAX_RECOVERY_ATTEMPTS_EXCEEDED' where workflow_uuid like $1",
+		JobWorkflowID(job)+"%"); err != nil {
+		t.Fatal(err)
+	}
+	f.sql(t, "update veho.jobs set updated_at = now() - interval '1 hour' where id = $1", job)
+	f.launch(t)
+	f.housekeep(t)
+	s := f.wait(t, job, isSettled)
+	if s.State != "FAILED" || f.jobEvents("SYSTEM_ZOMBIE_REPAIRED", job) != 1 {
+		t.Fatalf("poison pill: %+v", s)
+	}
+	for _, tr := range s.Transfers {
+		var e struct{ Class string }
+		_ = json.Unmarshal(tr.LastError, &e)
+		if tr.State != "FAILED" || e.Class != "Internal" {
+			t.Errorf("transfer %s: %s, class %q, want FAILED, Internal", tr.Endpoint, tr.State, e.Class)
+		}
 	}
 }
 

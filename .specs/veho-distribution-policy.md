@@ -10,7 +10,7 @@ A job replicates one source object under one *distribution policy*. Every transf
 
 - The **source is external**. Populating it is the client's responsibility, and the object is assumed to be there. The policy describes only the **additional copies** (replicas) to create. The source is never a destination and never counts as a copy; a client that wants it to count lowers `min_copies` by one.
 - The **control plane** (the state store) runs in three sites and accepts a job on a quorum of 2 of 3 (ADR-1). Those sites are an implementation detail of the control plane. They are **not** the destination topology and the two are decoupled: a destination can be in any location of the topology, including one that has no control-plane node.
-- The **data plane** has N >= 2 destinations anywhere in the topology (§2). N and the topology belong to the policy and the platform configuration, not to the deployment of the control plane.
+- The **data plane** has N >= 1 destinations anywhere in the topology (§2). N and the topology belong to the policy and the platform configuration, not to the deployment of the control plane.
 
 ## 2. Topology
 
@@ -77,7 +77,8 @@ Named policies (`POST /v1/policies`, OI-7) hold the same document. A job stores 
 
 The API rejects a policy, synchronously, with `422` and a stable code when:
 
-- N < 2 or N is above the tenant's limit (`max_destinations`; platform default 32, tenant default 16; both configurable, SEC quotas);
+- N = 0 (no destination) or N is above the tenant's limit (`max_destinations`; platform default 32, tenant default 16; both configurable, SEC quotas);
+- `retry.initial` below the tenant's `min_retry_initial`, or `retry.max_interval` above its `max_retry_interval` (FR-12);
 - two destinations have the same endpoint and path (`duplicate_destination`);
 - a destination is the source (same endpoint and path; `destination_is_source`);
 - an endpoint does not exist or belongs to another tenant (indistinguishable, INV-4);

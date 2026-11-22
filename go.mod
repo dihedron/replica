@@ -19,6 +19,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0
 	go.yaml.in/yaml/v3 v3.0.6
+	golang.org/x/sync v0.25.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20261026165753-2ffab32bce7e
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261019180522-ce908d29299b
 	google.golang.org/grpc v1.85.0
@@ -54,7 +55,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )

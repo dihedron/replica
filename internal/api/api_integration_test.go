@@ -489,9 +489,9 @@ func TestErrors(t *testing.T) {
 	f := setup(t, Options{MaxWatches: 1})
 	key := f.keys["a-operator"]
 	bad := job("x")
-	bad["policy"] = map[string]any{"destinations": []any{map[string]string{"endpoint": "d1", "path": "x"}}}
+	bad["policy"] = map[string]any{"destinations": []any{}}
 	if r := f.rest(t, "POST", "/v1/jobs", key, bad); r.code != http.StatusBadRequest || r.body["code"] != "invalid_policy" || r.body["retryable"] != false {
-		t.Errorf("one destination: %d %v", r.code, r.body)
+		t.Errorf("no destination: %d %v", r.code, r.body)
 	}
 	missing := job("x")
 	missing["source"] = map[string]string{"endpoint": "nope", "path": "obj"}

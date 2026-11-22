@@ -17,6 +17,7 @@ import (
 	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/semaphore"
 )
 
 // The DBOS application and its queues (§2).
@@ -58,6 +59,8 @@ type Engine struct {
 	metrics     *metrics
 	executor    string
 	region      string
+	// partMemory is the node's budget of part bytes in memory (NFR-5)
+	partMemory *semaphore.Weighted
 
 	mu     sync.Mutex
 	lastOK time.Time
@@ -72,7 +75,10 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 		d.Logger = slog.Default()
 	}
 	c := d.Config
-	dc, err := dbos.NewContext(ctx, dbos.Config{
+	// not cancelled with ctx: DBOS durably cancels a workflow whose context
+	// ends for any cause but its own Shutdown, and a stopping node must leave
+	// its work PENDING for adoption (found by AC-4); Shutdown stops it
+	dc, err := dbos.NewContext(context.WithoutCancel(ctx), dbos.Config{
 		AppName:            AppName,
 		DatabaseURL:        d.DBOSURL,
 		ApplicationVersion: d.Version,
@@ -83,7 +89,8 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 		return nil, fmt.Errorf("engine: %w", err)
 	}
 	e := &Engine{cfg: c, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
-		lastOK: time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}, metrics: newMetrics()}
+		partMemory: semaphore.NewWeighted(int64(c.Engine.PartMemoryMiB) << 20),
+		lastOK:     time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}, metrics: newMetrics()}
 	for _, q := range []string{QueueJobs, QueueTransfer} {
 		// one partition per tenant (EXT-3a): a tenant runs at most
 		// tenant_concurrency workflows of a queue at a time

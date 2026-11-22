@@ -7,8 +7,10 @@ import (
 
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
 	"github.com/dihedron/veho/internal/engine"
+	"github.com/dihedron/veho/internal/policy"
 	"github.com/dihedron/veho/internal/secrets"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -209,7 +211,8 @@ func (ss secretsService) DeleteSecret(ctx context.Context, r *vehov1.SecretName)
 
 func toTenant(t engine.Tenant) *vehov1.Tenant {
 	return &vehov1.Tenant{Id: t.ID.String(), Name: t.Name, State: t.State, CreatedAt: timestamppb.New(t.CreatedAt),
-		Quotas:   &vehov1.Quotas{MaxDestinations: int32(t.Quotas.MaxDestinations), MaxActiveJobs: int32(t.Quotas.MaxActiveJobs)}, //nolint:gosec // small
+		Quotas: &vehov1.Quotas{MaxDestinations: int32(t.Quotas.MaxDestinations), MaxActiveJobs: int32(t.Quotas.MaxActiveJobs), //nolint:gosec // small
+			MinRetryInitial: duration(t.Quotas.MinRetryInitial), MaxRetryInterval: duration(t.Quotas.MaxRetryInterval)},
 		Settings: &vehov1.TenantSettings{InlinePolicies: t.Settings.InlinePolicies}}
 }
 
@@ -269,7 +272,9 @@ func (ts tenants) UpdateTenant(ctx context.Context, r *vehov1.UpdateTenantReques
 	}
 	var q *engine.Quotas
 	if r.GetQuotas() != nil {
-		q = &engine.Quotas{MaxDestinations: int(r.GetQuotas().GetMaxDestinations()), MaxActiveJobs: int(r.GetQuotas().GetMaxActiveJobs())}
+		rq := r.GetQuotas()
+		q = &engine.Quotas{MaxDestinations: int(rq.GetMaxDestinations()), MaxActiveJobs: int(rq.GetMaxActiveJobs()),
+			MinRetryInitial: policy.Duration(rq.GetMinRetryInitial().AsDuration()), MaxRetryInterval: policy.Duration(rq.GetMaxRetryInterval().AsDuration())}
 	}
 	t, err := ts.s.engine.UpdateTenant(ctx, id, state, q)
 	if err != nil {
@@ -402,4 +407,12 @@ func (as admin) UpdateSettings(ctx context.Context, r *vehov1.TenantSettings) (*
 		return nil, err
 	}
 	return &vehov1.TenantSettings{InlinePolicies: s.InlinePolicies}, nil
+}
+
+// duration is a quota's duration, nil when unset (the default).
+func duration(d policy.Duration) *durationpb.Duration {
+	if d == 0 {
+		return nil
+	}
+	return durationpb.New(time.Duration(d))
 }

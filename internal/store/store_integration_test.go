@@ -398,3 +398,26 @@ func TestEnqueueInTransaction(t *testing.T) {
 var errRollback = errors.New("roll back on purpose")
 
 func noop(_ dbos.Context, in string) (string, error) { return in, nil }
+
+// TryLock: one holder at a time, and a holder that goes silent (a node cut
+// off by a partition, whose session the server would keep until TCP
+// keepalives give up) loses the lock after its idle timeout (found by AC-6).
+func TestTryLockIdle(t *testing.T) {
+	pool := open(t, "VEHO_TEST_WORKER_DATABASE_URL")
+	ctx := context.Background()
+	name := "veho-test-lock-" + uuid.New().String()
+	release, locked, err := TryLock(ctx, pool, name, time.Second)
+	if err != nil || !locked {
+		t.Fatalf("first: %v, %v", locked, err)
+	}
+	defer release()
+	if _, locked, err := TryLock(ctx, pool, name, time.Second); err != nil || locked {
+		t.Fatalf("second while held: %v, %v", locked, err)
+	}
+	time.Sleep(2500 * time.Millisecond) // the holder says nothing
+	r2, locked, err := TryLock(ctx, pool, name, time.Second)
+	if err != nil || !locked {
+		t.Fatalf("after the holder's idle timeout: %v, %v", locked, err)
+	}
+	r2()
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/semaphore"
 )
 
 // flaky is the file driver with a hook before every WritePart, which can
@@ -426,5 +427,33 @@ func TestSourceChanged(t *testing.T) {
 	j.run(t, "fl")
 	if s := j.state(t); s.Transfers["fl"] != "FAILED" || s.LastError["fl"] != "SourceChanged" {
 		t.Errorf("source changed: %+v", s)
+	}
+}
+
+// NFR-5: the node's part memory budget bounds the parts being copied at
+// once across all its transfers: with room for one part, two transfers of
+// parts_in_flight 2 never write two parts together, and still succeed.
+func TestPartMemoryBudget(t *testing.T) {
+	f := setup(t)
+	f.e.partMemory = semaphore.NewWeighted(5 * mib) // one part of the tests' 5 MiB
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	f.fileEndpoint(t, "a", "flaky", "lab-a")
+	f.fileEndpoint(t, "b", "flaky", "lab-b")
+	var now, peak atomic.Int32
+	f.flaky.set(func(int) error {
+		n := now.Add(1)
+		defer now.Add(-1)
+		for p := peak.Load(); n > p && !peak.CompareAndSwap(p, n); p = peak.Load() {
+		}
+		time.Sleep(50 * time.Millisecond)
+		return nil
+	})
+	job, _ := f.submitRun(t, srcDir, 20*mib, destPolicy(2, "", "a", "b"))
+	f.launch(t)
+	if s := f.wait(t, job, isSettled); s.State != "SUCCEEDED" {
+		t.Fatalf("job: %+v", s)
+	}
+	if p := peak.Load(); p != 1 {
+		t.Errorf("%d parts written at once, want 1", p)
 	}
 }

@@ -106,6 +106,9 @@ func toStatus(ctx context.Context, err error) error {
 		return err
 	}
 	p, msg := classify(err)
+	if errors.Is(context.Cause(ctx), errServerTimeout) {
+		p, msg = pUnavailable, errServerTimeout.Error()
+	}
 	if p.code == codes.Internal {
 		slog.ErrorContext(ctx, "request failed", "request_id", requestID(ctx), "error", err)
 		msg = "internal error (request " + requestID(ctx) + ")"

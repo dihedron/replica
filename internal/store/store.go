@@ -127,14 +127,25 @@ func InTenant(ctx context.Context, pool *pgxpool.Pool, tenant uuid.UUID, fn func
 // connection of its own: a pass holding a connection of pool while asking
 // pool for another would wait for good if passes filled the pool. release
 // ends the lock with the connection; it is nil unless locked.
+//
+// The server ends the lock's session once it has been idle for idle
+// (idle_session_timeout), which it is for the whole pass: a holder cut off
+// by a partition would otherwise keep the lock until the server's TCP
+// keepalives give up, minutes later (found by AC-6). A pass longer than idle
+// loses the lock while it runs, so the passes must stay idempotent, as the
+// lock is only there to save duplicate work.
 // shortcut: it dials once per pass; give the locks a small pool of their own
 // if that ever shows on the database.
-func TryLock(ctx context.Context, pool *pgxpool.Pool, name string) (release func(), locked bool, err error) {
+func TryLock(ctx context.Context, pool *pgxpool.Pool, name string, idle time.Duration) (release func(), locked bool, err error) {
 	conn, err := pgx.ConnectConfig(ctx, pool.Config().ConnConfig)
 	if err != nil {
 		return nil, false, fmt.Errorf("store: lock %s: %w", name, err)
 	}
 	release = func() { _ = conn.Close(context.WithoutCancel(ctx)) }
+	if _, err := conn.Exec(ctx, "select set_config('idle_session_timeout', $1, false)", strconv.FormatInt(idle.Milliseconds(), 10)); err != nil {
+		release()
+		return nil, false, fmt.Errorf("store: lock %s: %w", name, err)
+	}
 	if err := conn.QueryRow(ctx, "select pg_try_advisory_lock(hashtext($1))", name).Scan(&locked); err != nil {
 		release()
 		return nil, false, fmt.Errorf("store: lock %s: %w", name, err)

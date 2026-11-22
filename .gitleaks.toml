@@ -1,7 +1,8 @@
 # Gitleaks configuration: the default rules, plus an allowlist for paths that
 # git ignores and that "make secrets" still sees when it scans the working
-# tree: build output, the lab's state (its CA and keys) and the local .env of
-# the tests. None of them is ever committed.
+# tree: build output, the lab's state (its CA and keys), the evidence of
+# failed acceptance tests (job rows, whose upload tokens look like keys) and
+# the local .env of the tests. None of them is ever committed.
 title = "veho"
 
 [extend]
@@ -9,4 +10,4 @@ useDefault = true
 
 [allowlist]
 description = "git-ignored build output, lab state and local test settings"
-paths = ['''(^|/)dist/''', '''(^|/)build/''', '''(^|/)test/lab/\.state/''', '''(^|/)_test/\.env$''']
+paths = ['''(^|/)dist/''', '''(^|/)build/''', '''(^|/)test/lab/\.state/''', '''(^|/)test/lab/\.evidence/''', '''(^|/)_test/\.env$''']

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
@@ -54,6 +55,12 @@ const (
 	defaultMaxDestinations  = 16
 	platformMaxDestinations = 32
 	defaultMaxActiveJobs    = 1000
+	// the backoff's bounds (FR-12); a tenant's own bounds must keep the
+	// policy defaults (2s, 15m) valid
+	defaultMinRetryInitial  = time.Second
+	defaultMaxRetryInterval = time.Hour
+	policyRetryInitial      = 2 * time.Second
+	policyRetryMaxInterval  = 15 * time.Minute
 )
 
 // Errors of Submit, for the API's status codes.
@@ -79,8 +86,18 @@ const (
 )
 
 type quotas struct {
-	MaxDestinations int `json:"max_destinations"`
-	MaxActiveJobs   int `json:"max_active_jobs"`
+	MaxDestinations  int             `json:"max_destinations"`
+	MaxActiveJobs    int             `json:"max_active_jobs"`
+	MinRetryInitial  policy.Duration `json:"min_retry_initial"`
+	MaxRetryInterval policy.Duration `json:"max_retry_interval"`
+}
+
+// env is the policy environment of the tenant's quotas.
+func (q quotas) env(topo *topology.Topology, resolve func(string) (topology.Position, bool)) policy.Env {
+	return policy.Env{Topology: topo, Resolve: resolve,
+		MaxDestinations:  min(cmpOr(q.MaxDestinations, defaultMaxDestinations), platformMaxDestinations),
+		MinRetryInitial:  cmp.Or(time.Duration(q.MinRetryInitial), defaultMinRetryInitial),
+		MaxRetryInterval: cmp.Or(time.Duration(q.MaxRetryInterval), defaultMaxRetryInterval)}
 }
 
 // JobWorkflowID is the workflow ID of a job's first ReplicateJob.
@@ -150,15 +167,11 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 			}
 			return fmt.Errorf("source endpoint %q: %w", r.SourceEndpoint, ErrNotFound)
 		}
-		env := policy.Env{
-			Topology: topo,
-			Resolve: func(name string) (topology.Position, bool) {
-				ep, ok := eps.get(name)
-				return ep.position, ok
-			},
-			Source:          policy.Ref{Endpoint: r.SourceEndpoint, Path: r.SourcePath},
-			MaxDestinations: min(cmpOr(q.MaxDestinations, defaultMaxDestinations), platformMaxDestinations),
-		}
+		env := q.env(topo, func(name string) (topology.Position, bool) {
+			ep, ok := eps.get(name)
+			return ep.position, ok
+		})
+		env.Source = policy.Ref{Endpoint: r.SourceEndpoint, Path: r.SourcePath}
 		if err := p.Validate(env); err != nil {
 			if eps.err != nil {
 				return eps.err

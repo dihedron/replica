@@ -9,6 +9,7 @@ import (
 	"uuid"
 
 	"github.com/dihedron/veho/internal/audit"
+	"github.com/dihedron/veho/internal/policy"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -30,6 +31,10 @@ type Tenant struct {
 type Quotas struct {
 	MaxDestinations int `json:"max_destinations,omitempty"`
 	MaxActiveJobs   int `json:"max_active_jobs,omitempty"`
+	// MinRetryInitial and MaxRetryInterval bound a policy's backoff (FR-12):
+	// at most 2s and at least 15m, so that the policy defaults stay valid.
+	MinRetryInitial  policy.Duration `json:"min_retry_initial,omitempty"`
+	MaxRetryInterval policy.Duration `json:"max_retry_interval,omitempty"`
 }
 
 // Settings are a tenant's own choices.
@@ -102,7 +107,9 @@ func (e *Engine) UpdateTenant(ctx context.Context, id uuid.UUID, state *string, 
 	if state != nil && *state != "active" && *state != "suspended" {
 		return Tenant{}, fmt.Errorf("engine: update tenant: %w: state %q: want active or suspended", ErrInvalid, *state)
 	}
-	if q != nil && (q.MaxDestinations < 0 || q.MaxActiveJobs < 0 || q.MaxDestinations > platformMaxDestinations) {
+	if q != nil && (q.MaxDestinations < 0 || q.MaxActiveJobs < 0 || q.MaxDestinations > platformMaxDestinations ||
+		q.MinRetryInitial < 0 || time.Duration(q.MinRetryInitial) > policyRetryInitial ||
+		q.MaxRetryInterval < 0 || (q.MaxRetryInterval > 0 && time.Duration(q.MaxRetryInterval) < policyRetryMaxInterval)) {
 		return Tenant{}, fmt.Errorf("engine: update tenant: %w: quotas %+v", ErrInvalid, *q)
 	}
 	var quotas []byte

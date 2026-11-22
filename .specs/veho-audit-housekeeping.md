@@ -102,7 +102,7 @@ New audit actions: `SYSTEM_AUDIT_EXPORTED`, `SYSTEM_AUDIT_PRUNED`, `SYSTEM_ZOMBI
 
 - **AUD-9** Audit retention is off by default; pruning never deletes an entry that no export covers.
 - **AUD-14** No audit write waits for a cross-region round trip of its own: a state change's entry shares the change's commit (AUD-10), every other entry is asynchronous (AUD-11) and chaining is batched (AUD-12).
-- **HK-1** Housekeeping runs on one node at a time, under an advisory lock.
+- **HK-1** Housekeeping runs on one node at a time, under an advisory lock; a holder that goes silent (a partition) loses it after two intervals, after which a pass may overlap a stuck one, which the tasks' idempotency allows (`veho-engine.md`, housekeeping).
 - **HK-2** Every zombie kind of §3.1 is detected and handled, and each action is audited.
 - **HK-3** Retention values below 24 h are refused at startup.
 - **HK-4** A failed housekeeping task never stops the loop.

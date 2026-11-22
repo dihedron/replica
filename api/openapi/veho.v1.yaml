@@ -81,6 +81,10 @@ components:
           description: The stable reason of the error, as in the gRPC ErrorInfo.
         retryable:
           type: boolean
+    google.protobuf.Duration:
+      type: string
+      pattern: ^-?[0-9]+(\.[0-9]{1,9})?s$
+      description: A signed duration in seconds, with up to nine fractional digits and an `s` suffix (for example, `3s` or `-0.001s`).
     google.protobuf.Struct:
       type: object
       additionalProperties:
@@ -527,6 +531,18 @@ components:
           type: integer
           title: max_active_jobs
           format: int32
+        min_retry_initial:
+          title: min_retry_initial
+          description: |-
+            The shortest retry.initial a policy may set (FR-12); at most 2s, so that
+             the policy default stays valid; unset is 1s.
+          $ref: '#/components/schemas/google.protobuf.Duration'
+        max_retry_interval:
+          title: max_retry_interval
+          description: |-
+            The longest retry.max_interval a policy may set (FR-12); at least 15m, so
+             that the policy default stays valid; unset is 1h.
+          $ref: '#/components/schemas/google.protobuf.Duration'
       title: Quotas
       additionalProperties: false
     veho.v1.Secret:

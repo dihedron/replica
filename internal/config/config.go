@@ -105,12 +105,15 @@ type Audit struct {
 
 // Engine tunes the workflows.
 type Engine struct {
-	Heartbeat         time.Duration `yaml:"heartbeat"`
-	LeaseTTL          time.Duration `yaml:"lease_ttl"`
-	PartSizeMiB       int           `yaml:"part_size_mib"`
-	PartsInFlight     int           `yaml:"parts_in_flight"`
-	WorkerConcurrency int           `yaml:"worker_concurrency"`
-	TenantConcurrency int           `yaml:"tenant_concurrency"`
+	Heartbeat     time.Duration `yaml:"heartbeat"`
+	LeaseTTL      time.Duration `yaml:"lease_ttl"`
+	PartSizeMiB   int           `yaml:"part_size_mib"`
+	PartsInFlight int           `yaml:"parts_in_flight"`
+	// PartMemoryMiB bounds the parts this node holds at once, across all its
+	// transfers (NFR-5): a part waits for room before it is read.
+	PartMemoryMiB     int `yaml:"part_memory_mib"`
+	WorkerConcurrency int `yaml:"worker_concurrency"`
+	TenantConcurrency int `yaml:"tenant_concurrency"`
 }
 
 // Housekeeping tunes the loop and the retention (veho-audit-housekeeping.md
@@ -206,6 +209,7 @@ func (c *Config) complete() error {
 	setD(&c.Engine.LeaseTTL, 60*time.Second)
 	setI(&c.Engine.PartSizeMiB, 64)
 	setI(&c.Engine.PartsInFlight, 4)
+	setI(&c.Engine.PartMemoryMiB, 1024)
 	setI(&c.Engine.WorkerConcurrency, 16)
 	setI(&c.Engine.TenantConcurrency, 4)
 	setD(&c.Housekeeping.Interval, 30*time.Second)
@@ -240,6 +244,7 @@ func (c *Config) validate() error {
 	check(e.LeaseTTL >= 3*e.Heartbeat, "engine.lease_ttl (%v) must be at least three heartbeats (%v)", e.LeaseTTL, 3*e.Heartbeat)
 	check(e.PartSizeMiB >= 5 && e.PartSizeMiB <= 512, "engine.part_size_mib %d: want 5 to 512", e.PartSizeMiB)
 	check(e.PartsInFlight >= 1 && e.PartsInFlight <= 64, "engine.parts_in_flight %d: want 1 to 64", e.PartsInFlight)
+	check(e.PartMemoryMiB >= e.PartSizeMiB, "engine.part_memory_mib %d: want at least engine.part_size_mib (%d)", e.PartMemoryMiB, e.PartSizeMiB)
 	check(e.WorkerConcurrency >= 1, "engine.worker_concurrency must be positive")
 	check(e.TenantConcurrency >= 1 && e.TenantConcurrency <= e.WorkerConcurrency, "engine.tenant_concurrency %d: want 1 to worker_concurrency", e.TenantConcurrency)
 	h := c.Housekeeping

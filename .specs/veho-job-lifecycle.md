@@ -174,9 +174,12 @@ Plugins classify errors (veho-plugins.md). Core handles by class:
 | `Integrity` | checksum/size mismatch | Restart from scratch, max 3, then `FAILED` |
 | `Permanent` | 403/401 after credential refresh, destination bucket missing, source deleted, `SOURCE_CHANGED`, quota exceeded at destination | Transfer `FAILED` immediately; no further retries |
 | `Unknown` | unclassified | Treated as `Transient` but capped at 10 consecutive occurrences, then `FAILED` |
+| `Internal` | set by the core, never by a plugin: a poison pill (adopted more than 20 times, or parked by DBOS as `MAX_RECOVERY_ATTEMPTS_EXCEEDED`), a workflow that ended without marking its transfer | Transfer `FAILED`; the repair is audited (AC-19) |
 
 Defaults (overridable in policy within tenant limits):
-`initial=2s, multiplier=2, max_interval=15m, jitter=±20%, deadline=7d`.
+`initial=2s, multiplier=2, max_interval=15m, jitter=±20%, deadline=7d`. The
+tenant limits are the quotas `min_retry_initial` [1s, at most 2s] and
+`max_retry_interval` [1h, at least 15m] (FR-12).
 
 Implementation note (veho-dbos-spike.md, EXT-6): DBOS v1.9.0 step retry
 (`WithStepMaxRetries`, `WithStepBaseInterval`, `WithStepBackoffFactor`,

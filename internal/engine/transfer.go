@@ -451,7 +451,7 @@ func (e *Engine) copyParts(ctx context.Context, src plugin.Client, up plugin.Upl
 		wg     sync.WaitGroup
 	)
 	one := func(p part) {
-		c, err := copyPart(ctx, src, up, a, p)
+		c, err := e.copyPart(ctx, src, up, a, p)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
@@ -474,7 +474,15 @@ func (e *Engine) copyParts(ctx context.Context, src plugin.Client, up plugin.Upl
 	return copied, nil
 }
 
-func copyPart(ctx context.Context, src plugin.Client, up plugin.Upload, a attempt, p part) (copiedPart, error) {
+// copyPart copies one part once the node's part memory has room for it: a
+// driver may hold the whole part in memory (NFR-5). A part larger than the
+// whole budget takes all of it.
+func (e *Engine) copyPart(ctx context.Context, src plugin.Client, up plugin.Upload, a attempt, p part) (copiedPart, error) {
+	n := min(p.Length, int64(e.cfg.Engine.PartMemoryMiB)<<20)
+	if err := e.partMemory.Acquire(ctx, n); err != nil {
+		return copiedPart{}, fmt.Errorf("wait for part memory: %w", err)
+	}
+	defer e.partMemory.Release(n)
 	rc, err := src.ReadRange(ctx, plugin.Ref{Key: a.SourcePath}, p.Offset, p.Length, a.Version)
 	if err != nil {
 		return copiedPart{}, drv(fmt.Errorf("read part %d: %w", p.No, err))

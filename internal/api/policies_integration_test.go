@@ -35,14 +35,14 @@ func TestPolicies(t *testing.T) {
 	if r := f.rest(t, "GET", "/v1/policies/geo?version=1", admin, nil); r.body["version"] != 1.0 {
 		t.Errorf("v1: %v", r.body)
 	}
-	one := map[string]any{"destinations": []any{map[string]string{"endpoint": "d1", "path": "x"}}}
-	if r := f.rest(t, "POST", "/v1/policies:validate", admin, map[string]any{"policy": one}); r.code != http.StatusOK || r.body["valid"] == true || r.body["code"] != "invalid_policy" {
+	none := map[string]any{"destinations": []any{}} // FR-4: N >= 1
+	if r := f.rest(t, "POST", "/v1/policies:validate", admin, map[string]any{"policy": none}); r.code != http.StatusOK || r.body["valid"] == true || r.body["code"] != "invalid_policy" {
 		t.Errorf("validate a bad policy: %d %v", r.code, r.body)
 	}
 	if r := f.rest(t, "POST", "/v1/policies:validate", admin, map[string]any{"policy": geo("x")}); r.body["valid"] != true {
 		t.Errorf("validate a good policy: %v", r.body)
 	}
-	if r := f.rest(t, "POST", "/v1/policies", admin, map[string]any{"name": "bad", "policy": one}); r.code != http.StatusBadRequest {
+	if r := f.rest(t, "POST", "/v1/policies", admin, map[string]any{"name": "bad", "policy": none}); r.code != http.StatusBadRequest {
 		t.Errorf("create a bad policy: %d", r.code)
 	}
 	if r := f.rest(t, "GET", "/v1/policies", admin, nil); len(r.body["policies"].([]any)) != 1 {

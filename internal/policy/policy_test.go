@@ -98,7 +98,8 @@ func TestValidate(t *testing.T) {
 		{"valid, 3 of 4 over 3 regions and 3 azs", func(p *Policy) {
 			p.Completion = Completion{MinCopies: 3, Spread: []Statement{{"region", 3}, {"az", 3}}}
 		}, nil, ""},
-		{"one destination", func(p *Policy) { p.Destinations = dest("a1-arch"); *p = p.Normalize() }, nil, CodeInvalidPolicy},
+		{"one destination (FR-4: N >= 1)", func(p *Policy) { p.Destinations, p.Completion = dest("a1-arch"), Completion{}; *p = p.Normalize() }, nil, ""},
+		{"no destination", func(p *Policy) { p.Destinations = nil; *p = p.Normalize() }, nil, CodeInvalidPolicy},
 		{"too many", func(p *Policy) {}, func(e *Env) { e.MaxDestinations = 3 }, CodeTooManyDestinations},
 		{"unknown endpoint", func(p *Policy) { p.Destinations[0].Endpoint = "nope" }, nil, CodeUnknownEndpoint},
 		{"empty path", func(p *Policy) { p.Destinations[0].Path = "" }, nil, CodeInvalidPolicy},
@@ -123,6 +124,16 @@ func TestValidate(t *testing.T) {
 		{"bad verify", func(p *Policy) { p.Verify = "md5" }, nil, CodeInvalidPolicy},
 		{"deadline not positive", func(p *Policy) { p.Deadline = -1 }, nil, CodeInvalidPolicy},
 		{"retry initial above max", func(p *Policy) { p.Retry = Retry{Initial: Duration(time.Hour), MaxInterval: Duration(time.Minute)} }, nil, CodeInvalidPolicy},
+		// FR-12: the tenant's bounds on the backoff
+		{"retry within the tenant's bounds", func(p *Policy) { p.Retry = Retry{Initial: Duration(time.Second), MaxInterval: Duration(time.Hour)} },
+			func(e *Env) { e.MinRetryInitial, e.MaxRetryInterval = time.Second, time.Hour }, ""},
+		{"retry initial below the tenant's minimum", func(p *Policy) { p.Retry.Initial = Duration(100 * time.Millisecond) },
+			func(e *Env) { e.MinRetryInitial = time.Second }, CodeInvalidPolicy},
+		{"retry max_interval above the tenant's maximum", func(p *Policy) { p.Retry.MaxInterval = Duration(2 * time.Hour) },
+			func(e *Env) { e.MaxRetryInterval = time.Hour }, CodeInvalidPolicy},
+		{"no bounds, any positive retry", func(p *Policy) {
+			p.Retry = Retry{Initial: Duration(time.Millisecond), MaxInterval: Duration(48 * time.Hour)}
+		}, nil, ""},
 	}
 	for _, tc := range tests {
 		p := base()

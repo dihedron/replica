@@ -10,6 +10,7 @@ package veho.v1;
 option go_package = "github.com/dihedron/veho/api/veho/v1;vehov1";
 
 import "google/api/annotations.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "veho/v1/policies.proto";
@@ -138,6 +139,12 @@ message Tenant {
 message Quotas {
   int32 max_destinations = 1;
   int32 max_active_jobs = 2;
+  // The shortest retry.initial a policy may set (FR-12); at most 2s, so that
+  // the policy default stays valid; unset is 1s.
+  google.protobuf.Duration min_retry_initial = 3;
+  // The longest retry.max_interval a policy may set (FR-12); at least 15m, so
+  // that the policy default stays valid; unset is 1h.
+  google.protobuf.Duration max_retry_interval = 4;
 }
 
 message TenantSettings {

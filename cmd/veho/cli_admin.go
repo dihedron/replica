@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // nameArg is a resource's name as the command's argument.
@@ -484,16 +486,24 @@ func (cmd *TenantListCommand) Execute([]string) error {
 type TenantUpdateCommand struct {
 	apiOptions
 	idArg
-	State           string `long:"state" choice:"active" choice:"suspended" description:"The tenant's state"`
-	MaxDestinations int32  `long:"max-destinations" description:"The most destinations of a job"`
-	MaxActiveJobs   int32  `long:"max-active-jobs" description:"The most jobs in progress"`
+	State            string        `long:"state" choice:"active" choice:"suspended" description:"The tenant's state"`
+	MaxDestinations  int32         `long:"max-destinations" description:"The most destinations of a job"`
+	MaxActiveJobs    int32         `long:"max-active-jobs" description:"The most jobs in progress"`
+	MinRetryInitial  time.Duration `long:"min-retry-initial" description:"The shortest retry.initial a policy may set (at most 2s; default 1s)"`
+	MaxRetryInterval time.Duration `long:"max-retry-interval" description:"The longest retry.max_interval a policy may set (at least 15m; default 1h)"`
 }
 
 // Execute changes the tenant.
 func (cmd *TenantUpdateCommand) Execute([]string) error {
 	req := &vehov1.UpdateTenantRequest{Id: cmd.Args.ID, State: cmd.State}
-	if cmd.MaxDestinations != 0 || cmd.MaxActiveJobs != 0 {
+	if cmd.MaxDestinations != 0 || cmd.MaxActiveJobs != 0 || cmd.MinRetryInitial != 0 || cmd.MaxRetryInterval != 0 {
 		req.Quotas = &vehov1.Quotas{MaxDestinations: cmd.MaxDestinations, MaxActiveJobs: cmd.MaxActiveJobs}
+		if cmd.MinRetryInitial != 0 {
+			req.Quotas.MinRetryInitial = durationpb.New(cmd.MinRetryInitial)
+		}
+		if cmd.MaxRetryInterval != 0 {
+			req.Quotas.MaxRetryInterval = durationpb.New(cmd.MaxRetryInterval)
+		}
 	}
 	return cmd.show("veho.v1.TenantService.UpdateTenant", req, &vehov1.Tenant{})
 }
