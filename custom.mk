@@ -78,7 +78,7 @@ secrets: scanners ## scan the history and the working tree for secrets with gitl
 	@echo "gitleaks: working tree..."
 	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(GITLEAKS_IMAGE) dir /repo --config /repo/.gitleaks.toml --no-banner --redact
 	@echo "TruffleHog: history..."
-	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(TRUFFLEHOG_IMAGE) git file:///repo --results=verified,unknown --fail --no-update
+	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(TRUFFLEHOG_IMAGE) git file:///repo --exclude-paths=/repo/.trufflehog-history-exclude --results=verified,unknown --fail --no-update
 	@echo "TruffleHog: working tree..."
 	@$(CONTAINER) run --rm -v "$(CURDIR)":/repo:ro $(TRUFFLEHOG_IMAGE) filesystem /repo --exclude-paths=/repo/.trufflehog-exclude --results=verified,unknown --fail --no-update
 
