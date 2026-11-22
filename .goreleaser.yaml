@@ -24,11 +24,10 @@ builds:
   - id: veho
     binary: veho
     main: ./cmd/veho
-    # the service runs on Linux (NFR-6); the client also on macOS. Not
-    # Windows: the unwrap key and plugin checks use syscall.Stat_t
+    # Linux only (NFR-6): Windows and macOS are not supported; the BSDs may
+    # come later, as tier 2 (backlog 33)
     goos:
       - linux
-      - darwin
     goarch:
       - amd64
       - arm64

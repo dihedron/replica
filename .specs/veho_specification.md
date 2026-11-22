@@ -181,7 +181,7 @@ accepted it (or an entire region) fails.
   transfer is not independent of the object's size, the node's bound is. A
   part larger than the whole budget takes all of it and runs alone
   (`veho-engine.md` §1, memory).
-- **NFR-6 (portability)** Linux amd64/arm64 static binary; no cgo. Tier 1: OpenStack and LXD on Ubuntu 24.04 LTS or later and Rocky/Alma under systemd; tier 2: VMware and Kubernetes; other systems later; no feature works on one platform only (`veho-architecture.md` §7).
+- **NFR-6 (portability)** Linux amd64/arm64 static binary; no cgo. Windows and macOS are not supported, not even for the client; the BSDs may be added later as tier 2 (backlog 33). Tier 1: OpenStack and LXD on Ubuntu 24.04 LTS or later and Rocky/Alma under systemd; tier 2: VMware and Kubernetes; other systems later; no feature works on one platform only (`veho-architecture.md` §7).
 - **NFR-7 (observability)** Structured logs (`slog`), Prometheus metrics,
   OpenTelemetry traces propagated across steps (veho-acceptance-matrix.md).
 
