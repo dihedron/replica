@@ -11,14 +11,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// TenantCommand is "veho tenant" (.specs/veho-api-server.md §4.3): the
-// operator's bootstrap of tenants, as veho_migrator.
-type TenantCommand struct {
-	Create TenantCreateCommand `command:"create" description:"Create a tenant"`
+// BootstrapCommand is "veho bootstrap" (.specs/veho-cli.md §1): what the
+// first administrators need, written in the database as veho_migrator; the
+// API does the same afterwards.
+type BootstrapCommand struct {
+	Tenant      BootstrapTenantCommand      `command:"tenant" description:"Create a tenant"`
+	APIKey      BootstrapAPIKeyCommand      `command:"apikey" description:"Create a principal and its API key; the key is printed once"`
+	Entitlement BootstrapEntitlementCommand `command:"entitlement" description:"Entitle an OIDC or SPIFFE identity, or a group, to a role in a tenant"`
 }
 
-// TenantCreateCommand is "veho tenant create <name>".
-type TenantCreateCommand struct {
+// BootstrapTenantCommand is "veho bootstrap tenant <name>".
+type BootstrapTenantCommand struct {
 	dbOptions
 	auditOptions
 	Args struct {
@@ -27,8 +30,8 @@ type TenantCreateCommand struct {
 }
 
 // Execute creates the tenant and prints its ID.
-func (cmd *TenantCreateCommand) Execute([]string) error {
-	return audited(cmd.dbOptions, cmd.auditOptions, "tenant create", "TENANT_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
+func (cmd *BootstrapTenantCommand) Execute([]string) error {
+	return audited(cmd.dbOptions, cmd.auditOptions, "bootstrap tenant", "TENANT_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		var id uuid.UUID
 		if err := conn.QueryRow(ctx, "select veho.create_tenant($1)", cmd.Args.Name).Scan(&id); err != nil {
 			return nil, err
@@ -38,13 +41,8 @@ func (cmd *TenantCreateCommand) Execute([]string) error {
 	})
 }
 
-// APIKeyCommand is "veho apikey".
-type APIKeyCommand struct {
-	Create APIKeyCreateCommand `command:"create" description:"Create a principal and its API key; the key is printed once"`
-}
-
-// APIKeyCreateCommand is "veho apikey create".
-type APIKeyCreateCommand struct {
+// BootstrapAPIKeyCommand is "veho bootstrap apikey".
+type BootstrapAPIKeyCommand struct {
 	dbOptions
 	auditOptions
 	Tenant        string        `long:"tenant" description:"The tenant's name (not with --platform-admin)"`
@@ -56,16 +54,16 @@ type APIKeyCreateCommand struct {
 
 // Execute creates the principal and the key, and prints the key: it is
 // never shown again, nor logged (C7-4).
-func (cmd *APIKeyCreateCommand) Execute([]string) error {
+func (cmd *BootstrapAPIKeyCommand) Execute([]string) error {
 	if cmd.PlatformAdmin == (cmd.Tenant != "") || cmd.PlatformAdmin == (cmd.Role != "") {
-		return errors.New("apikey create: give --tenant and --role, or --platform-admin")
+		return errors.New("bootstrap apikey: give --tenant and --role, or --platform-admin")
 	}
 	role := cmd.Role
 	if cmd.PlatformAdmin {
 		role = api.RolePlatformAdmin
 	}
 	token, id, sum := api.NewKey()
-	err := audited(cmd.dbOptions, cmd.auditOptions, "apikey create", "APIKEY_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
+	err := audited(cmd.dbOptions, cmd.auditOptions, "bootstrap apikey", "APIKEY_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		return map[string]string{"key": id, "name": cmd.Name, "role": role, "tenant": cmd.Tenant},
 			pgx.BeginFunc(ctx, conn, func(tx pgx.Tx) error {
 				var tenant *uuid.UUID
@@ -100,14 +98,9 @@ func (cmd *APIKeyCreateCommand) Execute([]string) error {
 	return nil
 }
 
-// EntitlementCommand is "veho entitlement".
-type EntitlementCommand struct {
-	Create EntitlementCreateCommand `command:"create" description:"Entitle an OIDC or SPIFFE identity, or a group, to a role in a tenant"`
-}
-
-// EntitlementCreateCommand is "veho entitlement create" (.specs/veho-api-server.md
-// §4.4).
-type EntitlementCreateCommand struct {
+// BootstrapEntitlementCommand is "veho bootstrap entitlement"
+// (.specs/veho-api-server.md §4.4).
+type BootstrapEntitlementCommand struct {
 	dbOptions
 	auditOptions
 	Kind          string `long:"kind" required:"true" choice:"oidc" choice:"spiffe" description:"The kind of identity"`
@@ -120,18 +113,18 @@ type EntitlementCreateCommand struct {
 }
 
 // Execute creates the entitlement and prints its ID.
-func (cmd *EntitlementCreateCommand) Execute([]string) error {
+func (cmd *BootstrapEntitlementCommand) Execute([]string) error {
 	if (cmd.Subject == "") == (cmd.Group == "") {
-		return errors.New("entitlement create: give --subject or --group")
+		return errors.New("bootstrap entitlement: give --subject or --group")
 	}
 	if cmd.PlatformAdmin == (cmd.Tenant != "") || cmd.PlatformAdmin == (cmd.Role != "") {
-		return errors.New("entitlement create: give --tenant and --role, or --platform-admin")
+		return errors.New("bootstrap entitlement: give --tenant and --role, or --platform-admin")
 	}
 	role := cmd.Role
 	if cmd.PlatformAdmin {
 		role = api.RolePlatformAdmin
 	}
-	return audited(cmd.dbOptions, cmd.auditOptions, "entitlement create", "ENTITLEMENT_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
+	return audited(cmd.dbOptions, cmd.auditOptions, "bootstrap entitlement", "ENTITLEMENT_CREATE", func(ctx context.Context, conn *pgx.Conn) (any, error) {
 		var id uuid.UUID
 		err := conn.QueryRow(ctx, `insert into veho.entitlements (tenant_id, kind, issuer, subject, "group", role)
 			values ((select id from veho.tenants where name = nullif($1, '')), $2, $3, nullif($4, ''), nullif($5, ''), $6) returning id`,

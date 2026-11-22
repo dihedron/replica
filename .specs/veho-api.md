@@ -156,11 +156,13 @@ displays an object is `show`, and the process commands are `serve`, `migrate`,
 | :--- | :--- |
 | `veho serve` | run a node: the API and the workflow executor (one process, any region) |
 | `veho migrate` | apply the schema migrations to the state store |
-| `veho tenant create`, `veho apikey create`, `veho entitlement create` | bootstrap tenants, API keys and the entitlements of OIDC and SPIFFE identities, as `veho_migrator` (`veho-api-server.md` §4.3, §4.4) |
+| `veho bootstrap tenant \| apikey \| entitlement` | the first tenants, API keys and entitlements, written in the database as `veho_migrator` (`veho-cli.md` §1) |
 | `veho kek show \| init \| rotate \| rewrap \| rekey` | the key-encryption keys of the secrets, as `veho_migrator` with the unwrap key (`veho-secrets.md` §4) |
-| `veho job submit \| show \| list \| wait \| cancel \| retry` | client of the API; `wait` polls until the job is terminal and exits non-zero on `FAILED` |
+| `veho job submit \| show \| list \| wait \| watch \| cancel \| retry` | client of the API; `wait` exits 0 on `SUCCEEDED`, 3 on `FAILED`, 4 on `CANCELLED` |
+| `veho policy create \| show \| list \| delete \| validate \| grant \| revoke` | named policies and who may submit them |
 | `veho endpoint create \| show \| list \| update \| delete \| test` | tenant endpoints |
 | `veho secret set \| show \| list \| delete` | tenant secrets (the value is read from a file or standard input, never from an argument) |
-| `veho policy create \| show \| list \| delete \| validate \| grant \| revoke` | named policies and who may submit them |
+| `veho apikey create \| list \| revoke`, `veho entitlement create \| list \| delete`, `veho settings show \| update` | a tenant admin's administration of its tenant |
+| `veho tenant create \| show \| list \| update` | the tenants, for platform administrators |
 | `veho version [--verbose]` | the build metadata (name, version, license, author, build and packaging environments) |
-| `veho completion` | shell completions |
+| `veho completion bash \| zsh` | shell completions: a function that asks the binary (go-flags), so they always match it |

@@ -237,6 +237,7 @@ all partitions at once.
 | `veho-job-lifecycle.md` | Data model, state machines, workflows, adoption, retries |
 | `veho-audit-housekeeping.md` | Audit log (hash chain, checkpoints, export, pruning) and housekeeping (zombie tasks, retention), copied from ligo |
 | `veho-latency-envelope.md` | Supported latency and jitter, degradation, tuning, AC-24 |
+| `veho-cli.md` | The command line client (C8) |
 | `veho-api-server.md` | The API server: transport, interceptors, identities, jobs (C7) |
 | `veho-engine.md` | The engine: acceptance, workflows, fencing, retries, housekeeping (C6) |
 | `veho-audit.md` | Lightweight audit: events to the system log and the SIEM |

@@ -75,32 +75,32 @@ func TestBootstrap(t *testing.T) {
 	db := dbOptions{DSNEnv: "VEHO_TEST_DATABASE_URL"}
 	rec := &audit.Recorder{}
 	name := "boot-" + strings.ReplaceAll(time.Now().Format("150405.000"), ".", "")
-	tc := &TenantCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}}
+	tc := &BootstrapTenantCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}}
 	tc.Args.Name = name
 	if id := stdout(t, func() error { return tc.Execute(nil) }); len(id) != 36 {
 		t.Fatalf("tenant id %q", id)
 	}
-	kc := &APIKeyCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Role: "admin", Name: "first-admin"}
+	kc := &BootstrapAPIKeyCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Role: "admin", Name: "first-admin"}
 	key := stdout(t, func() error { return kc.Execute(nil) })
 	if !strings.HasPrefix(key, "veho_") || len(key) < 50 {
 		t.Fatalf("key %q", key)
 	}
-	pc := &APIKeyCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, PlatformAdmin: true, Name: "root-" + name}
+	pc := &BootstrapAPIKeyCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, PlatformAdmin: true, Name: "root-" + name}
 	_ = stdout(t, func() error { return pc.Execute(nil) })
-	if err := (&APIKeyCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Name: "x"}).Execute(nil); err == nil {
+	if err := (&BootstrapAPIKeyCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Name: "x"}).Execute(nil); err == nil {
 		t.Error("a tenant without a role: no error")
 	}
 
 	// API-T13: an entitlement by subject, one by group; both or neither refused
-	ec := &EntitlementCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "oidc",
+	ec := &BootstrapEntitlementCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "oidc",
 		Issuer: "https://idp.example", Subject: "alice", Tenant: name, Role: "operator"}
 	if id := stdout(t, func() error { return ec.Execute(nil) }); len(id) != 36 {
 		t.Errorf("entitlement id %q", id)
 	}
-	eg := &EntitlementCreateCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "spiffe",
+	eg := &BootstrapEntitlementCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "spiffe",
 		Issuer: "veho.test", Group: "ops", PlatformAdmin: true}
 	_ = stdout(t, func() error { return eg.Execute(nil) })
-	for _, bad := range []*EntitlementCreateCommand{
+	for _, bad := range []*BootstrapEntitlementCommand{
 		{dbOptions: db, Kind: "oidc", Issuer: "https://idp.example", Subject: "a", Group: "g", Tenant: name, Role: "viewer"},
 		{dbOptions: db, Kind: "oidc", Issuer: "https://idp.example", Tenant: name, Role: "viewer"},
 		{dbOptions: db, Kind: "oidc", Issuer: "https://idp.example", Subject: "a", Tenant: name},

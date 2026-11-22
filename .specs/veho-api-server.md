@@ -53,7 +53,7 @@ Row-level security as for the other tenant tables; authentication reads them thr
 
 ### 4.3 Bootstrap
 
-`veho tenant create <name>` and `veho apikey create --tenant <name> --role <role> --name <name>` (and `--platform-admin`) run as `veho_migrator` with its DSN from the environment, like `veho migrate` and `veho kek`, and print the new key once. They are how the first platform administrator and each tenant's first admin get a key; afterwards the API's `AdminService` (C7d) does the same. Audited.
+`veho bootstrap tenant <name>` and `veho bootstrap apikey --tenant <name> --role <role> --name <name>` (and `--platform-admin`; named `veho tenant create` and `veho apikey create` until C8, `veho-cli.md` §1) run as `veho_migrator` with its DSN from the environment, like `veho migrate` and `veho kek`, and print the new key once. They are how the first platform administrator and each tenant's first admin get a key; afterwards the API's `AdminService` (C7d) does the same. Audited.
 
 ### 4.4 OIDC and SPIFFE (C7b)
 
@@ -62,7 +62,7 @@ Row-level security as for the other tenant tables; authentication reads them thr
 - **SPIFFE X.509-SVID** (`spiffe/go-spiffe/v2` v2.9.0): the API's TLS asks for a client certificate (`RequestClientCert`); a certificate given is verified against the X.509 bundle of `api.spiffe.trust_domain` (`api.spiffe.x509_bundle_file`) with `x509svid.Verify`; the SPIFFE ID (its URI SAN) is the subject, the trust domain the issuer. A call without a certificate uses its bearer credential, as before. Over REST the gateway passes the verified ID to the gRPC server in internal metadata, which the server accepts **only from the in-process connection** (its peer is the pipe), so that a client cannot claim an ID by sending the header.
 - **JWT-SVID**: a bearer JWT whose `sub` is a `spiffe://` ID of the trust domain, verified against the JWT bundle (`api.spiffe.jwt_bundle_file`, a JWKS) for the audience `api.spiffe.audience` (`jwtsvid.ParseAndValidate`). Other bearer JWTs are OIDC tokens; tokens starting with `veho_` are API keys.
 - **Re-authorisation** of a stream (API-11) re-verifies the token (its expiry included) or the certificate's entitlement every `Reauthorise`.
-- **Bootstrap**: `veho entitlement create --kind oidc|spiffe --issuer <iss> (--subject <sub> | --group <g>) (--tenant <name> --role <role> | --platform-admin)`, as `veho_migrator` like `veho apikey create`; the API to manage entitlements is C7d. Audited.
+- **Bootstrap**: `veho bootstrap entitlement --kind oidc|spiffe --issuer <iss> (--subject <sub> | --group <g>) (--tenant <name> --role <role> | --platform-admin)`, as `veho_migrator` like `veho apikey create`; the API to manage entitlements is C7d. Audited.
 - Bundles and issuers are read at start; a bundle file that changes is read again within a minute (SPIRE rotates bundles).
 
 ## 5. Jobs (C7a)
@@ -143,12 +143,12 @@ The message of a 500 is "internal error" with the request ID; the detail is logg
 | API-T5 | The error table of §6, each row, in both protocols, with `ErrorInfo` and `problem+json` |
 | API-T6 | `?wait=` returns at the change or `304` at the end; `WatchJob` streams until settled and ends when the key is revoked (at the next re-authorisation) |
 | API-T7 | Limits: a 2 MiB body `413`, unknown JSON fields `400`, more than `max_watches` streams `429` |
-| API-T8 | `veho tenant create` and `veho apikey create` bootstrap a working key; the key is not in any log line |
+| API-T8 | `veho bootstrap tenant` and `veho bootstrap apikey` make a working key; the key is not in any log line |
 | API-T9 | OIDC (a test issuer serving discovery and JWKS): a token entitled by subject, and one entitled by group, act with their entitlement's tenant and role; a wrong audience, another issuer, an expired token, a bad signature, a subject without an entitlement, an identity entitled in two tenants: `401` |
 | API-T10 | X.509-SVID: a client certificate of the trust domain, entitled, works over gRPC and REST; a certificate of another trust domain or signed by another CA: `401`; a REST client sending the internal metadata header gets nothing from it |
 | API-T11 | JWT-SVID: entitled and valid works; another audience, another trust domain, expired: `401` |
 | API-T12 | A watch whose token expires, or whose entitlement is deleted, ends `Unauthenticated` at the next re-authorisation |
-| API-T13 | `veho entitlement create` makes a working entitlement; one with both subject and group, or neither, is refused |
+| API-T13 | `veho bootstrap entitlement` makes a working entitlement; one with both subject and group, or neither, is refused |
 | API-T14 | Policies: create v1 and v2 of a name, get the latest and v1, list, validate a bad one (its problem, nothing stored); an invalid policy is refused at creation; delete refused while a running job uses it, accepted after, and the name hidden |
 | API-T15 | Grants: an operator without a grant gets `404` for a policy and its submission; with `read` sees it; with `submit` submits by reference; with `manage` adds a version and sets grants; a group grant works for its OIDC members |
 | API-T16 | Inline policies: `all` lets an operator submit one; `granted` refuses it without `submit_inline` and accepts it with; `none` refuses even an admin's |

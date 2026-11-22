@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"strings"
 	"time"
@@ -14,7 +12,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -92,11 +89,7 @@ func (s *Server) job(ctx context.Context, t, id uuid.UUID) (*vehov1.Job, error) 
 }
 
 // etag is the hash of a job's view.
-func etag(j *vehov1.Job) string {
-	b, _ := proto.MarshalOptions{Deterministic: true}.Marshal(j)
-	s := sha256.Sum256(b)
-	return `"` + hex.EncodeToString(s[:12]) + `"`
-}
+func etag(j *vehov1.Job) string { return vehov1.ETag(j) }
 
 // GetJob implements JobService, with the REST long poll (§5).
 func (s *Server) GetJob(ctx context.Context, r *vehov1.GetJobRequest) (*vehov1.Job, error) {
