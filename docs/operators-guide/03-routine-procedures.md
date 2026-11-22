@@ -99,6 +99,25 @@ Settled jobs are kept 90 days (`housekeeping.jobs_retention`), DBOS's records of
 - **Removing a node**: `systemctl stop veho`, then remove the host. Its unfinished transfers are adopted after its lease (60 s).
 - **Restarting a node** (a new configuration, a new KEK): `systemctl restart veho`, one node at a time; the copies it had in flight are resumed from their last recorded part.
 
+## Upgrading the nodes
+
+Each build carries a **workflow version**, logged at start (`workflow_version`). DBOS gives each node only the work of its own workflow version, so how you upgrade depends on whether it changes (the release notes say so):
+
+- **The same workflow version** (the usual case): replace the nodes one at a time (stop, install, start). Transfers in flight are resumed by the other nodes, then by the new ones. Measured in the lab: no job affected.
+- **A new workflow version**: the old nodes must finish the old work.
+  1. Upgrade some of the nodes, keeping at least one old node in each region you need. An upgraded node hands the old work it was running back to the queue within a minute, and the old nodes take it.
+  2. Point the clients at the upgraded nodes: a job submitted to an old node is old work.
+  3. Wait until no work of the old version is left. As `veho_dbos`:
+
+     ```sql
+     select application_version, status, count(*) from dbos.workflow_status
+     where status in ('PENDING', 'ENQUEUED') group by 1, 2;
+     ```
+
+  4. Upgrade the remaining nodes.
+
+  Do not stop the last old node while old work is left: nothing would run it until a node of that version starts again.
+
 ## The state store
 
 - **Planned switchover** (maintenance of the primary's host): `patronictl switchover --leader <current> --candidate <standby> --force`. The nodes reconnect by themselves; copies in flight retry their current step.

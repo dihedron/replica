@@ -53,7 +53,7 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "starting", "executor", cfg.Node.ID, "region", cfg.Node.Region, "config_sha256", hash, "version", metadata.Version)
+	slog.InfoContext(ctx, "starting", "executor", cfg.Node.ID, "region", cfg.Node.Region, "config_sha256", hash, "version", metadata.Version, "workflow_version", engine.WorkflowVersion)
 	aud, err := audit.Open(cfg.Audit.Sink, cfg.Node.ID)
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 		return err
 	}
 	e, err := engine.New(ctx, engine.Deps{Config: cfg, API: pools["api"], Worker: pools["worker"], DBOSURL: dbosDSN,
-		Version: metadata.Version, Audit: aud, Secrets: secretStore, Drivers: drivers})
+		Audit: aud, Secrets: secretStore, Drivers: drivers})
 	if err != nil {
 		return err
 	}

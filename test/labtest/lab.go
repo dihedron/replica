@@ -27,6 +27,7 @@ import (
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
 	"github.com/dihedron/veho/pkg/plugin"
 	s3driver "github.com/dihedron/veho/pkg/plugin/s3"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	grpccreds "google.golang.org/grpc/credentials"
@@ -516,4 +517,40 @@ func (tn *Tenant) Uploads(x, bucket string) int {
 		t.Fatalf("list uploads %s/%s: %v", x, bucket, err)
 	}
 	return len(out.Uploads)
+}
+
+// Pending counts the workflows of the jobs, and of their transfers, that DBOS
+// holds as PENDING or ENQUEUED under the application version: the work a
+// node of that version must still run (AC-20).
+func (l *Lab) Pending(version string, jobs ...string) int {
+	l.t.Helper()
+	ctx := context.Background()
+	var ids []string
+	for _, j := range jobs {
+		ids = append(ids, "job/"+j)
+		rows, err := l.db.Query(ctx, "select id::text from veho.transfers where job_id = $1", j)
+		if err != nil {
+			l.t.Fatal(err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				l.t.Fatal(err)
+			}
+			ids = append(ids, "transfer/"+id)
+		}
+		rows.Close()
+	}
+	conn, err := pgx.Connect(ctx, os.Getenv("VEHO_TEST_DBOS_DATABASE_URL"))
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	var n int
+	// a retry adds a suffix to a transfer's workflow ID
+	if err := conn.QueryRow(ctx, `select count(*) from dbos.workflow_status where application_version = $1 and status in ('PENDING', 'ENQUEUED')
+		and split_part(workflow_uuid, '/', 1) || '/' || split_part(workflow_uuid, '/', 2) = any($2)`, version, ids).Scan(&n); err != nil {
+		l.t.Fatal(err)
+	}
+	return n
 }

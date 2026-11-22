@@ -544,3 +544,54 @@ func TestAC26NoPlaintextInDump(t *testing.T) {
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
 
 func hexOf(b []byte) string { return hex.EncodeToString(b) }
+
+// AC-20: rolling upgrades with transfers in flight. A build of the same
+// workflow version replaces the nodes one at a time and the work goes on. A
+// build of another workflow version replaces four nodes, the owner of a
+// running transfer among them: DBOS gives each version only its own work, so
+// the restarted owner hands its old work back to the queue (recoverOwn), the
+// two old nodes finish it, the new nodes run the new jobs, and once nothing
+// of the old version is left the last old nodes are upgraded.
+func TestAC20RollingUpgrade(t *testing.T) {
+	l := labtest.New(t)
+	t.Cleanup(func() { l.Sh("nodes", "deploy") }) // the current build everywhere, for the next tests
+	tn := l.Tenant()
+	want := tn.Put("a", "obj", 512*mib)
+	slow(l, "c", "dest-1")
+	old := tn.Clients("veho-c2")
+
+	// a compatible build, node by node, mid-transfer
+	j := tn.Submit(old, "a", "obj", tn.Policy("compat", cDest, nil))
+	copying(t, l, j.GetId(), "c-dest-1", 1)
+	l.Sh("nodes", "deploy")
+	settled(t, tn, tn.Wait(old, j.GetId(), 15*time.Minute), want, "compat", cDest)
+
+	// an incompatible build on four nodes, the transfer's owner among them:
+	// its old work must go back to the two old nodes
+	j1 := tn.Submit(old, "a", "obj", tn.Policy("v1", cDest, nil))
+	owner := copying(t, l, j1.GetId(), "c-dest-1", 1).Owner
+	var keep, upgrade []string
+	for _, n := range l.Nodes() {
+		if n != owner && len(keep) < 2 {
+			keep = append(keep, n)
+		} else {
+			upgrade = append(upgrade, n)
+		}
+	}
+	old = tn.Clients(keep[0])
+	l.Sh(append([]string{"nodes", "deploy", "--workflow-version", "2"}, upgrade...)...)
+	upgraded := tn.Clients(upgrade[0])
+	j2 := tn.Submit(upgraded, "a", "obj", tn.Policy("v2", cDest, nil))
+	settled(t, tn, tn.Wait(old, j1.GetId(), 15*time.Minute), want, "v1", cDest)
+	settled(t, tn, tn.Wait(upgraded, j2.GetId(), 15*time.Minute), want, "v2", cDest)
+	if n := l.Pending("1", j1.GetId()); n != 0 {
+		t.Fatalf("%d workflows of version 1 still pending after their job settled", n)
+	}
+	if n := l.Pending("2", j2.GetId()); n != 0 {
+		t.Fatalf("%d workflows of version 2 still pending after their job settled", n)
+	}
+	// nothing of version 1 is left: the last old nodes can go
+	l.Sh(append([]string{"nodes", "deploy", "--workflow-version", "2"}, keep...)...)
+	j3 := tn.Submit(upgraded, "a", "obj", tn.Policy("v2-all", cDest, nil))
+	settled(t, tn, tn.Wait(upgraded, j3.GetId(), 15*time.Minute), want, "v2-all", cDest)
+}

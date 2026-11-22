@@ -38,7 +38,7 @@ The post-install script creates the system user `veho` and the directory `/etc/v
 
 veho has not been released yet. What follows is true of the current code and is tested in the project's lab; these limits apply:
 
-- **No upgrade path.** Until the first deployment, the database schema is changed in place: a new version may need an empty database (chapter *Upgrades and removal*). Rolling upgrades with transfers in flight are not validated yet.
+- **No upgrade path for the schema.** Until the first deployment, the database schema is changed in place: a new version may need an empty database (chapter *Upgrades and removal*). Rolling upgrades of the nodes with transfers in flight are validated.
 - **Topology by SQL.** The regions and sites that endpoints and nodes refer to are created with a SQL function; no command or API manages them yet.
 - **Drivers.** The shipped drivers are `file` (a directory) and `s3` (any S3-compatible service). A Glance driver is planned. Process plugins for other storage systems can be loaded, but no third-party plugin exists.
 - **Audit.** Audit events go to the local system log, to be forwarded to a SIEM; they are not tamper-evident (the full audit log is planned).

@@ -44,8 +44,10 @@ commands:
                             migration edited in place; the tests migrate it
   nodes up|down             create or remove the veho nodes veho-a1 to
                             veho-c2 (not in the baseline snapshot)
-  nodes deploy              build veho and the fault proxy, migrate, set the
-                            KEK and restart the nodes one at a time
+  nodes deploy [--workflow-version V] [NAME...]
+                            build veho and the fault proxy, migrate, set the
+                            KEK and restart the nodes (or NAMEs) one at a
+                            time; V builds veho with that workflow version
   acceptance [-run R] [--no-deploy]
                             nodes deploy, then the daytime acceptance suite
                             (go test -tags acceptance ./test/acceptance)
