@@ -226,8 +226,15 @@ db_etcd_start() {
 # db_etcdctl ARGS: etcdctl on db-b, against the three members.
 db_etcdctl() { inner_exec db-b /usr/local/bin/etcdctl --endpoints "$(db_etcd_hosts)" "$@"; }
 
-# db_patronictl ARGS: patronictl on db-b.
-db_patronictl() { inner_exec db-b runuser -u postgres -- patronictl -c /etc/patroni/veho.yml "$@"; }
+# db_patronictl ARGS: patronictl in db-b, or in another member when db-b is
+# stopped (AC-5 kills the leader's container).
+db_patronictl() {
+	local name=db-b x
+	if ! inner_running db-b; then
+		for x in "${REGIONS[@]}"; do inner_running "db-$x" && name="db-$x" && break; done
+	fi
+	inner_exec "$name" runuser -u postgres -- patronictl -c /etc/patroni/veho.yml "$@"
+}
 
 # db_members: Patroni's members as JSON.
 db_members() { db_patronictl list -f json </dev/null 2>/dev/null; }

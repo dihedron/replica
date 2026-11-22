@@ -1,6 +1,6 @@
 # veho: lab L3 and the acceptance suite (chunk C9)
 
-**Status:** approved 2026-11-22; C9a implemented 2026-11-22 (`test/lab/lib/nodes.sh`, `test/lab/faultproxy`). Requirements: `veho-lab.md` §8 (L3), `veho-acceptance-matrix.md` §4 (AC-1 to AC-26), `veho-latency-envelope.md` §6 (AC-24), AGENTS.md rules 10 and 14 (lab and overnight runs).
+**Status:** approved 2026-11-22; C9a and C9b implemented 2026-11-22 (`test/lab/lib/nodes.sh`, `test/lab/faultproxy`, `test/labtest`, `test/acceptance`); C9c next. Requirements: `veho-lab.md` §8 (L3), `veho-acceptance-matrix.md` §4 (AC-1 to AC-26), `veho-latency-envelope.md` §6 (AC-24), AGENTS.md rules 10 and 14 (lab and overnight runs).
 
 ## 1. Scope and steps
 
@@ -22,7 +22,7 @@ region-b 10.60.2.0/24   db-b .10   s3-b .20 (Garage :3900, proxy :3910)   veho-b
 region-c 10.60.3.0/24   db-c .10   s3-c .20 (Garage :3900, proxy :3910)   veho-c1 .31   veho-c2 .32
 ```
 
-- **Containers.** `veho-X1` and `veho-X2` in each region, Ubuntu 24.04 like the others, 512 MiB (`LAB_VEHO_MEMORY`). Created by `lab.sh nodes up`, not by `up`. L1 and L2 tests do not need them, and nodes would make the baseline snapshot stale on every rebuild. `lab.sh nodes down` removes them.
+- **Containers.** `veho-X1` and `veho-X2` in each region, Ubuntu 24.04 like the others, 1.5 GiB (`LAB_VEHO_MEMORY`). The nodes run `engine.worker_concurrency` 4 and `parts_in_flight` 2, so their parts need at most 512 MiB (`veho-engine.md`, memory); the defaults would need 4 GiB a node, more than the lab VM has for six. Created by `lab.sh nodes up`, not by `up`. L1 and L2 tests do not need them, and nodes would make the baseline snapshot stale on every rebuild. `lab.sh nodes down` removes them.
 - **Deployment** (`lab.sh nodes deploy`) runs `make` and pushes `dist/…/veho` to `/usr/bin/veho` on every node. It then installs `packaging/veho.service` unchanged and restarts the nodes one at a time. The lab runs the shipped unit, so a unit that cannot run veho fails here. `veho serve` reads `/etc/veho/veho.yaml` by default, and the unit's `/etc/veho/veho.env` carries the DSNs that `veho.yaml` names with `dsn_env`. The unit's comments, which still describe the environment file as the whole configuration, are corrected in C9a.
 - **Configuration**, written per node to `/etc/veho/veho.yaml`:
   - `node.id`: the container name. `node.region`: the region.
@@ -80,7 +80,7 @@ Each scenario's test is named `TestAC<nn>…` and lists the requirement IDs it c
 | AC-6 | C9b | Partition A. A node in A answers submits with `unavailable` (503 over REST). B and C keep going. Once their lease expires, A's in-flight steps are refused by the fence. After `wan heal`, one final object per destination |
 | AC-7 | C9b | `node pause` the executor past its lease, then `node resume`. Its writes are fenced; one final object |
 | AC-8 | C9b; C9c long | `fault status 503` on one destination for 3 min (`LAB_AC8_OUTAGE`): retries with back-off; completes after the fault clears. 30 min in a campaign |
-| AC-9 | C9b | `fault status 403` on one destination: that transfer `FAILED` with class `Permanent`; the other destination unaffected; `job retry` succeeds after `fault clear` |
+| AC-9 | C9b, **amended** | `fault status 403` on one destination: that transfer `FAILED` with class `Permanent`. With `min_copies` 1 the other destination is unaffected and the job `SUCCEEDED`; with both required the job `FAILED` at once and the other transfer `CANCELLED` (fail fast, `veho-distribution-policy.md` DP-6, decided 2026-11-22), and `job retry` after `fault clear` succeeds |
 | AC-10 | C9b | `fault corrupt`: the destination refuses the part (`BadDigest`, class `Integrity`); retried; final digest correct |
 | AC-11 | covered | `internal/engine` (source changed mid-copy). Lab: one S3 variant (overwrite the source object mid-copy) |
 | AC-12 | C9b, **amended** | FR-10's alternative source is not in v1: every transfer reads the original source (`veho-distribution-policy.md` §5, backlog 16). Amended expectation: with A's S3 down after C completed, B's transfer retries (`Transient`) and completes when A returns |
@@ -90,11 +90,11 @@ Each scenario's test is named `TestAC<nn>…` and lists the requirement IDs it c
 | AC-16 | C9b | `fault delay` slows a 256 MiB transfer; `job cancel` mid-copy: `CANCELLED`, no object under the final name, no multipart upload left (`ListMultipartUploads` on Garage) |
 | AC-17 | C9c overnight | §6 |
 | AC-18 | C9c overnight | §6 |
-| AC-19 | C9b, engine | A poison pill cannot be produced through a real node without a test hook in the binary, which C9 does not add. An `internal/engine` integration test sets a transfer's workflow to `MAX_RECOVERY_ATTEMPTS_EXCEEDED` and checks the housekeeping result: transfer `FAILED`, job decided, audited. The class the code uses (`Unknown`) differs from the matrix (`Internal`); C9b aligns the code with the matrix |
+| AC-19 | C9b, engine | A poison pill cannot be produced through a real node without a test hook in the binary, which C9 does not add. An `internal/engine` integration test sets a transfer's workflow to `MAX_RECOVERY_ATTEMPTS_EXCEEDED` and checks the housekeeping result: transfer `FAILED`, job decided, audited. The code used `Unknown`, the matrix says `Internal`; C9b aligned the code with the matrix (`TestPoisonPill`) |
 | AC-20 | C9c daytime | Build the current version and a second build with a changed `ApplicationVersion`. Upgrade one node at a time with transfers in flight. Compatible version: the work moves on. Incompatible version: old executors drain their work before they stop; no workflow left `PENDING` |
 | AC-23 | covered + C9b | `internal/policy` and `internal/engine` cover the verdicts. Lab: 9 destinations (3 buckets in each region), `min_copies` 7 with source in B; `min_copies` 5 with spread `region` 3 |
 | AC-24 | C9c overnight | §6 |
-| AC-25 | covered + C9b | v1 scope: AUDL-1 to AUDL-5 (`veho-audit.md`), covered; the tamper-evident log is backlog 32. Lab: across 6 nodes only one runs housekeeping at a time (the `veho_housekeeping` lock, seen in the metrics); audit events reach each node's journal |
+| AC-25 | covered + C9b | v1 scope: AUDL-1 to AUDL-5 (`veho-audit.md`), covered; the tamper-evident log is backlog 32. One housekeeping pass at a time is HK-1 in `internal/engine`: the lock is held only for a pass, so the lab cannot see two nodes overlap from outside. Lab: audit events reach the journal of the node that handled the request |
 | AC-26 | covered + C9b | `internal/secrets` covers the cryptography. Lab: a `pg_dump` of the database contains no canary secret and no unwrap key; a node without the credential refuses to start |
 
 `lab.sh acceptance` runs C9b with `-p 1` and the WAN at `fiber1`, after `nodes deploy`. A failed test leaves its evidence in `test/lab/.evidence/<test>/`: the job as JSON, the nodes' journals for the test's time window, `patronictl list`, and the proxy's log. `lab.sh reset` restores the baseline. The nodes are not in the snapshot, so `nodes up` runs again after a reset.

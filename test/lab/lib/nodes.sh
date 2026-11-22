@@ -54,6 +54,7 @@ nodes_up() {
 	for name in $(node_names); do
 		pki_issue "$name" "DNS:$name.veho.lab,IP:$(inner_ip "$name"),IP:$(lxd_ip)"
 		inner_create "$name" "$LAB_VEHO_MEMORY" -c user.veho-lab=yes
+		inner config set "$name" limits.memory="$LAB_VEHO_MEMORY"
 		inner_start "$name"
 	done
 	for name in $(node_names); do
@@ -80,6 +81,8 @@ node_configure() {
 	inner_write "$name" /etc/veho/veho.yaml 0640 <<YAML
 # veho node $name of the lab (test/lab/lib/nodes.sh)
 node: {id: $name, region: region-$x}
+# parts in memory: at most 512 MiB (.specs/veho-engine.md, memory)
+engine: {worker_concurrency: 4, parts_in_flight: 2, part_memory_mib: 512}
 secrets: {unwrap_key: "systemd-credential:unwrap-key"}
 api:
   listen: "$(inner_ip "$name"):$NODE_API_PORT"
@@ -276,4 +279,53 @@ cmd_fault() {
 		'{mode: $mode, code: $code, for: $for, count: $count, delay: $delay, bucket: $bucket}
 		| with_entries(select(.value != "" and .value != 0))')"
 	inner_exec "s3-$x" curl -fsS -X POST -H 'Content-Type: application/json' --data "$json" "http://$FAULT_CONTROL/fault"
+}
+
+# nodes_env: the nodes' environment of the acceptance tests, when deployed.
+nodes_env() {
+	[[ -n "$(env_get '.nodes // ""')" && -x "$LAB_STATE_DIR/bin/veho" ]] || return 0
+	local name list=""
+	for name in $(node_names); do list+="${list:+ }$name=$(lxd_ip):$(node_port "$name")"; done
+	printf 'export VEHO_TEST_LAB_NODES=%q\n' "$list"
+	printf 'export VEHO_TEST_LAB_CA=%q\n' "$LAB_STATE_DIR/pki/ca.crt"
+	printf 'export VEHO_TEST_LAB_VEHO=%q\n' "$LAB_STATE_DIR/bin/veho"
+}
+
+# cmd_acceptance [-run R] [--no-deploy]: the daytime acceptance suite
+# (.specs/veho-lab-l3.md §4), after a deploy, with the WAN at fiber1.
+cmd_acceptance() {
+	require_lab
+	local args=() deploy=1
+	while (($#)); do
+		case "$1" in
+		-run) args+=(-run "$2") && shift 2 ;;
+		--no-deploy) deploy=0 && shift ;;
+		*) die "acceptance: unknown option $1" ;;
+		esac
+	done
+	if ((deploy)); then nodes_deploy; else nodes_start; fi
+	wan_set fiber1 >/dev/null
+	eval "$(cmd_env)"
+	cd "$REPO_DIR" || die "cannot enter $REPO_DIR"
+	go test -count=1 -p 1 -v -timeout 90m -tags acceptance "${args[@]}" ./test/acceptance
+}
+
+# nodes_stop stops veho on the nodes, if any: the integration tests share the
+# database with them, and the nodes would adopt and repair the tests' jobs and
+# take the housekeeping lock.
+nodes_stop() {
+	[[ -n "$(env_get '.nodes // ""')" ]] || return 0
+	local name
+	for name in $(node_names); do inner_exec "$name" systemctl stop veho 2>/dev/null || true; done
+	info "veho nodes stopped for the integration tests (lab.sh acceptance starts them again)"
+}
+
+# nodes_start starts veho on the nodes and waits until they answer.
+nodes_start() {
+	local name
+	for name in $(node_names); do
+		node_unblock "$name"
+		inner_exec "$name" systemctl start veho
+	done
+	for name in $(node_names); do node_wait "$name"; done
 }

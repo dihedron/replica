@@ -69,7 +69,7 @@ Every DSN lists the three members, so that a client follows a failover, verifies
 postgres://veho_api:<password>@db-a.example:5432,db-b.example:5432,db-c.example:5432/veho?sslmode=verify-full&sslrootcert=/etc/veho/tls/ca.crt&target_session_attrs=read-write
 ```
 
-veho refuses a DSN whose `sslmode` is not `verify-full`. It adds `connect_timeout=5` to a DSN that sets none, so that a connection gives up on a member it cannot reach (a partitioned region) within seconds and tries the next one; without a timeout, the operating system waits about two minutes per member.
+veho refuses a DSN whose `sslmode` is not `verify-full`. Each connection gives up on a member it cannot reach (a partitioned region) after 5 seconds and tries the next one; without that, the operating system would wait about two minutes per member. A `connect_timeout` in the DSN is ignored.
 
 ## The schema
 

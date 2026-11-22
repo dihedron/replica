@@ -6,7 +6,7 @@
 
 ## The workflows
 
-`ReplicateJob` resolves the source (its size and version, and the part size of the job), then starts one `Transfer` child workflow per destination on the `transfer` queue, and waits for them. `Transfer` copies one object to one destination:
+`ReplicateJob` resolves the source (its size and version, and the part size of the job), then starts one `Transfer` child workflow per destination on the `transfer` queue, and waits for them: for their results, then, in a durable step that survives a database failover, until every transfer is terminal. `Transfer` copies one object to one destination:
 
 ![A transfer, part by part.](transfer.pdf){width=100%}
 
@@ -32,7 +32,7 @@ The parts' hashes are recorded with the parts, so a transfer resumed on another 
 
 - Every node records a **heartbeat** every 10 s (`engine.heartbeat`) in the executors' table, and renews the leases of its transfers.
 - A node that cannot record its heartbeat for half the lease **fences itself**: it stops its own work, because another node may soon take it.
-- A transfer's **fence** moves each time a node claims it. A node that was frozen and comes back (a **zombie**) may finish the step it was in, but its next write carries the old fence and is refused. Part writes are idempotent per transfer and part, so a zombie's last part does not corrupt the object; it only costs bandwidth.
+- A transfer's **fence** moves each time a node claims it. A node that was frozen and comes back (a **zombie**) may finish the step it was in, but its next write carries the old fence and is refused. An execution whose write is refused does not give up: it claims again, and DBOS, which lets only the workflow's current owner record a step, stops the stale one at its next step, so exactly one execution goes on. Part writes are idempotent per transfer and part, so a zombie's last part does not corrupt the object; it only costs bandwidth.
 - Times are compared on the database's clock, never across nodes' clocks.
 
 ## Adoption
@@ -40,6 +40,8 @@ The parts' hashes are recorded with the parts, so a transfer resumed on another 
 DBOS's open-source edition does not detect dead executors by itself. veho's housekeeping does: for each node whose last heartbeat is older than the lease (60 s), it lists that node's pending workflows and resumes them, through DBOS's public API, on the queue, where any live node picks them up. The adopter claims each transfer (moving the fence) and continues from the last recorded batch.
 
 A node that is **stopped** (SIGTERM) leaves its workflows pending for adoption: DBOS's context is deliberately not derived from the signal's context, because DBOS durably cancels a workflow whose context ends for any other reason than its own shutdown. The lab found this: a clean stop cancelled the node's work, and its transfers then failed instead of being adopted.
+
+A node also resumes its **own** pending workflows that it is not executing, every 30 s: during a database failover DBOS can fail to record a workflow's outcome, which ends the execution but leaves the workflow pending under a node that is alive, so adoption does not apply and DBOS would only recover it at the node's next start.
 
 A transfer adopted more than 20 times is failed (class `Internal`): it is a poison pill that crashes whichever node runs it. A workflow DBOS parks after too many recoveries is handled the same way.
 

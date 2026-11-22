@@ -27,7 +27,7 @@ The reference deployment measured 30 ms ± 10 ms between regions. etcd's heartbe
 
 ## Connections
 
-Nodes connect directly to the primary, never through a transaction-mode pooler: DBOS keeps a `LISTEN` session, and session state matters. Each DSN lists all three members with `target_session_attrs=read-write`, so that a client finds the new primary after a failover, and a `connect_timeout` (5 s by default) so that a member that does not answer (a partitioned region) costs seconds, not the operating system's two minutes.
+Nodes connect directly to the primary, never through a transaction-mode pooler: DBOS keeps a `LISTEN` session, and session state matters. Each DSN lists all three members with `target_session_attrs=read-write`, so that a client finds the new primary after a failover, and each host is dialled with a 5 s timeout, so that a member that does not answer (a partitioned region) costs seconds, not the operating system's two minutes. The timeout is reported so that DBOS retries the connection rather than giving up on its workflows.
 
 ## Why PostgreSQL and DBOS
 

@@ -24,8 +24,8 @@ The daytime scenarios, all against the six nodes over the emulated WAN:
 | `kill -9` of the executor mid-transfer | Passes: adopted 65 s after the kill, resumed from the last recorded part |
 | The accepting node killed right after `202` | Passes |
 | Both nodes of a region stopped mid-transfer | Passes (it found that a clean stop cancelled the node's work: fixed) |
-| The primary's host killed mid-transfer | Passes: a new primary in about 40 s, every part recorded once |
-| A region partitioned | In progress: it found that a submission in the partitioned region hung (fixed: now `unavailable`), and that connections and the housekeeping lock waited minutes for the unreachable member (fixed) |
+| The primary's host killed mid-transfer | Passes: a new primary in 27 to 41 s, every part recorded once. It found that a job could finalize while its transfer still ran, when DBOS could not read the transfer's status during the failover (fixed) |
+| A region partitioned | Passes: submissions there answer `unavailable`, the other regions take the work over. It found three bugs, fixed: a submission in the partitioned region hung; new connections waited two minutes for the unreachable member; the housekeeping lock outlived its partitioned holder |
 | An executor frozen past its lease, then resumed | Passes: one correct object |
 | A destination answering 503 for 3 minutes | Passes: completed after the outage |
 | A destination answering 403 | Passes: `Permanent`, fail fast, retry after the fix |

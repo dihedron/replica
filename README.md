@@ -4,11 +4,23 @@
 
 Durable, asynchronous replication of large objects (typically big files) to any number of destination storage systems, wherever they are (on premises, or in other clouds: for example an S3 bucket at one provider and another provider's object store). The destinations are controlled by `veho` nodes running in three regions that share one durable control plane; the topology of the destinations has nothing to do with the three control-plane regions.
 
-A client submits the URL of an object that is already available to the service (for example in an S3 bucket or an OpenStack Glance repository) together with a distribution policy that names the destinations (two or more, anywhere in the distribution topology) and says when the job counts as done (for example 7 of 9 copies, or 5 copies spread over 3 regions). The node that receives the request writes the job down reliably, answers with a job ID, and the client polls that ID for progress and completion. If the node fails, another node (in the same region or in another one) resumes the job. Anything that fails is retried. Storage backends are plugins. The service is multi-tenant.
+A client submits the URL of an object that is already available to the service (for example in an S3 bucket or an OpenStack Glance repository) together with a distribution policy that names the destinations (one or more, anywhere in the distribution topology) and says when the job counts as done (for example 7 of 9 copies, or 5 copies spread over 3 regions). The node that receives the request writes the job down reliably, answers with a job ID, and the client polls that ID for progress and completion. If the node fails, another node (in the same region or in another one) resumes the job. Anything that fails is retried. Storage backends are plugins. The service is multi-tenant.
 
 ## Status
 
-**Early implementation.** Done: the distribution policy engine (`internal/policy`, `internal/topology`), the state store (`internal/store`: roles, schema, row-level security, `veho migrate`, start-up checks), the storage plugins (`pkg/plugin`: the contract, the `file` and S3 drivers, the conformance suite, and the go-plugin process loader with `cmd/veho-plugin-file` and `cmd/veho-plugin-s3`), the secrets (`internal/secrets`: envelope encryption under a versioned KEK, `veho kek`), the audit (`internal/audit`: events to the system log, forwarded to the SIEM), the engine (`internal/engine` and `veho serve`: transactional acceptance, the job and transfer workflows with fencing, retries and resume, housekeeping, metrics), the DBOS regression suite (`test/dbos`), the jobs API (`internal/api`: gRPC and REST on one TLS port; API keys, OIDC and SPIFFE identities with their entitlements; `veho tenant`, `veho apikey`, `veho entitlement`) and the lab (`test/lab`). The API also serves named policies and grants, endpoints, secrets, tenants and their administration, with rate limits and an OpenAPI 3.1 document (`api/openapi/veho.v1.yaml`). The command line client (`veho job`, `policy`, `endpoint`, `secret`, … over gRPC or REST) calls it. Next: the lab's veho nodes and the acceptance suite (C9), per `.specs/veho-implementation-plan.md`; the work agreed for later is in `.specs/veho-backlog.md`. Nothing is usable end to end yet.
+**0.1.0, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
+
+Known limits of this version (numbers of `.specs/veho-backlog.md`):
+
+- No upgrade path: until a first deployment, the schema is changed in place, and a new version may need an empty database; rolling upgrades with transfers in flight are not validated yet (6).
+- The regions and zones of the topology are created with SQL (`veho.put_location`); no command manages them yet (17).
+- Drivers: `file` and S3 only; Glance is planned (21).
+- The audit is lightweight: events go to the system log, are not tamper-evident and can be lost on a crash (32).
+- The unwrap key comes from a file or a systemd credential; Vault, HSM and Shamir unseal are planned (25, 26, 31).
+- The state store's stability over the real inter-region latency for 24 hours, the latency envelope and an eight-hour chaos soak are still to be run (3, 18, 28).
+- Packaging for Ubuntu and Rocky/Alma has no AppArmor or SELinux policy yet (27).
+
+The work agreed for later is in `.specs/veho-backlog.md`.
 
 The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three control-plane regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`; they run as the regression suite `test/dbos` on every DBOS version bump.
 

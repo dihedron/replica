@@ -38,7 +38,7 @@ Every 30 seconds, one node (whichever takes a PostgreSQL advisory lock first) ru
 - **deadlines**: jobs past theirs are failed and their transfers cancelled;
 - **retention**: settled jobs older than `housekeeping.jobs_retention` (90 days) and DBOS's records of ended workflows older than `housekeeping.workflow_retention` (7 days) are deleted.
 
-Every repair is audited.
+Every node also resumes, every 30 seconds, its own pending workflows that it no longer executes (after a database failover cut one short). Every repair is audited.
 
 ## What needs a person
 

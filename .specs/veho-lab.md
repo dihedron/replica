@@ -35,9 +35,9 @@ host (LXD 5.21+, KVM)
 | :--- | :--- | :--- | :--- |
 | `db-a`, `db-b`, `db-c` | etcd member, Patroni, PostgreSQL 16 | 1 GiB | PostgreSQL 5441, 5442, 5443; Patroni REST 8001, 8002, 8003 |
 | `s3-a`, `s3-b`, `s3-c` | Garage, one node, its own cluster | 512 MiB | S3 API 9001, 9002, 9003 |
-| `veho-R1`, `veho-R2` (L3) | veho, two per region | 512 MiB | none |
+| `veho-R1`, `veho-R2` (L3) | veho, two per region | 1.5 GiB | API 8441 to 8446 (`veho-lab-l3.md` §2) |
 
-Sizes: lab VM 8 vCPU, 12 GiB, 40 GiB disk by default (L1 and L2 use about 5 GiB of memory; the veho nodes of L3 add 3 GiB).
+Sizes: lab VM 8 vCPU, 12 GiB, 40 GiB disk by default (L1 and L2 use about 5 GiB of memory; the veho nodes of L3 add up to 9 GiB, which the VM's page cache gives up).
 
 ## 3. The WAN
 
@@ -90,6 +90,7 @@ Settings in `test/lab/lab.env`, overridden by `lab.local.env` (git-ignored) and 
 | `psql [--region X] [args]` | psql as `veho_migrator` over TLS (default: the primary) |
 | `patronictl [args]`, `etcdctl [args]`, `garage X [args]` | the tools, run in the right instance |
 | `snapshot`, `reset`, `stop`, `start` | the baseline: disk only, taken with the inner instances stopped, and a reset back to it |
+| `acceptance [-run R] [--no-deploy]` | `nodes deploy`, then `go test -tags acceptance ./test/acceptance` with that environment and the WAN at `fiber1` (`veho-lab-l3.md` §4) |
 | `nodes up\|down\|deploy`, `node start\|stop\|restart\|kill\|pause\|resume NAME`, `db kill\|start X`, `fault X ...` | L3: the veho nodes, their control, and the fault proxies (`veho-lab-l3.md` §2) |
 | `ssh NAME [cmd]`, `logs NAME [unit]` | a shell or a command in the lab VM or an instance; cloud-init log or a unit's journal |
 
