@@ -12,6 +12,43 @@ A client submits the URL of an object that is already available to the service (
 
 The design rests on DBOS Transact for Go (v1.9.0) over a PostgreSQL cluster spread across the three control-plane regions. The experiments that checked what the design assumes about DBOS are in `.specs/veho-dbos-spike.md`; they run as the regression suite `test/dbos` on every DBOS version bump.
 
+## Verify a release
+
+Releases are signed with the project's packaging key, [packaging/signing-key.asc](packaging/signing-key.asc), fingerprint `FB7DE97BAAFAA2A676CEE59A1B34E6A2A14CD06A`. Get the key from this repository, not from the release you are verifying.
+
+- **The checksums file** covers every archive, package and SBOM of the release, and its signature (`.asc`) covers it:
+
+  ```bash
+  gpg --import signing-key.asc
+  gpg --verify checksums.txt.asc checksums.txt
+  sha256sum --check --ignore-missing checksums.txt
+  ```
+
+- **rpm packages** carry their own signature, which `rpm` and `dnf` check once the key is imported:
+
+  ```bash
+  sudo rpm --import signing-key.asc
+  rpm --checksig veho_<version>_linux_amd64.rpm   # must report "digests signatures OK"
+  ```
+
+- **deb packages** carry a `debsig` origin signature. `apt` and `dpkg` do not check it on a standalone package, so verify it with `debsig-verify`, after installing its policy for the key:
+
+  ```bash
+  sudo apt-get install debsig-verify
+  sudo mkdir -p /usr/share/debsig/keyrings/1B34E6A2A14CD06A /etc/debsig/policies/1B34E6A2A14CD06A
+  gpg --dearmor < signing-key.asc | sudo tee /usr/share/debsig/keyrings/1B34E6A2A14CD06A/debsig.gpg > /dev/null
+  sudo tee /etc/debsig/policies/1B34E6A2A14CD06A/veho.pol > /dev/null <<'POLICY'
+  <?xml version="1.0"?>
+  <!DOCTYPE Policy SYSTEM "https://www.debian.org/debsig/1.0/policy.dtd">
+  <Policy xmlns="https://www.debian.org/debsig/1.0/">
+    <Origin Name="veho" id="1B34E6A2A14CD06A" Description="veho packages"/>
+    <Selection><Required Type="origin" File="debsig.gpg" id="1B34E6A2A14CD06A"/></Selection>
+    <Verification MinOptional="0"><Required Type="origin" File="debsig.gpg" id="1B34E6A2A14CD06A"/></Verification>
+  </Policy>
+  POLICY
+  debsig-verify veho_<version>_linux_amd64.deb
+  ```
+
 ## Specifications
 
 The project follows Spec-Driven Development (`AGENTS.md`): code starts from an approved specification in `.specs/`.
@@ -50,6 +87,7 @@ test/lab/lab.sh selftest         # latency, partitions, quorum, failover, S3
 test/lab/lab.sh test             # integration tests (-tags integration) against the lab
 test/lab/lab.sh nodes up         # six veho nodes, two per region (lab L3)
 test/lab/lab.sh nodes deploy     # build veho and the fault proxies, start the nodes
+test/lab/lab.sh acceptance       # deploy, then the daytime acceptance suite (about 45 minutes)
 test/lab/lab.sh reset            # back to the empty baseline in about a minute
 ```
 
