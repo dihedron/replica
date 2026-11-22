@@ -29,6 +29,18 @@ type Config struct {
 	Plugins      []Plugin     `yaml:"plugins"`
 	Metrics      Metrics      `yaml:"metrics"`
 	API          API          `yaml:"api"`
+	Checks       Checks       `yaml:"checks"`
+}
+
+// Checks are the severities of the start-up checks (veho-store.md §7):
+// refuse (the node does not start) or warn (it logs and starts). The schema
+// version always refuses.
+type Checks struct {
+	Primary           string        `yaml:"primary"`
+	SynchronousCommit string        `yaml:"synchronous_commit"`
+	Quorum            string        `yaml:"quorum"`
+	Clock             string        `yaml:"clock"`
+	MaxClockOffset    time.Duration `yaml:"max_clock_offset"`
 }
 
 // API is the API's listener (veho-api-server.md §2, §7).
@@ -194,6 +206,9 @@ func (c *Config) complete() error {
 	set(&c.Database.DBOS.Env, "VEHO_DBOS_DATABASE_URL")
 	set(&c.Audit.Sink, "syslog")
 	set(&c.Metrics.Listen, "127.0.0.1:9464")
+	for _, s := range []*string{&c.Checks.Primary, &c.Checks.SynchronousCommit, &c.Checks.Quorum, &c.Checks.Clock} {
+		set(s, "refuse")
+	}
 	set(&c.API.Listen, ":8443")
 	setI(&c.API.MaxWatches, 1000)
 	setF := func(f *float64, v float64) {
@@ -210,6 +225,7 @@ func (c *Config) complete() error {
 	setI(&c.Engine.PartSizeMiB, 64)
 	setI(&c.Engine.PartsInFlight, 4)
 	setI(&c.Engine.PartMemoryMiB, 1024)
+	setD(&c.Checks.MaxClockOffset, time.Second)
 	setI(&c.Engine.WorkerConcurrency, 16)
 	setI(&c.Engine.TenantConcurrency, 4)
 	setD(&c.Housekeeping.Interval, 30*time.Second)
@@ -247,6 +263,11 @@ func (c *Config) validate() error {
 	check(e.PartMemoryMiB >= e.PartSizeMiB, "engine.part_memory_mib %d: want at least engine.part_size_mib (%d)", e.PartMemoryMiB, e.PartSizeMiB)
 	check(e.WorkerConcurrency >= 1, "engine.worker_concurrency must be positive")
 	check(e.TenantConcurrency >= 1 && e.TenantConcurrency <= e.WorkerConcurrency, "engine.tenant_concurrency %d: want 1 to worker_concurrency", e.TenantConcurrency)
+	for name, sev := range map[string]string{"primary": c.Checks.Primary, "synchronous_commit": c.Checks.SynchronousCommit,
+		"quorum": c.Checks.Quorum, "clock": c.Checks.Clock} {
+		check(sev == "refuse" || sev == "warn", "checks.%s %q: want refuse or warn", name, sev)
+	}
+	check(c.Checks.MaxClockOffset > 0, "checks.max_clock_offset must be positive")
 	h := c.Housekeeping
 	check(h.Interval > 0, "housekeeping.interval must be positive")
 	for name, d := range map[string]time.Duration{"workflow_retention": *h.WorkflowRetention, "jobs_retention": *h.JobsRetention} {

@@ -21,7 +21,9 @@ func TestDefaults(t *testing.T) {
 	}
 	if c.Engine.Heartbeat != 10*time.Second || c.Engine.LeaseTTL != time.Minute || c.Engine.PartSizeMiB != 64 ||
 		c.Database.DBOS.Env != "VEHO_DBOS_DATABASE_URL" || c.Audit.Sink != "syslog" ||
-		*c.Housekeeping.JobsRetention != 2160*time.Hour || *c.Housekeeping.WorkflowRetention != 168*time.Hour {
+		*c.Housekeeping.JobsRetention != 2160*time.Hour || *c.Housekeeping.WorkflowRetention != 168*time.Hour ||
+		c.Checks.Primary != "refuse" || c.Checks.SynchronousCommit != "refuse" || c.Checks.Quorum != "refuse" ||
+		c.Checks.Clock != "refuse" || c.Checks.MaxClockOffset != time.Second {
 		t.Errorf("defaults: %+v", c)
 	}
 }
@@ -59,6 +61,10 @@ func TestRefused(t *testing.T) {
 		"a name is required": node + key + "plugins: [{name: s3, path: /a, sha256: " + zeros + "}, {name: s3, path: /b, sha256: " + zeros + "}]\n",
 		"metrics.listen":     node + key + "metrics: {listen: nowhere}\n",
 		"api.tls":            node + "secrets: {unwrap_key: \"file:/k\"}\n",
+		"checks.primary":     node + key + "checks: {primary: ignore}\n",
+		"checks.clock":       node + key + "checks: {clock: maybe}\n",
+		"max_clock_offset":   node + key + "checks: {max_clock_offset: -1s}\n",
+		"field schema":       node + key + "checks: {schema: warn}\n",
 	} {
 		if _, err := Parse([]byte(doc)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v", want, err)

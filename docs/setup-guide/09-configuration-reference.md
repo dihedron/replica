@@ -43,6 +43,11 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `api.rate_limit.principal_per_second` | `20` | Calls per second one principal may make on this node |
 | `api.rate_limit.burst` | `2` | The burst, as a multiple of each rate; at least 1 |
 | `api.rate_limit.failures_per_minute` | `30` | Refused credentials per minute after which a client address is blocked for a while |
+| `checks.primary` | `refuse` | A connection to a standby or through a pooler: `refuse` stops the start, `warn` logs it and starts |
+| `checks.synchronous_commit` | `refuse` | `synchronous_commit` off or local: `refuse` or `warn` |
+| `checks.quorum` | `refuse` | `synchronous_standby_names` not a quorum over other regions: `refuse` or `warn` |
+| `checks.clock` | `refuse` | The node's clock off the database's by more than `checks.max_clock_offset`: `refuse` or `warn` |
+| `checks.max_clock_offset` | `1s` | The largest difference between the node's clock and the database's |
 
 :::
 

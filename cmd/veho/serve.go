@@ -129,11 +129,8 @@ func connect(ctx context.Context, cfg *config.Config) (map[string]*pgxpool.Pool,
 		}
 		pools[name] = p
 	}
-	if errs := store.Checks(ctx, pools["worker"], migrations.FS); len(errs) > 0 {
-		for _, err := range errs {
-			slog.ErrorContext(ctx, "start-up check failed", "error", err)
-		}
-		return pools, nil, fmt.Errorf("serve: start-up checks: %w", errors.Join(errs...))
+	if err := applyChecks(store.Checks(ctx, pools["worker"], migrations.FS, cfg.Checks.MaxClockOffset), cfg.Checks); err != nil {
+		return pools, nil, err
 	}
 	src, err := secrets.ParseSource(cfg.Secrets.UnwrapKey)
 	if err != nil {
@@ -241,4 +238,33 @@ func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *p
 	}()
 	slog.InfoContext(ctx, "API listening", "address", ln.Addr().String())
 	return done, nil
+}
+
+// applyChecks logs the failed start-up checks and returns those whose
+// severity is refuse (veho-store.md §7); the schema version always refuses.
+func applyChecks(failures []error, sev config.Checks) error {
+	var refused []error
+	for _, err := range failures {
+		severity := "refuse"
+		switch {
+		case errors.Is(err, store.ErrNotPrimary), errors.Is(err, store.ErrPooler):
+			severity = sev.Primary
+		case errors.Is(err, store.ErrSyncCommit):
+			severity = sev.SynchronousCommit
+		case errors.Is(err, store.ErrNoQuorum):
+			severity = sev.Quorum
+		case errors.Is(err, store.ErrClock):
+			severity = sev.Clock
+		}
+		if severity == "warn" {
+			slog.Warn("start-up check failed, allowed by its severity", "error", err)
+			continue
+		}
+		slog.Error("start-up check failed", "error", err)
+		refused = append(refused, err)
+	}
+	if len(refused) == 0 {
+		return nil
+	}
+	return fmt.Errorf("serve: start-up checks: %w", errors.Join(refused...))
 }

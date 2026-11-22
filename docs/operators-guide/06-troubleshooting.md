@@ -12,6 +12,7 @@
 | `standby`, `pooler` | The DSN reaches a standby or a pooler | List every member and add `target_session_attrs=read-write`; connect directly |
 | `synchronous_commit`, `synchronous_standby_names` | The cluster does not commit to another region | Patroni `synchronous_mode: quorum`, `synchronous_commit: on` |
 | `schema` and a version | The binary and the database disagree on the schema | Run the matching `veho migrate`, or install the matching version |
+| `STO-C5` and `clock` | The node's clock is off the database's | Synchronize it with chrony; `checks.clock: warn` only as a stopgap |
 | `unwrap key` | The credential or file is missing, of the wrong size, or readable by others | *Setup Guide*, *The unwrap key* |
 | `node.region` | The node's region is not a location of the topology | Create it (`veho.put_location`) or fix `node.region` |
 | `socket` and `syslog` | `audit.sink: syslog` without `/dev/log` | Start rsyslog or journald's socket, or use `stderr` |

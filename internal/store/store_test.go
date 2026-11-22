@@ -91,3 +91,21 @@ func TestDialTimeout(t *testing.T) {
 		t.Errorf("%v: reads as a context deadline", err)
 	}
 }
+
+// STO-C5: the offset is the database's time against the midpoint of the
+// query's round trip, so the trip's length cancels out.
+func TestClockOffset(t *testing.T) {
+	base := time.Date(2026, 11, 22, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		sent, received, db time.Time
+		want               time.Duration
+	}{
+		{base, base.Add(200 * time.Millisecond), base.Add(100 * time.Millisecond), 0},
+		{base, base.Add(200 * time.Millisecond), base.Add(2100 * time.Millisecond), 2 * time.Second},
+		{base, base.Add(40 * time.Millisecond), base.Add(-480 * time.Millisecond), -500 * time.Millisecond},
+	} {
+		if got := clockOffset(tc.sent, tc.received, tc.db); got != tc.want {
+			t.Errorf("sent %v, received %v, db %v: %v, want %v", tc.sent, tc.received, tc.db, got, tc.want)
+		}
+	}
+}

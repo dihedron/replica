@@ -92,6 +92,9 @@ veho migrate
 | Synchronous commit | `synchronous_commit` is `off` or `local` |
 | A quorum over other regions | `synchronous_standby_names` is empty, or not `ANY n (...)` with `n` of 1 or more |
 | The schema version | The database is behind or ahead of the migrations in the binary |
+| The clock | The node's clock differs from the database's by more than `checks.max_clock_offset` (1 s) |
+
+Each check but the schema version can be relaxed to a warning in `veho.yaml` (`checks`, chapter *Configuration reference*), for a PostgreSQL that others manage and that you cannot change. A node never starts on a schema that is not its own.
 
 ## Topology: the regions
 
