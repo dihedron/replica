@@ -72,11 +72,10 @@ Rotate the KEK periodically, or when a node may have been compromised. *As `veho
 
 ```bash
 veho kek rotate --unwrap-key file:./unwrap.key    # new active version; the old one is "retiring"
-veho kek rewrap --unwrap-key file:./unwrap.key    # re-wraps every data key; retires unused versions
 veho kek show
 ```
 
-New secrets use the new KEK at once. The nodes load the KEK versions at start: restart them, one at a time, after a rotation. `rewrap` works in batches (`--batch`, default 500) and can be run again if interrupted.
+New secrets use the new KEK at once, and the nodes pick it up without a restart. Housekeeping then re-wraps the existing data keys in the background, 500 per pass (every 30 s), and retires the old version once no secret uses it (`KEK_REWRAP` audit events). To finish at once instead, run `veho kek rewrap --unwrap-key file:./unwrap.key` (batches of `--batch`, default 500; it can be run again if interrupted).
 
 ## Replacing the unwrap key
 

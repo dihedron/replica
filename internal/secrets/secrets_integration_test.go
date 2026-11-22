@@ -467,3 +467,50 @@ func TestRekey(t *testing.T) {
 		t.Error("put without an active KEK: no error")
 	}
 }
+
+// Backlog 24: the background re-wrap, as housekeeping runs it on a node
+// (veho_worker, through SECURITY DEFINER functions): every DEK goes under the
+// active KEK in batches, the old version retires, and the values still read.
+func TestRewrapInBackground(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	node := f.store(t) // started before the rotation
+	for _, name := range []string{"a", "b", "c"} {
+		if _, err := node.Put(ctx, f.t1, name, []byte("v-"+name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := node.Put(ctx, f.t2, "x", []byte("v-x")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RotateKEK(ctx, f.migrator, f.src); err != nil {
+		t.Fatal(err)
+	}
+	total := 0
+	for range 10 {
+		n, retired, err := node.Rewrap(ctx, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		total += n
+		if len(retired) > 0 {
+			if retired[0] != 1 {
+				t.Errorf("retired %v, want [1]", retired)
+			}
+			break
+		}
+	}
+	if total != 4 {
+		t.Errorf("%d DEKs re-wrapped, want 4 (two tenants)", total)
+	}
+	info, err := ShowKEKs(ctx, f.migrator)
+	if err != nil || len(info) != 2 || info[0].State != "retired" || info[1].State != "active" {
+		t.Errorf("show: %+v, %v", info, err)
+	}
+	if fetch(t, node, f.t1, "b") != "v-b" || fetch(t, f.store(t), f.t2, "x") != "v-x" {
+		t.Error("the values after the background re-wrap")
+	}
+	if n, retired, err := node.Rewrap(ctx, 2); n != 0 || len(retired) != 0 || err != nil {
+		t.Errorf("nothing left to do: %d, %v, %v", n, retired, err)
+	}
+}

@@ -291,6 +291,44 @@ GRANT SELECT ON veho.kek TO veho_api, veho_worker;
 GRANT SELECT, INSERT, UPDATE, DELETE ON veho.secrets TO veho_api;
 GRANT SELECT ON veho.secrets TO veho_worker;
 
+-- The background re-wrap after a KEK rotation (veho-secrets.md §6, backlog
+-- 24): housekeeping, as veho_worker, reads the DEKs not under the active
+-- KEK across tenants, re-wraps each one, and retires the versions left
+-- unused. It sees wrapped DEKs, never a value; an update applies only if
+-- the row and the active KEK are as read.
+CREATE FUNCTION veho.deks_to_rewrap(p_limit int)
+RETURNS TABLE (tenant_id uuid, name text, version int, kek_version int, wrapped_dek bytea, active int)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT s.tenant_id, s.name, s.version, s.kek_version, s.wrapped_dek, k.version
+	FROM veho.secrets s, veho.kek k
+	WHERE k.state = 'active' AND s.kek_version <> k.version
+	ORDER BY s.tenant_id, s.name
+	LIMIT p_limit
+$$;
+
+CREATE FUNCTION veho.rewrap_dek(p_tenant uuid, p_name text, p_version int, p_from int, p_to int, p_wrapped bytea) RETURNS boolean
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	WITH u AS (
+		UPDATE veho.secrets SET kek_version = p_to, wrapped_dek = p_wrapped
+		WHERE tenant_id = p_tenant AND name = p_name AND version = p_version AND kek_version = p_from
+			AND p_to = (SELECT version FROM veho.kek WHERE state = 'active')
+		RETURNING 1)
+	SELECT EXISTS (SELECT 1 FROM u)
+$$;
+
+CREATE FUNCTION veho.retire_keks() RETURNS SETOF int
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	UPDATE veho.kek k SET state = 'retired', retired_at = now()
+	WHERE state = 'retiring' AND NOT EXISTS (SELECT 1 FROM veho.secrets s WHERE s.kek_version = k.version)
+	RETURNING version
+$$;
+
+REVOKE ALL ON FUNCTION veho.deks_to_rewrap(int), veho.rewrap_dek(uuid, text, int, int, int, bytea), veho.retire_keks() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.deks_to_rewrap(int), veho.rewrap_dek(uuid, text, int, int, int, bytea), veho.retire_keks() TO veho_worker;
+
 -- ---------------------------------------------------------------------------
 -- what the engine needs across tenants (.specs/veho-engine.md
 -- §7). The heartbeat renews the leases of its executor's transfers, of every

@@ -255,3 +255,56 @@ func (s *Store) Fetch(ctx context.Context, tenant uuid.UUID, ref string) (*Secre
 	}
 	return &Secret{b: value}, nil
 }
+
+// Rewrap re-wraps up to batch DEKs that are not under the active KEK, across
+// tenants, as veho_worker through SECURITY DEFINER functions, and then, when
+// none is left, retires the KEK versions no secret uses (veho-secrets.md §6,
+// backlog 24): the background twin of veho kek rewrap, for housekeeping. A
+// row replaced or re-wrapped meanwhile is left as it is.
+func (s *Store) Rewrap(ctx context.Context, batch int) (rewrapped int, retired []int, err error) {
+	type dek struct {
+		Tenant              uuid.UUID
+		Name                string
+		Version, KEKVersion int
+		Wrapped             []byte
+		Active              int
+	}
+	rows, err := s.worker.Query(ctx, "select tenant_id, name, version, kek_version, wrapped_dek, active from veho.deks_to_rewrap($1)", batch)
+	if err != nil {
+		return 0, nil, fmt.Errorf("secrets: rewrap: %w", err)
+	}
+	todo, err := pgx.CollectRows(rows, pgx.RowToStructByPos[dek])
+	if err != nil {
+		return 0, nil, fmt.Errorf("secrets: rewrap: %w", err)
+	}
+	for _, d := range todo {
+		plain, err := s.kek.UnwrapDEK(ctx, d.KEKVersion, dekAAD(d.Tenant, d.Name, d.Version, d.KEKVersion), d.Wrapped)
+		if err != nil {
+			return rewrapped, nil, fmt.Errorf("secrets: rewrap: tenant %s, secret %s: %w", d.Tenant, d.Name, err)
+		}
+		wrapped, err := s.kek.WrapDEK(ctx, d.Active, dekAAD(d.Tenant, d.Name, d.Version, d.Active), plain)
+		clear(plain)
+		if err != nil {
+			return rewrapped, nil, fmt.Errorf("secrets: rewrap: %w", err)
+		}
+		var ok bool
+		if err := s.worker.QueryRow(ctx, "select veho.rewrap_dek($1, $2, $3, $4, $5, $6)",
+			d.Tenant, d.Name, d.Version, d.KEKVersion, d.Active, wrapped).Scan(&ok); err != nil {
+			return rewrapped, nil, fmt.Errorf("secrets: rewrap: %w", err)
+		}
+		if ok {
+			rewrapped++
+		}
+	}
+	if len(todo) > 0 {
+		return rewrapped, nil, nil
+	}
+	rows, err = s.worker.Query(ctx, "select veho.retire_keks()")
+	if err != nil {
+		return 0, nil, fmt.Errorf("secrets: retire: %w", err)
+	}
+	if retired, err = pgx.CollectRows(rows, pgx.RowTo[int]); err != nil {
+		return 0, nil, fmt.Errorf("secrets: retire: %w", err)
+	}
+	return 0, retired, nil
+}
