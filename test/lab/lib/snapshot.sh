@@ -6,8 +6,9 @@
 
 SNAPSHOT=baseline
 
-# inner_names: the inner instances, sorted, space separated.
-inner_names() { inner list -c n -f csv 2>/dev/null | sort | tr '\n' ' ' | sed 's/ $//'; }
+# inner_names: the inner instances of the baseline (the veho nodes are not in
+# it), sorted, space separated.
+inner_names() { inner list -c n -f csv 2>/dev/null | grep -v '^veho-' | sort | tr '\n' ' ' | sed 's/ $//'; }
 
 # has_snapshot: true when the lab VM has its baseline snapshot.
 has_snapshot() { lxc query "/1.0/instances/lxd/snapshots/$SNAPSHOT?project=$LAB_PROJECT" >/dev/null 2>&1; }
@@ -15,6 +16,7 @@ has_snapshot() { lxc query "/1.0/instances/lxd/snapshots/$SNAPSHOT?project=$LAB_
 lab_snapshot() {
 	section "Snapshot"
 	local names tables
+	[[ -z "$(env_get '.nodes // ""')" ]] || die "the veho nodes are not part of the baseline: run lab.sh nodes down first"
 	# the baseline's database is empty: a reset must not bring back an old schema
 	tables="$(db_superuser -d veho -tAc "select count(*) from pg_tables where schemaname not in ('pg_catalog', 'information_schema')")" ||
 		die "cannot count the tables of the database veho"
@@ -38,6 +40,8 @@ lab_reset() {
 	lxd_once 300 restore lxd "$SNAPSHOT" || die "cannot restore the lab VM"
 	info "lxd: restored to $SNAPSHOT"
 	env_set .wan '{}'
+	env_set .nodes '""'
+	env_set .kek '""'
 	lab_start
 }
 

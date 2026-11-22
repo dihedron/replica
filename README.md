@@ -48,6 +48,8 @@ test/lab/lab.sh preflight        # can this machine run the lab? (Linux, LXD 5.2
 test/lab/lab.sh up               # three regions: etcd, Patroni, PostgreSQL 16, Garage (about 10 minutes)
 test/lab/lab.sh selftest         # latency, partitions, quorum, failover, S3
 test/lab/lab.sh test             # integration tests (-tags integration) against the lab
+test/lab/lab.sh nodes up         # six veho nodes, two per region (lab L3)
+test/lab/lab.sh nodes deploy     # build veho and the fault proxies, start the nodes
 test/lab/lab.sh reset            # back to the empty baseline in about a minute
 ```
 

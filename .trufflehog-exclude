@@ -1,5 +1,7 @@
 # Paths TruffleHog skips in "make secrets" (working-tree scan only): build
-# output and git.
+# output, git, the lab's state and the local .env of the tests (all git-ignored).
 ^/repo/dist/
 ^/repo/build/
 ^/repo/\.git/
+^/repo/test/lab/\.state/
+^/repo/_test/\.env$

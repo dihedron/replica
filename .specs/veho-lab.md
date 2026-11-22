@@ -2,7 +2,7 @@
 
 This file specifies the lab: a disposable, self-contained test environment that simulates three regions on one machine, for the integration tests, the acceptance scenarios (`veho-acceptance-matrix.md` §4) and the overnight runs (AGENTS.md rules 10 and 14). It is part of `veho_specification.md`, and replaces the docker-compose environment that §4 of the acceptance matrix sketched.
 
-Status: approved 2026-11-21; L1 and L2 built.
+Status: approved 2026-11-21; L1 and L2 built; L3's nodes and fault proxies built 2026-11-22 (`veho-lab-l3.md`, C9a).
 
 ## 1. Goals
 
@@ -90,6 +90,7 @@ Settings in `test/lab/lab.env`, overridden by `lab.local.env` (git-ignored) and 
 | `psql [--region X] [args]` | psql as `veho_migrator` over TLS (default: the primary) |
 | `patronictl [args]`, `etcdctl [args]`, `garage X [args]` | the tools, run in the right instance |
 | `snapshot`, `reset`, `stop`, `start` | the baseline: disk only, taken with the inner instances stopped, and a reset back to it |
+| `nodes up\|down\|deploy`, `node start\|stop\|restart\|kill\|pause\|resume NAME`, `db kill\|start X`, `fault X ...` | L3: the veho nodes, their control, and the fault proxies (`veho-lab-l3.md` §2) |
 | `ssh NAME [cmd]`, `logs NAME [unit]` | a shell or a command in the lab VM or an instance; cloud-init log or a unit's journal |
 
 The tests take their environment only from `VEHO_TEST_*` variables and skip when they are unset, so the same integration tests run against the lab, a developer's own PostgreSQL or a CI service.
@@ -113,7 +114,7 @@ The tests take their environment only from `VEHO_TEST_*` variables and skip when
 | :--- | :--- | :--- | :--- |
 | **L1** | C2 | the lab VM, the regions, the WAN, the state store; preflight, snapshot, `env`, `selftest` | LAB-1 to LAB-7, LAB-9, LAB-10 |
 | **L2** | C5 | Garage per region | LAB-8 |
-| **L3** | C6 to C9 | the veho nodes (two per region, systemd, the built binary pushed), a test runner instance per region (tests that must cross the WAN), the fault-injecting S3 proxy, the acceptance suite AC-1 to AC-26, AC-18 and AC-24 as overnight campaigns | `veho-acceptance-matrix.md` §4 |
+| **L3** | C6 to C9 | the veho nodes (two per region, systemd, the built binary pushed), the fault-injecting S3 proxy (no test runner per region: `veho-lab-l3.md` §3), the acceptance suite AC-1 to AC-26, AC-18 and AC-24 as overnight campaigns | `veho-acceptance-matrix.md` §4, `veho-lab-l3.md` |
 
 L1 and L2 are built together now: Garage is small, and the plugin chunk can start against it.
 

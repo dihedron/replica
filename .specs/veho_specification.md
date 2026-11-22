@@ -243,6 +243,7 @@ all partitions at once.
 | `veho-audit.md` | Lightweight audit: events to the system log and the SIEM |
 | `veho-secrets.md` | Secrets: key hierarchy, envelope encryption, KEK rotation, `veho kek` |
 | `veho-lab.md` | The lab: three regions in one LXD VM, the emulated WAN, Patroni and etcd, Garage; `test/lab/lab.sh` |
+| `veho-lab-l3.md` | Lab L3 and the acceptance suite: the veho nodes, the fault-injecting S3 proxy, the daytime scenarios and the overnight campaigns (C9) |
 | `veho-distribution-policy.md` | Distribution policy: destinations, M of N completion, topology spread |
 | `veho-api.md` | REST API and command line clients |
 | `veho-plugins.md` | Storage plugin interfaces and conformance suite |

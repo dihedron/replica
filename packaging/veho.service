@@ -8,9 +8,13 @@ StartLimitIntervalSec=0
 [Service]
 User=veho
 Group=veho
-# VEHO_* settings: the state store's addresses, the identity provider, the
-# secret backends (.specs/veho-acceptance-matrix.md §2); root-owned, 0640
+# the configuration is /etc/veho/veho.yaml; this file holds what it names by
+# dsn_env, the state store's DSNs with their passwords; root:veho, 0640
+# the binary logs nothing unless told to; veho.env may override the level
+Environment=VEHO_LOG_LEVEL=info
 EnvironmentFile=/etc/veho/veho.env
+# the unwrap key (secrets.unwrap_key: "systemd-credential:unwrap-key") comes
+# from a drop-in, e.g. LoadCredentialEncrypted=unwrap-key:/etc/veho/unwrap-key.cred
 ExecStart=/usr/bin/veho serve
 KillSignal=SIGTERM
 # a transfer checkpoints at the end of the part it is copying (.specs/veho-job-lifecycle.md §4)

@@ -6,7 +6,7 @@ set -euo pipefail
 LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LAB_DIR/../.." && pwd)"
 
-for lib in common preflight lxd inner pki fetch wan db s3 snapshot selftest; do
+for lib in common preflight lxd inner pki fetch wan db s3 nodes snapshot selftest; do
 	# shellcheck source=/dev/null
 	source "$LAB_DIR/lib/$lib.sh"
 done
@@ -42,6 +42,18 @@ commands:
                             the member of region X
   schema-reset              drop and recreate the schema veho, empty, for a
                             migration edited in place; the tests migrate it
+  nodes up|down             create or remove the veho nodes veho-a1 to
+                            veho-c2 (not in the baseline snapshot)
+  nodes deploy              build veho and the fault proxy, migrate, set the
+                            KEK and restart the nodes one at a time
+  node start|stop|restart NAME
+  node kill NAME [--stay-down]
+                            SIGKILL veho; --stay-down keeps it down until
+                            node start
+  node pause|resume NAME    SIGSTOP / SIGCONT veho
+  db kill|start X           force-stop / start db-X (Patroni member)
+  fault X status CODE [--for D] | corrupt [--count N] | delay D [--bucket B]
+  fault X clear|show        the fault proxy in front of region X's Garage
   patronictl [args]         patronictl in db-b
   etcdctl [args]            etcdctl in db-b, against the three members
   garage X [args]           the garage CLI of region X
@@ -183,6 +195,10 @@ main() {
 	wan) cmd_wan "$@" ;;
 	psql) require_lab && db_psql "$@" ;;
 	schema-reset) require_lab && db_psql -c "drop schema veho cascade; create schema veho authorization veho_migrator" ;;
+	nodes) cmd_nodes "$@" ;;
+	node) cmd_node "$@" ;;
+	db) cmd_db "$@" ;;
+	fault) cmd_fault "$@" ;;
 	patronictl) require_lab && db_patronictl "$@" ;;
 	etcdctl) require_lab && db_etcdctl "$@" ;;
 	garage)

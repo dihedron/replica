@@ -278,9 +278,6 @@ db_superuser() {
 	inner_exec "$leader" runuser -u postgres -- psql -X "$@"
 }
 
-# DB_ROLES: the roles of packaging/postgres/roles.sql, without the prefix.
-DB_ROLES=(migrator dbos api worker)
-
 # db_database creates the roles, the database veho and its schemas with
 # packaging/postgres/roles.sql, once.
 db_database() {
