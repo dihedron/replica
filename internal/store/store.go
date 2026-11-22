@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
 	"time"
 	"uuid"
@@ -37,12 +38,67 @@ type Options struct {
 	AllowInsecure bool
 }
 
+// dialTimeout bounds the TCP connection to one host (a variable for the
+// tests).
+var dialTimeout = 5 * time.Second
+
+// dial connects to one host within dialTimeout. With several hosts, a member
+// that does not answer (a partitioned region, listed first) then costs
+// seconds before the next is tried, not the operating system's two minutes
+// (found by AC-6). Its timeout is not a context deadline: DBOS retries a
+// failed connection only when it is not one, and a failover would otherwise
+// end its workflows (found by AC-5). Every pool uses it, DBOS's included,
+// in place of pgx's connect_timeout.
+func dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	d := net.Dialer{Timeout: dialTimeout, KeepAlive: 5 * time.Minute}
+	conn, err := d.DialContext(ctx, network, addr)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return nil, fmt.Errorf("dial %s %s: no answer within %v", network, addr, dialTimeout) // not %w: no deadline for DBOS to see
+	}
+	return conn, err
+}
+
+// dialer sets cfg to connect through dial, with no context-based timeout.
+func dialer(cfg *pgconn.Config) {
+	cfg.DialFunc = dial
+	cfg.ConnectTimeout = 0
+}
+
+// DBOSPool is the pool of DBOS's system database: as DBOS builds its own
+// (veho-store.md §6), with dial and an idle-in-transaction timeout of a
+// minute, which DBOS leaves to a custom pool.
+func DBOSPool(dsn, name string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	if !verifies(cfg.ConnConfig.Config) {
+		return nil, ErrInsecureConnection
+	}
+	dialer(&cfg.ConnConfig.Config)
+	cfg.MaxConns, cfg.MinConns = 20, 0
+	cfg.MaxConnLifetime, cfg.MaxConnIdleTime = time.Hour, 5*time.Minute
+	if name != "" {
+		cfg.ConnConfig.RuntimeParams["application_name"] = name
+	}
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		_, err := conn.Exec(ctx, "SET idle_in_transaction_session_timeout = 60000")
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	return pool, nil
+}
+
 // Open connects a pool and pings it.
 func Open(ctx context.Context, dsn string, o Options) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
+	dialer(&cfg.ConnConfig.Config)
 	if !o.AllowInsecure && !verifies(cfg.ConnConfig.Config) {
 		return nil, ErrInsecureConnection
 	}
@@ -97,6 +153,7 @@ func Connect(ctx context.Context, dsn string, allowInsecure bool) (*pgx.Conn, er
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
+	dialer(&cfg.Config)
 	if !allowInsecure && !verifies(cfg.Config) {
 		return nil, ErrInsecureConnection
 	}
@@ -127,14 +184,25 @@ func InTenant(ctx context.Context, pool *pgxpool.Pool, tenant uuid.UUID, fn func
 // connection of its own: a pass holding a connection of pool while asking
 // pool for another would wait for good if passes filled the pool. release
 // ends the lock with the connection; it is nil unless locked.
+//
+// The server ends the lock's session once it has been idle for idle
+// (idle_session_timeout), which it is for the whole pass: a holder cut off
+// by a partition would otherwise keep the lock until the server's TCP
+// keepalives give up, minutes later (found by AC-6). A pass longer than idle
+// loses the lock while it runs, so the passes must stay idempotent, as the
+// lock is only there to save duplicate work.
 // shortcut: it dials once per pass; give the locks a small pool of their own
 // if that ever shows on the database.
-func TryLock(ctx context.Context, pool *pgxpool.Pool, name string) (release func(), locked bool, err error) {
+func TryLock(ctx context.Context, pool *pgxpool.Pool, name string, idle time.Duration) (release func(), locked bool, err error) {
 	conn, err := pgx.ConnectConfig(ctx, pool.Config().ConnConfig)
 	if err != nil {
 		return nil, false, fmt.Errorf("store: lock %s: %w", name, err)
 	}
 	release = func() { _ = conn.Close(context.WithoutCancel(ctx)) }
+	if _, err := conn.Exec(ctx, "select set_config('idle_session_timeout', $1, false)", strconv.FormatInt(idle.Milliseconds(), 10)); err != nil {
+		release()
+		return nil, false, fmt.Errorf("store: lock %s: %w", name, err)
+	}
 	if err := conn.QueryRow(ctx, "select pg_try_advisory_lock(hashtext($1))", name).Scan(&locked); err != nil {
 		release()
 		return nil, false, fmt.Errorf("store: lock %s: %w", name, err)

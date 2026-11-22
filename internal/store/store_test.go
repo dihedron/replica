@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -68,5 +69,25 @@ func TestQuorum(t *testing.T) {
 		if got := quorum(names); got != want {
 			t.Errorf("quorum(%q) = %v, want %v", names, got, want)
 		}
+	}
+}
+
+// dial gives up on a host that does not answer within its timeout, with an
+// error that is not a context deadline: DBOS retries a failed connection only
+// when it is not one, so a failover would otherwise end its workflows (AC-5).
+func TestDialTimeout(t *testing.T) {
+	defer func(d time.Duration) { dialTimeout = d }(dialTimeout)
+	dialTimeout = 200 * time.Millisecond
+	start := time.Now()
+	conn, err := dial(context.Background(), "tcp", "192.0.2.1:5432") // TEST-NET-1: never answers
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("connected to TEST-NET-1")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("gave up after %v", d)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("%v: reads as a context deadline", err)
 	}
 }

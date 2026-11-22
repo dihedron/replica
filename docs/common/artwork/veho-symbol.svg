@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 180" width="220" height="180">
+  <!-- The veho symbol (preliminary): veho is Latin for "I carry". A parcel,
+       the object, sits at the base of a V whose two arms carry it to two
+       regions; the dashed arc between them is the WAN. On a transparent
+       background, for light and dark pages alike. Colours from ligo's
+       palette, so that the projects look related. -->
+  <defs>
+    <linearGradient id="arm-cyan" gradientUnits="userSpaceOnUse" x1="110" y1="140" x2="38" y2="40">
+      <stop offset="0%" stop-color="#0369A1"/>
+      <stop offset="100%" stop-color="#06C8E0"/>
+    </linearGradient>
+    <linearGradient id="arm-indigo" gradientUnits="userSpaceOnUse" x1="110" y1="140" x2="182" y2="40">
+      <stop offset="0%" stop-color="#3730A3"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+  </defs>
+  <!-- the WAN between the two regions -->
+  <path d="M 62 24 Q 110 -8 158 24" fill="none" stroke="#64748B" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 11"/>
+  <!-- the two arms of the V -->
+  <path d="M 104 132 L 56 63" fill="none" stroke="url(#arm-cyan)" stroke-width="20" stroke-linecap="round"/>
+  <path d="M 116 132 L 164 63" fill="none" stroke="url(#arm-indigo)" stroke-width="20" stroke-linecap="round"/>
+  <!-- the regions: rings, so that they read as places, not as more parcels -->
+  <circle cx="38" cy="38" r="17" fill="none" stroke="#06C8E0" stroke-width="8"/>
+  <circle cx="182" cy="38" r="17" fill="none" stroke="#818CF8" stroke-width="8"/>
+  <!-- the parcel: a cube seen from above a corner -->
+  <g transform="translate(110 140)">
+    <path d="M 0 -26 L 23 -13 L 0 0 L -23 -13 Z" fill="#FDE047"/>
+    <path d="M -23 -13 L 0 0 L 0 27 L -23 14 Z" fill="url(#gold)"/>
+    <path d="M 23 -13 L 0 0 L 0 27 L 23 14 Z" fill="#B45309"/>
+  </g>
+</svg>

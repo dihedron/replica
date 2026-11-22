@@ -36,10 +36,17 @@ import (
 const (
 	maxBody       = 1 << 20
 	maxMessage    = 4 << 20
-	defaultCall   = 30 * time.Second
 	maxWait       = 60 * time.Second
 	watchInterval = time.Second
 )
+
+// defaultCall is the server's own limit on a unary call, the wait of a long
+// poll aside (a variable for the tests).
+var defaultCall = 30 * time.Second
+
+// errServerTimeout is the cause of a call cut by the server's limit: the
+// state store did not answer, so the call is unavailable (AC-6).
+var errServerTimeout = errors.New("the state store did not answer in time")
 
 // Options configure a Server.
 type Options struct {
@@ -187,11 +194,14 @@ func New(o Options) (*Server, error) {
 
 // deadline gives a unary call without one the default (§2).
 func (s *Server) deadline(ctx context.Context, req any, _ *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, defaultCall)
-		defer cancel()
+	limit := defaultCall
+	if r, ok := req.(*vehov1.GetJobRequest); ok {
+		limit += min(time.Duration(r.GetWait())*time.Second, maxWait)
 	}
+	// always, under a shorter client deadline too: a node cut off from the
+	// state store answers unavailable rather than hanging (AC-6)
+	ctx, cancel := context.WithTimeoutCause(ctx, limit, errServerTimeout)
+	defer cancel()
 	return h(ctx, req)
 }
 

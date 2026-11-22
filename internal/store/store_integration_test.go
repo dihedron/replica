@@ -398,3 +398,45 @@ func TestEnqueueInTransaction(t *testing.T) {
 var errRollback = errors.New("roll back on purpose")
 
 func noop(_ dbos.Context, in string) (string, error) { return in, nil }
+
+// TryLock: one holder at a time, and a holder that goes silent (a node cut
+// off by a partition, whose session the server would keep until TCP
+// keepalives give up) loses the lock after its idle timeout (found by AC-6).
+func TestTryLockIdle(t *testing.T) {
+	pool := open(t, "VEHO_TEST_WORKER_DATABASE_URL")
+	ctx := context.Background()
+	name := "veho-test-lock-" + uuid.New().String()
+	release, locked, err := TryLock(ctx, pool, name, time.Second)
+	if err != nil || !locked {
+		t.Fatalf("first: %v, %v", locked, err)
+	}
+	defer release()
+	if _, locked, err := TryLock(ctx, pool, name, time.Second); err != nil || locked {
+		t.Fatalf("second while held: %v, %v", locked, err)
+	}
+	time.Sleep(2500 * time.Millisecond) // the holder says nothing
+	r2, locked, err := TryLock(ctx, pool, name, time.Second)
+	if err != nil || !locked {
+		t.Fatalf("after the holder's idle timeout: %v, %v", locked, err)
+	}
+	r2()
+}
+
+// A host that does not answer, first in the DSN, costs a connection only the
+// connect timeout before the next host is tried (found by AC-6: a node in a
+// healthy region, its DSN listing the partitioned region's member first,
+// waited minutes for every new connection).
+func TestConnectSkipsDeadHost(t *testing.T) {
+	dsn := dsn(t, "VEHO_TEST_DATABASE_URL")
+	at := strings.Index(dsn, "@")
+	dead := dsn[:at+1] + "192.0.2.1:5432," + dsn[at+1:] // TEST-NET-1: never answers
+	start := time.Now()
+	conn, err := Connect(context.Background(), dead, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	if d := time.Since(start); d > 15*time.Second {
+		t.Errorf("connected after %v", d)
+	}
+}

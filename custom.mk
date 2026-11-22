@@ -27,9 +27,14 @@ compile: lint go-dev ## build for the default linux/amd64 platform
 snapshot: signing-check lint go-snapshot ## build a snapshot version for the supported platforms (signed if GPG_FINGERPRINT and GPG_KEY_FILE are set)
 
 .PHONY: release
-release: signing-check lint ## build a release version (requires a valid tag and the packaging key)
+release: signing-check lint ## build a release version (requires a valid tag and the packaging key), documents included
 	@test -n "$(GPG_FINGERPRINT)" || { echo "a release must be signed: set GPG_FINGERPRINT and GPG_KEY_FILE" >&2; exit 1; }
+	@DOCS_VERSION="$$(git describe --tags --exact-match)" docs/build.sh
 	@$(MAKE) --no-print-directory go-release
+
+.PHONY: docs
+docs: ## build the release documents (PDF) into build/docs/ (needs docker or podman)
+	@docs/build.sh
 
 # signing-check: the packaging key (T-21) signs the checksums file through gpg
 # (GPG_FINGERPRINT) and the packages through nfpm (GPG_KEY_FILE, its armored
@@ -96,8 +101,8 @@ vuln: ## check go.mod and the code for known vulnerabilities with govulncheck (r
 	exit $$rc
 
 # proto regenerates the Go code of the process plugins' service; the
-# generated files are committed (protoc 3.21+, protoc-gen-go v1.36,
-# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.33,
+# generated files are committed (protoc 3.21+, protoc-gen-go v1.36.12,
+# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.34,
 # protoc-gen-connect-openapi v0.30)
 .PHONY: proto
 proto: ## regenerate pkg/plugin/process/proto, api/veho/v1 (with the REST gateway) and api/openapi/veho.v1.yaml from the .proto files

@@ -61,10 +61,10 @@ Environment: the lab (`veho-lab.md`): three "regions" (separate networks) in one
 | AC-6 | Partition region A from B+C | A returns 503 on submit; B/C continue; A's transfers self-fence; no double commit |
 | AC-7 | Zombie: SIGSTOP node past lease, then SIGCONT | Zombie's writes rejected by fence; one final object |
 | AC-8 | Destination returns 503 for 30 min | Retries with backoff; completes after recovery |
-| AC-9 | Destination 403 | Transfer `FAILED(Permanent)`; other destination unaffected; `:retry` works after fix |
+| AC-9 | Destination 403 | Transfer `FAILED(Permanent)`. A policy still satisfiable leaves the other destination unaffected; one that can no longer be met fails the job at once and cancels the other transfers (fail fast, DP-6; amended 2026-11-22); `:retry` after the fix restarts both and succeeds |
 | AC-10 | Corrupt a part in flight (fault injection) | Integrity mismatch detected, retried, eventually correct |
 | AC-11 | Source mutated mid-copy | `SOURCE_CHANGED`, policy-dependent restart/fail |
-| AC-12 | Region A down after C completed, B pending | B sourced from C (FR-10) |
+| AC-12 | Region A down after C completed, B pending | v1 (amended by `veho-lab-l3.md` §4): B retries (`Transient`) and completes when A returns; sourcing B from C (FR-10) is backlog 16 |
 | AC-13 | Duplicate `POST` with same Idempotency-Key | Same job ID, one workflow |
 | AC-14 | Tenant isolation: T1 reads/cancels T2 job, uses T2 endpoint, SSRF URL | 404/403, no effect |
 | AC-15 | Quota exceeded | 429; running jobs unaffected |

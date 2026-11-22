@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/dihedron/veho/internal/topology"
 )
@@ -46,6 +47,10 @@ type Env struct {
 	Source Ref
 	// MaxDestinations is the tenant's limit on N.
 	MaxDestinations int
+	// MinRetryInitial and MaxRetryInterval are the tenant's bounds on the
+	// backoff (FR-12): retry.initial at least the first, retry.max_interval
+	// at most the second; 0 is no bound.
+	MinRetryInitial, MaxRetryInterval time.Duration
 }
 
 // Validate checks the policy, normalized by Parse or Normalize, and returns
@@ -53,8 +58,8 @@ type Env struct {
 func (p Policy) Validate(env Env) error {
 	n := len(p.Destinations)
 	switch {
-	case n < 2:
-		return refuse(CodeInvalidPolicy, "at least 2 destinations are required, got %d", n)
+	case n < 1:
+		return refuse(CodeInvalidPolicy, "at least 1 destination is required")
 	case env.MaxDestinations > 0 && n > env.MaxDestinations:
 		return refuse(CodeTooManyDestinations, "%d destinations, the limit is %d", n, env.MaxDestinations)
 	}
@@ -80,7 +85,7 @@ func (p Policy) Validate(env Env) error {
 	if err := p.validateCompletion(env, positions); err != nil {
 		return err
 	}
-	return p.validateOptions()
+	return p.validateOptions(env)
 }
 
 func (p Policy) validateCompletion(env Env, positions []topology.Position) error {
@@ -116,7 +121,7 @@ func (p Policy) validateCompletion(env Env, positions []topology.Position) error
 	return nil
 }
 
-func (p Policy) validateOptions() error {
+func (p Policy) validateOptions(env Env) error {
 	switch p.OnSatisfied {
 	case OnSatisfiedComplete, OnSatisfiedStop:
 	default:
@@ -132,6 +137,12 @@ func (p Policy) validateOptions() error {
 	}
 	if p.Deadline <= 0 || p.Retry.Initial <= 0 || p.Retry.MaxInterval <= 0 || p.Retry.Initial > p.Retry.MaxInterval {
 		return refuse(CodeInvalidPolicy, "deadline and retry durations must be positive, and retry.initial no larger than retry.max_interval")
+	}
+	if env.MinRetryInitial > 0 && time.Duration(p.Retry.Initial) < env.MinRetryInitial {
+		return refuse(CodeInvalidPolicy, "retry.initial %v is below the tenant's minimum %v", time.Duration(p.Retry.Initial), env.MinRetryInitial)
+	}
+	if env.MaxRetryInterval > 0 && time.Duration(p.Retry.MaxInterval) > env.MaxRetryInterval {
+		return refuse(CodeInvalidPolicy, "retry.max_interval %v is above the tenant's maximum %v", time.Duration(p.Retry.MaxInterval), env.MaxRetryInterval)
 	}
 	return nil
 }

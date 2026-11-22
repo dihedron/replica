@@ -32,7 +32,7 @@ Every assumption this design makes about DBOS Transact for Go was checked agains
 
 A client holds a large object X in a storage system that `veho` can read
 (e.g. an S3 bucket or an OpenStack Glance repository, anywhere). The client
-asks `veho` to copy X to N destinations (N >= 2), according to a
+asks `veho` to copy X to N destinations (N >= 1), according to a
 *distribution policy*. The destinations are any storage systems that a plugin
 supports, anywhere: on premises, or in other clouds (for example an S3 bucket
 at one provider and another provider's object store). They are controlled by
@@ -98,7 +98,7 @@ accepted it (or an entire region) fails.
   exist and belong to the tenant, quota. It SHOULD also check source
   existence (`Stat`) but a transient failure there MUST NOT reject the job
   (it is retried asynchronously).
-- **FR-4** The policy MUST support N >= 2 destinations anywhere in the
+- **FR-4** The policy MUST support N >= 1 destinations anywhere in the
   topology, each with its own target path/bucket, a completion rule
   (`min_copies` of N plus spread statements over the topology levels) and options (verification mode, deadline,
   overwrite behaviour, retry tuning); see `veho-distribution-policy.md`.
@@ -113,8 +113,18 @@ accepted it (or an entire region) fails.
   memory) and checkpoint per part so a resumed transfer continues from the
   last committed part where the destination plugin supports it.
 - **FR-8** Every transfer MUST be verified (size + checksum) before being
-  marked `SUCCEEDED`. Default checksum: SHA-256 computed while streaming,
-  compared to the destination's own integrity metadata where available.
+  marked `SUCCEEDED`. The checksum is computed per part, not over the whole
+  object at once: the SHA-256 of each part is computed while it streams and
+  committed with the part's checkpoint, and the object's digest is the
+  SHA-256 over the parts' SHA-256s, the part size and the size
+  (`veho-engine.md` §4.4). A transfer resumed on another node therefore
+  needs only the parts it has not copied: the hashes of the committed parts
+  are in the state store, so a restart never loses checksum state and never
+  forces the transfer to begin again. Each part is also compared with the
+  destination's own integrity metadata where available (for S3, the part's
+  MD5). The digest depends on the part size, which is fixed per job, so all
+  of a job's destinations are comparable; it is not the `sha256sum` of the
+  object.
 - **FR-9** Destination writes MUST be atomic from a reader's point of view:
   a partially written object is never visible under its final name.
 - **FR-10** If a completed destination is available, it MAY be used as an
@@ -124,8 +134,13 @@ accepted it (or an entire region) fails.
 ### Reliability
 - **FR-11** Any failure MUST be retried according to the error taxonomy in
   veho-job-lifecycle.md §7 until success, permanent failure, cancellation or deadline.
-- **FR-12** Retries MUST use exponential backoff with jitter, with
-  per-tenant-configurable bounds.
+- **FR-12** Retries MUST use exponential backoff with jitter. A policy sets
+  its backoff (`retry.initial`, `retry.max_interval`); the tenant's quotas
+  bound what a policy may set (`min_retry_initial`, default 1 s, at most 2 s;
+  `max_retry_interval`, default 1 h, at least 15 min), so that no policy
+  hammers a shared destination. The policy defaults (2 s, 15 min) are always
+  within a tenant's bounds. A policy outside them is refused
+  (`invalid_policy`).
 - **FR-13** Retried operations MUST be idempotent (same job + destination +
   part always yields the same result).
 
@@ -155,8 +170,17 @@ accepted it (or an entire region) fails.
   After a region loss, within 5 minutes including state-store failover.
 - **NFR-4 (submission latency)** p99 < 1 s at inter-region RTT ≤ 150 ms
   (dominated by the synchronous cross-region commit).
-- **NFR-5 (memory)** Per-transfer memory bounded by `parts_in_flight × part_size`
-  (defaults 4 × 64 MiB); independent of object size.
+- **NFR-5 (memory)** A node's memory for parts is bounded by
+  `engine.part_memory_mib` (default 1 GiB), across all its transfers: a part
+  waits for room before it is read, since a driver may hold a whole part in
+  memory (the S3 driver does, for its `Content-MD5`). Within that bound, one
+  transfer holds at most `parts_in_flight` × the job's part size. The part
+  size is `engine.part_size_mib` (default 64 MiB) until the object needs
+  more parts than a destination allows: S3's 10,000 parts make it grow above
+  640 GiB, up to the S3 driver's 512 MiB for a 5 TiB object, so the bound per
+  transfer is not independent of the object's size, the node's bound is. A
+  part larger than the whole budget takes all of it and runs alone
+  (`veho-engine.md` §1, memory).
 - **NFR-6 (portability)** Linux amd64/arm64 static binary; no cgo. Tier 1: OpenStack and LXD on Ubuntu 24.04 LTS or later and Rocky/Alma under systemd; tier 2: VMware and Kubernetes; other systems later; no feature works on one platform only (`veho-architecture.md` §7).
 - **NFR-7 (observability)** Structured logs (`slog`), Prometheus metrics,
   OpenTelemetry traces propagated across steps (veho-acceptance-matrix.md).
@@ -196,7 +220,7 @@ Each invariant MUST have at least one automated test (`veho-acceptance-matrix.md
 
 - **OI-1 Source locality.** *Decided* (2026-11-21): the source is external and populating it is the client's responsibility; it can be in any location. The policy models only the additional copies; the source is never a destination and is not counted (`veho-distribution-policy.md` §1).
 - **OI-2 Regions & cloud.** *Decided* (2026-11-21): `veho` is a CP system. A job is accepted only when a quorum of the three state-store regions (2 of 3) has committed it; a region in the minority answers 503. Which providers and the real RTT remain open (OI-12).
-- **OI-3 Completion semantics.** *Decided* (2026-11-21): acceptance and replication are decoupled. Acceptance needs the 2-of-3 state-store quorum; copying is asynchronous. The destination topology is decoupled from the three control-plane sites: a tree of locations with named levels (for example regions and AZs), any number of them. A policy has N >= 2 destinations and `min_copies` (M of N) plus spread statements (`min_distinct` locations at a level), for example 7 of 9, or 5 copies in at least 5 AZs across 3 regions. The job tracks three milestones separately: satisfied (the minimum is met; job `SUCCEEDED`), complete (all N have a copy) and settled (all transfers terminal). It fails as soon as the policy cannot be met. See `veho-distribution-policy.md`. A deep dive on the topology model is planned (backlog 17).
+- **OI-3 Completion semantics.** *Decided* (2026-11-21): acceptance and replication are decoupled. Acceptance needs the 2-of-3 state-store quorum; copying is asynchronous. The destination topology is decoupled from the three control-plane sites: a tree of locations with named levels (for example regions and AZs), any number of them. A policy has N >= 1 destinations and `min_copies` (M of N) plus spread statements (`min_distinct` locations at a level), for example 7 of 9, or 5 copies in at least 5 AZs across 3 regions. The job tracks three milestones separately: satisfied (the minimum is met; job `SUCCEEDED`), complete (all N have a copy) and settled (all transfers terminal). It fails as soon as the policy cannot be met. See `veho-distribution-policy.md`. A deep dive on the topology model is planned (backlog 17).
 - **OI-4 Scale of objects.** Typical and maximum object size? (affects part
   size, `MaxParts` handling, deadline defaults).
 - **OI-5 Auth.** *Decided* (2026-11-21): OIDC JWT, API keys and SPIFFE identities (X.509-SVID over mTLS, JWT-SVID) in v1 (SEC-20); Keystone is not in v1 and can come later as an auth plugin or through OIDC federation. The product also has a Web UI and a CLI for humans to administer it: define policies, define who can trigger each, monitor progress (SEC-22, backlog 19).
@@ -243,6 +267,7 @@ all partitions at once.
 | `veho-audit.md` | Lightweight audit: events to the system log and the SIEM |
 | `veho-secrets.md` | Secrets: key hierarchy, envelope encryption, KEK rotation, `veho kek` |
 | `veho-lab.md` | The lab: three regions in one LXD VM, the emulated WAN, Patroni and etcd, Garage; `test/lab/lab.sh` |
+| `veho-lab-l3.md` | Lab L3 and the acceptance suite: the veho nodes, the fault-injecting S3 proxy, the daytime scenarios and the overnight campaigns (C9) |
 | `veho-distribution-policy.md` | Distribution policy: destinations, M of N completion, topology spread |
 | `veho-api.md` | REST API and command line clients |
 | `veho-plugins.md` | Storage plugin interfaces and conformance suite |

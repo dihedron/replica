@@ -90,6 +90,7 @@ func runSuffix(n int) string {
 // transfers that are not terminal, wait for them, finalize. The job's state
 // is set by the transfers as they end (§4.3).
 func (e *Engine) jobWorkflow(ctx dbos.Context, in JobInput) (string, error) {
+	defer e.running(ctx)()
 	unknown := 0
 	for n := 0; ; n++ {
 		r, err := runStep(ctx, "resolve", func(c context.Context) result { return e.resolve(c, in) })
@@ -133,6 +134,13 @@ func (e *Engine) jobWorkflow(ctx dbos.Context, in JobInput) (string, error) {
 		if _, err := h.GetResult(); err != nil && ctx.Err() != nil {
 			return "", err
 		}
+	}
+	// GetResult also fails when DBOS cannot read the child's status (a
+	// database failover): the job must not finalize while a transfer still
+	// runs, or housekeeping would take its ended workflow for a zombie and
+	// fail the transfer (found by AC-5)
+	if _, err := runStep(ctx, "await", func(c context.Context) result { return e.await(c, in) }); err != nil {
+		return "", err
 	}
 	_, err = runStep(ctx, "finalize", func(c context.Context) result { return e.finalize(c, in) })
 	return "done", err
@@ -178,6 +186,49 @@ func (e *Engine) failJob(ctx context.Context, in JobInput, r result) result {
 	}
 	e.settled(ctx, in)
 	return result{Done: true}
+}
+
+// awaitPoll is how often await looks at the job's transfers.
+const awaitPoll = 5 * time.Second
+
+// await returns once every transfer of the job is terminal, or once every
+// open one's workflow has ended (housekeeping then repairs them). Errors,
+// such as a database that fails over, only make it look again.
+func (e *Engine) await(ctx context.Context, in JobInput) result {
+	for {
+		if done, err := e.settledOrEnded(ctx, in); err == nil && done {
+			return result{}
+		} else if err != nil {
+			slog.WarnContext(ctx, "waiting for the job's transfers", "tenant_id", in.Tenant, "job_id", in.Job, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return fail(ctx.Err())
+		case <-time.After(awaitPoll):
+		}
+	}
+}
+
+// settledOrEnded is true when no transfer of the job is open, or when the
+// workflows of every open one have ended.
+func (e *Engine) settledOrEnded(ctx context.Context, in JobInput) (bool, error) {
+	ids := e.openTransfers(ctx, in)
+	if ids.failed() {
+		return false, errors.New(ids.Err)
+	}
+	for _, t := range ids.IDs {
+		ws, err := dbos.ListWorkflows(e.dbos, dbos.WithFilterWorkflowIDPrefix(TransferWorkflowID(t)),
+			dbos.WithFilterLoadInput(false), dbos.WithFilterLoadOutput(false))
+		if err != nil {
+			return false, err
+		}
+		for _, w := range ws {
+			if !ended(w.Status) {
+				return false, nil
+			}
+		}
+	}
+	return true, nil
 }
 
 // finalize records the job's settlement in the audit log.

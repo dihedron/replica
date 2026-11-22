@@ -79,14 +79,10 @@ func validate(ctx context.Context, tx pgx.Tx, p policy.Policy) error {
 		return err
 	}
 	eps := endpoints{tx: tx, ctx: ctx, topo: topo}
-	env := policy.Env{
-		Topology: topo,
-		Resolve: func(name string) (topology.Position, bool) {
-			ep, ok := eps.get(name)
-			return ep.position, ok
-		},
-		MaxDestinations: min(cmpOr(q.MaxDestinations, defaultMaxDestinations), platformMaxDestinations),
-	}
+	env := q.env(topo, func(name string) (topology.Position, bool) {
+		ep, ok := eps.get(name)
+		return ep.position, ok
+	})
 	if err := p.Validate(env); err != nil {
 		if eps.err != nil {
 			return eps.err

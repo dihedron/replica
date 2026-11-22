@@ -73,6 +73,7 @@ func runStep[R any](ctx dbos.Context, name string, fn func(context.Context) R) (
 // transferWorkflow is Transfer (§4.1): attempts until the transfer is
 // terminal, waiting durably between them.
 func (e *Engine) transferWorkflow(ctx dbos.Context, in TransferInput) (string, error) {
+	defer e.running(ctx)()
 	unknown, integrity := 0, 0
 	for n := 0; ; n++ {
 		r, err := e.attempt(ctx, in)
@@ -226,13 +227,18 @@ func (e *Engine) held(ctx context.Context, in TransferInput, fn func(ctx context
 	return fn(gctx, fence)
 }
 
-// check turns a step's error into its result.
+// check turns a step's error into its result. A write that found another
+// fence is retried, not taken for the end of the transfer: two executions of
+// the workflow can overlap (a recovery during a failover), and the one that
+// lost the fence may be the one DBOS keeps; it claims again and continues
+// from the recorded parts, while DBOS stops the other at its next step. A
+// transfer that really ended is Done at the next claim (found by AC-5).
 func check(err error) result {
 	if err == nil {
 		return result{}
 	}
 	if errors.Is(err, errLost) {
-		return result{Done: true}
+		return result{Err: errLost.Error(), Class: plugin.Transient}
 	}
 	return fail(err)
 }
@@ -451,7 +457,7 @@ func (e *Engine) copyParts(ctx context.Context, src plugin.Client, up plugin.Upl
 		wg     sync.WaitGroup
 	)
 	one := func(p part) {
-		c, err := copyPart(ctx, src, up, a, p)
+		c, err := e.copyPart(ctx, src, up, a, p)
 		mu.Lock()
 		defer mu.Unlock()
 		if err != nil {
@@ -474,7 +480,15 @@ func (e *Engine) copyParts(ctx context.Context, src plugin.Client, up plugin.Upl
 	return copied, nil
 }
 
-func copyPart(ctx context.Context, src plugin.Client, up plugin.Upload, a attempt, p part) (copiedPart, error) {
+// copyPart copies one part once the node's part memory has room for it: a
+// driver may hold the whole part in memory (NFR-5). A part larger than the
+// whole budget takes all of it.
+func (e *Engine) copyPart(ctx context.Context, src plugin.Client, up plugin.Upload, a attempt, p part) (copiedPart, error) {
+	n := min(p.Length, int64(e.cfg.Engine.PartMemoryMiB)<<20)
+	if err := e.partMemory.Acquire(ctx, n); err != nil {
+		return copiedPart{}, fmt.Errorf("wait for part memory: %w", err)
+	}
+	defer e.partMemory.Release(n)
 	rc, err := src.ReadRange(ctx, plugin.Ref{Key: a.SourcePath}, p.Offset, p.Length, a.Version)
 	if err != nil {
 		return copiedPart{}, drv(fmt.Errorf("read part %d: %w", p.No, err))

@@ -1,0 +1,5 @@
+# Setup Guide: title page and PDF metadata (see docs/build.sh)
+title: "Setup Guide"
+subtitle: "Installing veho in three regions: the state store, the nodes and a first replication"
+author: "veho"
+lang: en-GB

@@ -1,6 +1,6 @@
 # shellcheck shell=bash disable=SC2015
 # The lab's self-test (.specs/veho-lab.md, LAB-10): LAB-4 to LAB-8 on a
-# running lab. SC2015 throughout: ok and fail never fail, so A && ok || fail
+# running lab, and L3-T1 to L3-T5 (.specs/veho-lab-l3.md §7) with the nodes. SC2015 throughout: ok and fail never fail, so A && ok || fail
 # is an if-then-else. It changes the WAN and switches the primary over, and leaves
 # the WAN as it found it.
 
@@ -22,8 +22,11 @@ selftest() {
 	selftest_partition
 	wan_apply "$saved_links" >/dev/null
 	wan_partition_apply "$saved_parts" >/dev/null
+	local pids=""
+	[[ -n "$(env_get '.nodes // ""')" ]] && pids="$(node_pids)"
 	selftest_db
 	selftest_s3
+	[[ -n "$pids" ]] && selftest_nodes "$pids"
 	((CHECK_FAILS == 0)) || die "self-test: $CHECK_FAILS check(s) failed"
 	info "self-test passed"
 }
@@ -122,4 +125,73 @@ s3_curl() {
 	curl -fsS --aws-sigv4 "aws:amz:region-$x:s3" \
 		--user "$(cat "$LAB_STATE_DIR/passwords/s3-$x-access"):$(cat "$LAB_STATE_DIR/passwords/s3-$x-secret")" \
 		-H "x-amz-content-sha256: UNSIGNED-PAYLOAD" "$@"
+}
+
+# node_pids: "NAME=PID ..." of the nodes' veho services.
+node_pids() {
+	local name
+	for name in $(node_names); do
+		printf '%s=%s ' "$name" "$(inner_exec "$name" systemctl show -p MainPID --value veho)"
+	done
+}
+
+# node_ready NAME: true when NAME answers /readyz through its published port.
+node_ready() { curl -fsS --max-time 5 --cacert "$LAB_STATE_DIR/pki/ca.crt" "https://$(lxd_ip):$(node_port "$1")/readyz" >/dev/null 2>&1; }
+
+# node_active NAME: true when NAME's veho service is active.
+node_active() { [[ "$(inner_exec "$1" systemctl is-active veho 2>/dev/null)" == active ]]; }
+
+# selftest_nodes PIDS: L3-T1 to L3-T5; PIDS from node_pids before the
+# switchover of selftest_db. Kills and restarts veho-c2.
+selftest_nodes() {
+	local entry name pid victim=veho-c2 x url body md5 code
+	for entry in $1; do
+		name="${entry%=*}" pid="${entry#*=}"
+		node_ready "$name" && ok "L3-T1 $name answers on $(lxd_ip):$(node_port "$name")" || fail "L3-T1 $name does not answer"
+		[[ "$(inner_exec "$name" systemctl show -p MainPID --value veho)" == "$pid" ]] && node_ready "$name" &&
+			ok "L3-T2 $name followed the switchover without a restart" || fail "L3-T2 $name restarted or stopped across the switchover"
+	done
+
+	# L3-T3
+	cmd_node kill "$victim" --stay-down
+	sleep 12
+	! node_active "$victim" && ok "L3-T3 $victim stays down after kill --stay-down" || fail "L3-T3 $victim restarted after kill --stay-down"
+	cmd_node start "$victim" >/dev/null && ok "L3-T3 $victim back after node start" || fail "L3-T3 $victim did not start"
+	pid="$(inner_exec "$victim" systemctl show -p MainPID --value veho)"
+	cmd_node kill "$victim"
+	for _ in $(seq 1 30); do
+		node_ready "$victim" && [[ "$(inner_exec "$victim" systemctl show -p MainPID --value veho)" != "$pid" ]] && break
+		sleep 1
+	done
+	node_ready "$victim" && ok "L3-T3 systemd restarted $victim after kill" || fail "L3-T3 $victim was not restarted after kill"
+
+	# L3-T4, through the published proxies
+	body="veho lab fault $(date -u +%s)"
+	md5="$(printf '%s' "$body" | openssl md5 -binary | base64)"
+	for x in "${REGIONS[@]}"; do
+		url="http://$(lxd_ip):$(published_port "$LAB_FAULT_PORT_BASE" "$x")/dest-1/selftest"
+		s3_curl "$x" -X PUT -H "Content-MD5: $md5" --data-binary "$body" "$url" >/dev/null &&
+			[[ "$(s3_curl "$x" "$url")" == "$body" ]] &&
+			ok "L3-T4 proxy $x forwards a signed put and get" || fail "L3-T4 proxy $x does not forward"
+		cmd_fault "$x" status 503 --for 3s
+		code="$(s3_curl "$x" -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+		[[ "$code" == 503 ]] && ok "L3-T4 proxy $x answers 503 during the fault" || fail "L3-T4 proxy $x answered $code during the fault"
+		sleep 4
+		s3_curl "$x" "$url" >/dev/null && ok "L3-T4 proxy $x forwards after the fault" || fail "L3-T4 proxy $x still faulty after --for"
+		cmd_fault "$x" corrupt
+		code="$(s3_curl "$x" -X PUT -H "Content-MD5: $md5" --data-binary "$body" -o /dev/null -w '%{http_code}' "$url" 2>/dev/null || true)"
+		[[ "$code" == 400 ]] && ok "L3-T4 proxy $x: Garage refuses the corrupted part" || fail "L3-T4 proxy $x: corrupted put answered $code"
+		cmd_fault "$x" status 503
+		cmd_fault "$x" clear
+		s3_curl "$x" -X DELETE "$url" >/dev/null && ok "L3-T4 proxy $x forwards after clear" || fail "L3-T4 proxy $x still faulty after clear"
+	done
+
+	# L3-T5
+	inner_exec "$victim" sh -c 'mv /etc/systemd/system/veho.service.d/lab.conf /root/lab.conf && systemctl daemon-reload && systemctl restart veho' || true
+	sleep 3
+	! node_ready "$victim" && inner_exec "$victim" journalctl -u veho --since -10s --no-pager | grep -q "unwrap" &&
+		ok "L3-T5 $victim without the unwrap key refuses to start" || fail "L3-T5 $victim started without the unwrap key, or said nothing"
+	inner_exec "$victim" sh -c 'mv /root/lab.conf /etc/systemd/system/veho.service.d/lab.conf && systemctl daemon-reload'
+	cmd_node restart "$victim" >/dev/null
+	node_ready "$victim" && ok "L3-T5 $victim back with the key" || fail "L3-T5 $victim did not come back"
 }

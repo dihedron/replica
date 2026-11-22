@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 470" width="900" height="470" font-family="DejaVu Sans, sans-serif">
+  <!-- The reference deployment (docs/common/artwork, rendered to topology.pdf
+       by inkscape: see .specs/veho-docs.md). Three regions, symmetric nodes,
+       one PostgreSQL cluster whose primary commits to a quorum standby. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1E4E79"/>
+    </marker>
+  </defs>
+  <style>
+    .region { fill: #F8FAFC; stroke: #94A3B8; stroke-width: 1.5; }
+    .title { font-size: 17px; font-weight: bold; fill: #0F172A; }
+    .box { fill: #E0F2FE; stroke: #0369A1; stroke-width: 1.5; }
+    .storage { fill: #FEF3C7; stroke: #B45309; stroke-width: 1.5; }
+    .label { font-size: 14px; fill: #0F172A; text-anchor: middle; }
+    .small { font-size: 12px; fill: #334155; text-anchor: middle; }
+    .edge { font-size: 12px; fill: #1E4E79; text-anchor: middle; }
+  </style>
+
+  <!-- regions -->
+  <rect class="region" x="10" y="10" width="270" height="450" rx="10"/>
+  <rect class="region" x="315" y="10" width="270" height="450" rx="10"/>
+  <rect class="region" x="620" y="10" width="270" height="450" rx="10"/>
+  <text class="title" x="145" y="38" text-anchor="middle">Region A</text>
+  <text class="title" x="450" y="38" text-anchor="middle">Region B</text>
+  <text class="title" x="755" y="38" text-anchor="middle">Region C</text>
+
+  <!-- nodes -->
+  <rect class="box" x="55" y="60" width="180" height="58" rx="6"/>
+  <text class="label" x="145" y="84">veho-a1, veho-a2</text>
+  <text class="small" x="145" y="104">API + executor</text>
+  <rect class="box" x="360" y="60" width="180" height="58" rx="6"/>
+  <text class="label" x="450" y="84">veho-b1, veho-b2</text>
+  <text class="small" x="450" y="104">API + executor</text>
+  <rect class="box" x="665" y="60" width="180" height="58" rx="6"/>
+  <text class="label" x="755" y="84">veho-c1, veho-c2</text>
+  <text class="small" x="755" y="104">API + executor</text>
+
+  <!-- database members -->
+  <path d="M 75 242 a 70 12 0 0 0 140 0 v 56 a 70 12 0 0 1 -140 0 z" fill="#F1F5F9" stroke="#334155" stroke-width="1.5"/>
+  <ellipse cx="145" cy="242" rx="70" ry="12" fill="#F1F5F9" stroke="#334155" stroke-width="1.5"/>
+  <text class="label" x="145" y="270">PostgreSQL</text>
+  <text class="small" x="145" y="288">quorum standby</text>
+  <path d="M 380 242 a 70 12 0 0 0 140 0 v 56 a 70 12 0 0 1 -140 0 z" fill="#DBEAFE" stroke="#334155" stroke-width="1.5"/>
+  <ellipse cx="450" cy="242" rx="70" ry="12" fill="#DBEAFE" stroke="#334155" stroke-width="1.5"/>
+  <text class="label" x="450" y="270" font-weight="bold">PostgreSQL</text>
+  <text class="small" x="450" y="288">primary</text>
+  <path d="M 685 242 a 70 12 0 0 0 140 0 v 56 a 70 12 0 0 1 -140 0 z" fill="#F1F5F9" stroke="#334155" stroke-width="1.5"/>
+  <ellipse cx="755" cy="242" rx="70" ry="12" fill="#F1F5F9" stroke="#334155" stroke-width="1.5"/>
+  <text class="label" x="755" y="270">PostgreSQL</text>
+  <text class="small" x="755" y="288">quorum standby</text>
+  <text class="small" x="145" y="332">Patroni, etcd member</text>
+  <text class="small" x="450" y="332">Patroni, etcd member</text>
+  <text class="small" x="755" y="332">Patroni, etcd member</text>
+
+  <!-- storage -->
+  <rect class="storage" x="70" y="380" width="150" height="50" rx="6"/>
+  <text class="label" x="145" y="410">Storage A</text>
+  <rect class="storage" x="375" y="380" width="150" height="50" rx="6"/>
+  <text class="label" x="450" y="410">Storage B</text>
+  <rect class="storage" x="680" y="380" width="150" height="50" rx="6"/>
+  <text class="label" x="755" y="410">Storage C</text>
+
+  <!-- SQL from every node to the primary -->
+  <path d="M 450 118 L 450 226" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <path d="M 190 118 C 230 175, 330 200, 392 232" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <path d="M 710 118 C 670 175, 570 200, 508 232" fill="none" stroke="#334155" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text class="small" x="465" y="175" text-anchor="start">SQL</text>
+  <text class="small" x="262" y="168">SQL</text>
+  <text class="small" x="638" y="168">SQL</text>
+
+  <!-- synchronous replication -->
+  <path d="M 380 275 L 218 275" fill="none" stroke="#1E4E79" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <path d="M 520 275 L 682 275" fill="none" stroke="#1E4E79" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <text class="edge" x="298" y="262">streams</text>
+  <text class="edge" x="602" y="262">streams</text>
+  <text class="edge" x="450" y="358">a commit waits for ANY 1 of the two standbys</text>
+</svg>
