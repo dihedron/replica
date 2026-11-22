@@ -337,9 +337,11 @@ nodes_stop() {
 	info "veho nodes stopped for the integration tests (lab.sh acceptance starts them again)"
 }
 
-# nodes_start starts veho on the nodes and waits until they answer.
+# nodes_start starts veho on the nodes and waits until they answer; the
+# KEK first, which the integration tests replace with their own.
 nodes_start() {
 	local name
+	nodes_database
 	for name in $(node_names); do
 		node_unblock "$name"
 		inner_exec "$name" systemctl start veho

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -257,11 +258,13 @@ type Clients struct {
 // region and an endpoint per region and bucket: "<x>-<bucket>", through the
 // region's fault proxy. Its objects are under Prefix.
 type Tenant struct {
-	lab    *Lab
-	Name   string
-	ID     string
-	Prefix string
-	key    string
+	lab     *Lab
+	Name    string
+	ID      string
+	Prefix  string
+	key     string
+	mu      sync.Mutex
+	clients map[string]Clients
 }
 
 // Tenant creates a tenant with veho bootstrap and registers its endpoints
@@ -311,9 +314,15 @@ func (l *Lab) bootstrap(args ...string) string {
 // RegionNum is a region's number: a is 1.
 func RegionNum(x string) int { return int(x[0]-'a') + 1 }
 
-// Clients connects to node with the tenant's key; closed at the test's end.
+// Clients connects to node with the tenant's key, once per node; closed at
+// the test's end.
 func (tn *Tenant) Clients(node string) Clients {
 	tn.lab.t.Helper()
+	tn.mu.Lock()
+	defer tn.mu.Unlock()
+	if c, ok := tn.clients[node]; ok {
+		return c
+	}
 	addr, ok := tn.lab.nodes[node]
 	if !ok {
 		tn.lab.t.Fatalf("no node %s", node)
@@ -324,8 +333,19 @@ func (tn *Tenant) Clients(node string) Clients {
 		tn.lab.t.Fatalf("connect %s: %v", node, err)
 	}
 	tn.lab.t.Cleanup(func() { _ = conn.Close() })
-	return Clients{Jobs: vehov1.NewJobServiceClient(conn), Policies: vehov1.NewPolicyServiceClient(conn),
+	c := Clients{Jobs: vehov1.NewJobServiceClient(conn), Policies: vehov1.NewPolicyServiceClient(conn),
 		Endpoints: vehov1.NewEndpointServiceClient(conn), Secrets: vehov1.NewSecretServiceClient(conn), Admin: vehov1.NewAdminServiceClient(conn)}
+	if tn.clients == nil {
+		tn.clients = map[string]Clients{}
+	}
+	tn.clients[node] = c
+	return c
+}
+
+// Delete removes an object of region x's bucket at the tenant's prefix +
+// path, if it is there.
+func (tn *Tenant) Delete(x, bucket, path string) {
+	_, _ = rawS3(x).DeleteObject(context.Background(), &s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(tn.Prefix + path)})
 }
 
 // Dest is a destination of a policy: endpoint "<x>-<bucket>".

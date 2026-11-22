@@ -6,7 +6,7 @@ set -euo pipefail
 LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LAB_DIR/../.." && pwd)"
 
-for lib in common preflight lxd inner pki fetch wan db s3 nodes snapshot selftest; do
+for lib in common preflight lxd inner pki fetch wan db s3 nodes campaign snapshot selftest; do
 	# shellcheck source=/dev/null
 	source "$LAB_DIR/lib/$lib.sh"
 done
@@ -51,6 +51,9 @@ commands:
   acceptance [-run R] [--no-deploy]
                             nodes deploy, then the daytime acceptance suite
                             (go test -tags acceptance ./test/acceptance)
+  campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long
+                            the long campaigns (AC-17, AC-18, AC-1 and AC-8
+                            at full size), overnight; logs in .evidence/
   node start|stop|restart NAME
   node kill NAME [--stay-down]
                             SIGKILL veho; --stay-down keeps it down until
@@ -204,6 +207,7 @@ main() {
 	schema-reset) require_lab && db_psql -c "drop schema veho cascade; create schema veho authorization veho_migrator" ;;
 	nodes) cmd_nodes "$@" ;;
 	acceptance) cmd_acceptance "$@" ;;
+	campaign) cmd_campaign "$@" ;;
 	node) cmd_node "$@" ;;
 	db) cmd_db "$@" ;;
 	fault) cmd_fault "$@" ;;

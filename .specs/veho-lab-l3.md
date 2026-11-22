@@ -112,7 +112,7 @@ The lab is a test environment on one machine. Its threats concern the developer'
 
 ## 6. Long runs (C9c)
 
-Each campaign records its results in `test/lab/.evidence/campaign-<name>-<date>/` and ends with a summary: pass or fail per check, and the measurements. Durations are estimates.
+`lab.sh campaign soak|wan24|long` runs them (`test/lab/lib/campaign.sh`, `test/acceptance/campaign_test.go`, built with the tags `acceptance campaign`); the soak passed a 10-minute smoke run (125 jobs, a pause past the lease) on 2026-11-22. Each campaign records its results in `test/lab/.evidence/campaign-<name>-<date>/` and ends with a summary: pass or fail per check, and the measurements. Durations are estimates.
 
 | Campaign | Duration | What runs | Pass |
 | :--- | :--- | :--- | :--- |
