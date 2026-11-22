@@ -37,7 +37,7 @@ func caFile(t *testing.T) string {
 
 // TestCheckDSN: STO-8, only verify-full without a plaintext fallback.
 func TestCheckDSN(t *testing.T) {
-	base := "postgres://veho_api:x@db-a:5432,db-b:5432/veho?sslrootcert=" + caFile(t) + "&sslmode="
+	base := "postgres://veho_api@db-a:5432,db-b:5432/veho?sslrootcert=" + caFile(t) + "&sslmode="
 	for mode, ok := range map[string]bool{"disable": false, "allow": false, "prefer": false, "require": false, "verify-ca": false, "verify-full": true} {
 		err := CheckDSN(base+mode, false)
 		if ok != (err == nil) {

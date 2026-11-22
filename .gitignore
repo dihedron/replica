@@ -44,3 +44,5 @@ build/
 test/lab/.state/
 test/lab/.evidence/
 test/lab/lab.local.env
+
+_test/.env
