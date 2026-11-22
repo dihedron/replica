@@ -114,6 +114,26 @@ func (l *Lab) Sh(args ...string) string {
 	return string(out)
 }
 
+// TrySh runs lab.sh with args and returns its error instead of failing the
+// test: for a loop that must go on, such as the soak's chaos, which runs
+// outside the test's goroutine.
+func (l *Lab) TrySh(args ...string) (string, error) {
+	cmd := exec.Command(labSh(), args...) //nolint:gosec // the lab's own script
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return string(out), fmt.Errorf("lab.sh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return string(out), nil
+}
+
+// Active is true when node's veho service is running.
+func (l *Lab) Active(node string) bool {
+	out, err := l.TrySh("ssh", node, "systemctl", "is-active", "veho")
+	return err == nil && strings.TrimSpace(out) == "active"
+}
+
 // Kill sends SIGKILL to node's veho; with stayDown systemd does not restart it.
 func (l *Lab) Kill(node string, stayDown bool) {
 	l.t.Helper()

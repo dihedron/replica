@@ -88,39 +88,55 @@ func TestCampaignSoak(t *testing.T) {
 			if !time.Now().Before(deadline) {
 				return
 			}
-			nodes := l.Nodes()
-			node := nodes[r.IntN(len(nodes))]
+			// only nodes that run: a node still restarting has no process to
+			// signal; a failed step is logged, and the loop goes on
+			var up []string
+			for _, n := range l.Nodes() {
+				if l.Active(n) {
+					up = append(up, n)
+				}
+			}
+			if len(up) < 2 {
+				t.Logf("chaos: only %d nodes run, skipping a round", len(up))
+				continue
+			}
+			node := up[r.IntN(len(up))]
 			region := labtest.Regions[r.IntN(3)]
+			sh := func(args ...string) {
+				if _, err := l.TrySh(args...); err != nil {
+					t.Logf("chaos: %v", err)
+				}
+			}
 			switch r.IntN(5) {
 			case 0:
 				t.Logf("chaos: kill %s", node)
-				l.Sh("node", "kill", node)
+				sh("node", "kill", node)
 			case 1:
 				t.Logf("chaos: kill %s, down for 5 minutes", node)
-				l.Sh("node", "kill", node, "--stay-down")
+				sh("node", "kill", node, "--stay-down")
 				time.Sleep(5 * time.Minute)
-				l.Sh("node", "start", node)
+				sh("node", "start", node)
 			case 2:
 				t.Logf("chaos: pause %s past its lease", node)
-				l.Sh("node", "pause", node)
+				sh("node", "pause", node)
 				time.Sleep(lease + 30*time.Second)
-				l.Sh("node", "resume", node)
+				sh("node", "resume", node)
 			case 3:
 				if leader := l.Leader(); leader != "" {
 					t.Logf("chaos: kill the leader %s", leader)
-					l.Sh("db", "kill", leader[len("db-"):])
+					sh("db", "kill", leader[len("db-"):])
 					time.Sleep(time.Minute)
-					l.Sh("db", "start", leader[len("db-"):])
+					sh("db", "start", leader[len("db-"):])
 				}
 			case 4:
 				if r.IntN(2) == 0 {
 					t.Logf("chaos: partition region %s for 2 minutes", region)
-					l.Sh("wan", "partition", region)
+					sh("wan", "partition", region)
 					time.Sleep(2 * time.Minute)
-					l.Sh("wan", "heal")
+					sh("wan", "heal")
 				} else {
 					t.Logf("chaos: region %s's destinations answer 503 for 5 minutes", region)
-					l.Sh("fault", region, "status", "503", "--for", "5m")
+					sh("fault", region, "status", "503", "--for", "5m")
 				}
 			}
 		}

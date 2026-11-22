@@ -232,9 +232,30 @@ cmd_db() {
 	start)
 		inner_start "db-$x"
 		inner_wait "db-$x"
+		db_rejoin "db-$x"
 		;;
 	*) die "usage: lab.sh db kill|start X" ;;
 	esac
+}
+
+# db_rejoin NAME: waits until a restarted member streams on the leader's
+# timeline, or leads; a former primary killed with WAL the others never
+# received diverges, and Patroni does not always rewind it (found by the
+# soak), so after two minutes it is reinitialized from the leader.
+db_rejoin() {
+	local name="$1" ok
+	for attempt in 1 2; do
+		for _ in $(seq 1 24); do
+			ok="$(db_members | jq -r --arg m "$name" '(map(select(.Role == "Leader"))[0].TL) as $tl
+				| map(select(.Member == $m and (.Role == "Leader" or (.State == "streaming" and .TL == $tl)))) | length')"
+			[[ "$ok" == 1 ]] && return 0
+			sleep 5
+		done
+		((attempt == 1)) || break
+		warn "$name does not stream on the leader's timeline: reinitializing it"
+		db_patronictl reinit veho "$name" --force >/dev/null
+	done
+	die "$name did not rejoin the cluster"
 }
 
 # fault_install NAME: the fault proxy in an s3 container, under systemd.
