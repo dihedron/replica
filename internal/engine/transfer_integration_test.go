@@ -28,8 +28,9 @@ import (
 // fail the part or act meanwhile (a takeover, a change of the source).
 type flaky struct {
 	plugin.Driver
-	mu   sync.Mutex
-	hook func(partNo int) error
+	mu     sync.Mutex
+	hook   func(partNo int) error
+	commit func() error // before each Commit, if set
 }
 
 func (f *flaky) Name() string { return "flaky" }
@@ -73,6 +74,18 @@ func (c flakyClient) Resume(ctx context.Context, ref plugin.Ref, token []byte) (
 type flakyUpload struct {
 	plugin.Upload
 	f *flaky
+}
+
+func (u flakyUpload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.ObjectInfo, error) {
+	u.f.mu.Lock()
+	h := u.f.commit
+	u.f.mu.Unlock()
+	if h != nil {
+		if err := h(); err != nil {
+			return plugin.ObjectInfo{}, err
+		}
+	}
+	return u.Upload.Commit(ctx, parts)
 }
 
 func (u flakyUpload) WritePart(ctx context.Context, partNo int, r io.Reader, length int64) (plugin.PartResult, error) {
@@ -498,4 +511,28 @@ func TestFencedDuringRetry(t *testing.T) {
 	if s.State != "SUCCEEDED" {
 		t.Fatalf("job: %+v", s)
 	}
+}
+
+// A commit the destination refuses because the upload does not hold the
+// parts (another execution began it again) makes the transfer begin the
+// upload again, not fail (found by the soak, AC-17).
+func TestCommitRefusedBeginsAgain(t *testing.T) {
+	f := setup(t)
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	fl := f.fileEndpoint(t, "a", "flaky", "lab-a")
+	f.fileEndpoint(t, "b", "file", "lab-b")
+	var once sync.Once
+	f.flaky.mu.Lock()
+	f.flaky.commit = func() error {
+		var err error
+		once.Do(func() { err = plugin.Wrapf(plugin.ResumeInvalid, "s3: commit: no data was uploaded") })
+		return err
+	}
+	f.flaky.mu.Unlock()
+	job, name := f.submitRun(t, srcDir, 12*mib, destPolicy(2, "", "a", "b"))
+	f.launch(t)
+	if s := f.wait(t, job, isSettled); s.State != "SUCCEEDED" {
+		t.Fatalf("job: %+v", s)
+	}
+	same(t, filepath.Join(srcDir, name), filepath.Join(fl, "copy", name))
 }

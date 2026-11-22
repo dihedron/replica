@@ -9,9 +9,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 	"uuid"
 
@@ -212,4 +214,32 @@ func TryLock(ctx context.Context, pool *pgxpool.Pool, name string, idle time.Dur
 		return nil, false, nil
 	}
 	return release, true, nil
+}
+
+// Unavailable is true when err says the state store could not be reached or
+// served the request: a closed or broken connection, a failed connection, a
+// server shutting down, a session left on a primary that turned standby.
+// Such a request is unavailable (retryable), not an internal error (found by
+// the soak, AC-17).
+func Unavailable(err error) bool {
+	// a context's end is the caller's deadline or cancel, not the store's
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if pe, ok := errors.AsType[*pgconn.PgError](err); ok {
+		switch {
+		case strings.HasPrefix(pe.Code, "08"), // connection exception
+			pe.Code == "57P01", pe.Code == "57P02", pe.Code == "57P03", // admin, crash shutdown; cannot connect now
+			pe.Code == "25006": // read-only transaction: a standby
+			return true
+		}
+		return false
+	}
+	if _, ok := errors.AsType[*pgconn.ConnectError](err); ok {
+		return true
+	}
+	if _, ok := errors.AsType[net.Error](err); ok {
+		return true
+	}
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || strings.Contains(err.Error(), "conn closed")
 }

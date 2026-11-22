@@ -381,7 +381,14 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 		MultipartUpload: &types.CompletedMultipartUpload{Parts: completed},
 	})
 	ref := plugin.Ref{Container: u.t.Bucket, Key: u.t.Key}
-	if err = classify(ctx, "commit "+u.t.Key, err); plugin.ClassOf(err) == plugin.ResumeInvalid {
+	if refused(err) {
+		// the upload does not hold the parts given (another execution began
+		// it again): begin again, not a permanent failure (found by AC-17)
+		err = plugin.Wrap(fmt.Errorf("s3: commit %s: %w", u.t.Key, err), plugin.ResumeInvalid)
+	} else {
+		err = classify(ctx, "commit "+u.t.Key, err)
+	}
+	if plugin.ClassOf(err) == plugin.ResumeInvalid {
 		// committed before? then the object carries the parts' ETag
 		info, serr := u.c.Stat(ctx, ref)
 		if serr == nil && strings.Trim(info.Version, `"`) == multipartETag(parts) {
@@ -393,6 +400,23 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 		return plugin.ObjectInfo{}, err
 	}
 	return u.c.Stat(ctx, ref)
+}
+
+// refused is true when CompleteMultipartUpload was refused because the
+// upload does not hold the parts given: AWS's InvalidPart and
+// InvalidPartOrder, and Garage's InvalidRequest "No data was uploaded".
+func refused(err error) bool {
+	ae, ok := errors.AsType[smithy.APIError](err)
+	if !ok {
+		return false
+	}
+	switch ae.ErrorCode() {
+	case "InvalidPart", "InvalidPartOrder":
+		return true
+	case "InvalidRequest":
+		return strings.Contains(ae.ErrorMessage(), "No data was uploaded")
+	}
+	return false
 }
 
 // The digests of zero bytes.

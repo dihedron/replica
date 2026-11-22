@@ -142,19 +142,21 @@ func TestCampaignSoak(t *testing.T) {
 					node := l.Nodes()[r.IntN(6)]
 					j, err := tn.Clients(node).Jobs.CreateJob(context.Background(), &vehov1.CreateJobRequest{
 						Source: &vehov1.ObjectRef{Endpoint: "a-source", Path: tn.Prefix + o.path}, Policy: policy})
-					switch {
-					case err == nil:
+					switch status.Code(err) {
+					case codes.OK:
 						id = j.GetId()
 						l.Track(id)
-					case status.Code(err) == codes.Unavailable, status.Code(err) == codes.DeadlineExceeded:
-						time.Sleep(5 * time.Second) // that node is fenced or cut off: another one
+					case codes.Unavailable, codes.DeadlineExceeded, codes.ResourceExhausted:
+						// a node fenced or cut off, or the rate limits of 50
+						// workers on one principal: wait, then another node
+						time.Sleep(time.Duration(1+r.IntN(5)) * time.Second)
 					default:
 						report(false, "submit: %v", err)
-						return
+						time.Sleep(5 * time.Second)
 					}
 				}
 				if id == "" {
-					return
+					continue
 				}
 				j := waitAny(tn, l, id, 3*time.Hour)
 				if j.GetState() != "SUCCEEDED" {

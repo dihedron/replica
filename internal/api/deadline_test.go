@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -47,5 +48,17 @@ func TestServerTimeout(t *testing.T) {
 	_ = call(ctx, &vehov1.GetJobRequest{Wait: 1})
 	if d := time.Since(start); d < time.Second {
 		t.Errorf("GetJob with wait 1s cut after %v", d)
+	}
+}
+
+// A request that loses its database connection (a node killed, a failover)
+// answers unavailable, retryable, not internal (found by the soak).
+func TestLostConnectionUnavailable(t *testing.T) {
+	err := toStatus(context.Background(), fmt.Errorf("engine: submit: %w", errors.New("conn closed")))
+	if status.Code(err) != codes.Unavailable {
+		t.Errorf("%v, want Unavailable", err)
+	}
+	if err := toStatus(context.Background(), errors.New("a bug")); status.Code(err) != codes.Internal {
+		t.Errorf("%v, want Internal", err)
 	}
 }
