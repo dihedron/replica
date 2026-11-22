@@ -24,9 +24,10 @@ builds:
   - id: veho
     binary: veho
     main: ./cmd/veho
+    # the service runs on Linux (NFR-6); the client also on macOS. Not
+    # Windows: the unwrap key and plugin checks use syscall.Stat_t
     goos:
       - linux
-      - windows
       - darwin
     goarch:
       - amd64
@@ -77,10 +78,6 @@ archives:
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}{{ .Arm }}{{ end }}
       {{- if .Amd64 }}{{ .Amd64 }}{{ end }}
-    format_overrides:
-      - goos: windows
-        formats:
-          - zip
 
 upx:
   - # Whether to enable it or not.
@@ -92,7 +89,7 @@ upx:
     ids: [veho]
 
     # Filter by GOOS.
-    goos: [linux, windows]
+    goos: [linux]
 
     # Filter by GOARCH.
     goarch: [amd64, arm64]
