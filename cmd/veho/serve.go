@@ -71,13 +71,14 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 	if err := store.CheckDSN(dbosDSN, false); err != nil {
 		return fmt.Errorf("serve: database.dbos (%s): %w", cfg.Database.DBOS.Env, err)
 	}
+	secretStore := secrets.NewStore(ring, pools["api"], pools["worker"], aud)
 	drivers, stopPlugins, err := loadDrivers(cfg)
 	defer stopPlugins()
 	if err != nil {
 		return err
 	}
 	e, err := engine.New(ctx, engine.Deps{Config: cfg, API: pools["api"], Worker: pools["worker"], DBOSURL: dbosDSN,
-		Version: metadata.Version, Audit: aud, Secrets: secrets.NewStore(ring, pools["api"], pools["worker"], aud), Drivers: drivers})
+		Version: metadata.Version, Audit: aud, Secrets: secretStore, Drivers: drivers})
 	if err != nil {
 		return err
 	}
@@ -97,7 +98,7 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 		return errors.Join(err, e.Shutdown(shutdownTimeout))
 	}
 	defer stopMetrics()
-	apiDone, err := serveAPI(hctx, cfg, e, pools["api"])
+	apiDone, err := serveAPI(hctx, cfg, e, pools["api"], secretStore)
 	if err != nil {
 		stopBeat()
 		return errors.Join(err, e.Shutdown(shutdownTimeout))
@@ -208,7 +209,7 @@ func serveMetrics(cfg *config.Config, e *engine.Engine, aud *audit.Logger) (func
 
 // serveAPI starts the API on api.listen (.specs/veho-api-server.md §2); the
 // channel gets its end once ctx is done.
-func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *pgxpool.Pool) (<-chan error, error) {
+func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *pgxpool.Pool, secretStore *secrets.Store) (<-chan error, error) {
 	cert, err := tls.LoadX509KeyPair(cfg.API.TLS.CertFile, cfg.API.TLS.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("serve: api.tls: %w", err)
@@ -217,12 +218,13 @@ func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *p
 	if err != nil {
 		return nil, fmt.Errorf("serve: %w", err)
 	}
-	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Identities: ids, Ready: func(ctx context.Context) error {
-		if e.Fenced() {
-			return engine.ErrFenced
-		}
-		return pool.Ping(ctx)
-	}})
+	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Identities: ids, Secrets: secretStore,
+		RateLimit: cfg.API.RateLimit, Ready: func(ctx context.Context) error {
+			if e.Fenced() {
+				return engine.ErrFenced
+			}
+			return pool.Ping(ctx)
+		}})
 	if err != nil {
 		return nil, err
 	}

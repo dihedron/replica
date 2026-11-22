@@ -97,12 +97,24 @@ vuln: ## check go.mod and the code for known vulnerabilities with govulncheck (r
 
 # proto regenerates the Go code of the process plugins' service; the
 # generated files are committed (protoc 3.21+, protoc-gen-go v1.36,
-# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.33)
+# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.33,
+# protoc-gen-connect-openapi v0.30)
 .PHONY: proto
-proto: ## regenerate pkg/plugin/process/proto and api/veho/v1 (with the REST gateway) from their .proto files
+proto: ## regenerate pkg/plugin/process/proto, api/veho/v1 (with the REST gateway) and api/openapi/veho.v1.yaml from the .proto files
 	@cd pkg/plugin/process/proto && protoc --go_out=. --go_opt=paths=source_relative \
 		--go-grpc_out=. --go-grpc_opt=paths=source_relative plugin.proto
 	@protoc -I api -I api/third_party --go_out=api --go_opt=paths=source_relative \
 		--go-grpc_out=api --go-grpc_opt=paths=source_relative \
 		--grpc-gateway_out=api --grpc-gateway_opt=paths=source_relative \
+		--connect-openapi_out=api/openapi \
+		--connect-openapi_opt=features=google.api.http,path=veho.v1.yaml,base=api/openapi/base.yaml,with-proto-names,trim-unused-types,with-service-descriptions \
 		api/veho/v1/*.proto
+	@go run ./internal/tools/openapi api/openapi/veho.v1.yaml
+
+REDOCLY_VERSION := 1.34.3
+.PHONY: openapi-lint
+openapi-lint: ## lint api/openapi/veho.v1.yaml with Redocly CLI; warnings fail too (needs npx)
+	@command -v npx >/dev/null 2>&1 || { echo "npx is not installed: install Node.js" >&2; exit 1; }
+	@out="$$(REDOCLY_TELEMETRY=off REDOCLY_SUPPRESS_UPDATE_NOTICE=true npx --yes @redocly/cli@$(REDOCLY_VERSION) lint api/openapi/veho.v1.yaml 2>&1)"; status=$$?; \
+		echo "$$out" | grep -v "^npm notice"; \
+		[ $$status -eq 0 ] && ! echo "$$out" | grep -q "You have [0-9]* warning"

@@ -35,6 +35,8 @@ const (
 // PolicyServiceClient is the client API for PolicyService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// PolicyService manages named policies and who may use them.
 type PolicyServiceClient interface {
 	// CreatePolicy stores version 1 of a name, or its next version.
 	CreatePolicy(ctx context.Context, in *CreatePolicyRequest, opts ...grpc.CallOption) (*Policy, error)
@@ -131,6 +133,8 @@ func (c *policyServiceClient) SetGrants(ctx context.Context, in *SetGrantsReques
 // PolicyServiceServer is the server API for PolicyService service.
 // All implementations must embed UnimplementedPolicyServiceServer
 // for forward compatibility.
+//
+// PolicyService manages named policies and who may use them.
 type PolicyServiceServer interface {
 	// CreatePolicy stores version 1 of a name, or its next version.
 	CreatePolicy(context.Context, *CreatePolicyRequest) (*Policy, error)

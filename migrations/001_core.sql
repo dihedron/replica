@@ -476,3 +476,28 @@ ALTER TABLE veho.policy_grants ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON veho.policy_grants
 	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
 GRANT SELECT, INSERT, DELETE ON veho.policy_grants TO veho_api;
+
+-- ---------------------------------------------------------------------------
+-- Administration (.specs/veho-api-server.md §5.2): a platform administrator
+-- has no tenant, so its reads and changes of tenants cross them; a tenant
+-- admin changes its own tenant's settings.
+
+CREATE FUNCTION veho.list_tenants() RETURNS TABLE (id uuid, name text, state text, quotas jsonb, settings jsonb, created_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$ SELECT id, name, state, quotas, settings, created_at FROM veho.tenants ORDER BY name $$;
+
+CREATE FUNCTION veho.update_tenant(p_id uuid, p_state text, p_quotas jsonb)
+RETURNS TABLE (id uuid, name text, state text, quotas jsonb, settings jsonb, created_at timestamptz)
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	UPDATE veho.tenants t SET state = coalesce(p_state, t.state), quotas = coalesce(p_quotas, t.quotas)
+	 WHERE t.id = p_id
+	RETURNING t.id, t.name, t.state, t.quotas, t.settings, t.created_at
+$$;
+
+CREATE FUNCTION veho.set_tenant_settings(p_settings jsonb) RETURNS jsonb
+LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$ UPDATE veho.tenants SET settings = p_settings WHERE id = veho.current_tenant() RETURNING settings $$;
+
+REVOKE ALL ON FUNCTION veho.list_tenants(), veho.update_tenant(uuid, text, jsonb), veho.set_tenant_settings(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.list_tenants(), veho.update_tenant(uuid, text, jsonb), veho.set_tenant_settings(jsonb) TO veho_api;

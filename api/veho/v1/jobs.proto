@@ -13,6 +13,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
+// JobService accepts, shows, cancels and retries replication jobs.
 service JobService {
   // CreateJob accepts a job (202); the Idempotency-Key header or the
   // idempotency_key field makes a repeated request return the first job.

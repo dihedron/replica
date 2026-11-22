@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"log/slog"
+	"net"
 	"strings"
 	"uuid"
 
@@ -34,6 +35,32 @@ var roles = map[string]string{
 	"/veho.v1.PolicyService/ValidatePolicy": RoleViewer,
 	"/veho.v1.PolicyService/GetGrants":      RoleViewer,
 	"/veho.v1.PolicyService/SetGrants":      RoleViewer,
+
+	"/veho.v1.EndpointService/CreateEndpoint": RoleAdmin,
+	"/veho.v1.EndpointService/GetEndpoint":    RoleViewer,
+	"/veho.v1.EndpointService/ListEndpoints":  RoleViewer,
+	"/veho.v1.EndpointService/UpdateEndpoint": RoleAdmin,
+	"/veho.v1.EndpointService/DeleteEndpoint": RoleAdmin,
+	"/veho.v1.EndpointService/TestEndpoint":   RoleAdmin,
+
+	"/veho.v1.SecretService/PutSecret":    RoleAdmin,
+	"/veho.v1.SecretService/GetSecret":    RoleAdmin,
+	"/veho.v1.SecretService/ListSecrets":  RoleAdmin,
+	"/veho.v1.SecretService/DeleteSecret": RoleAdmin,
+
+	"/veho.v1.TenantService/CreateTenant": RolePlatformAdmin,
+	"/veho.v1.TenantService/GetTenant":    RolePlatformAdmin,
+	"/veho.v1.TenantService/ListTenants":  RolePlatformAdmin,
+	"/veho.v1.TenantService/UpdateTenant": RolePlatformAdmin,
+
+	"/veho.v1.AdminService/CreateKey":         RoleAdmin,
+	"/veho.v1.AdminService/ListKeys":          RoleAdmin,
+	"/veho.v1.AdminService/RevokeKey":         RoleAdmin,
+	"/veho.v1.AdminService/CreateEntitlement": RoleAdmin,
+	"/veho.v1.AdminService/ListEntitlements":  RoleAdmin,
+	"/veho.v1.AdminService/DeleteEntitlement": RoleAdmin,
+	"/veho.v1.AdminService/GetSettings":       RoleAdmin,
+	"/veho.v1.AdminService/UpdateSettings":    RoleAdmin,
 }
 
 // public methods need no credential.
@@ -80,6 +107,29 @@ func (s *Server) credential(ctx context.Context) (func(context.Context) (Princip
 		}
 		return entitle(ctx, s.api, id)
 	}, nil
+}
+
+// clientAddr is the client's address: the TCP peer's, or for REST the last
+// X-Forwarded-For entry, which the gateway appends and only the pipe from
+// it carries (§5.2).
+func clientAddr(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return ""
+	}
+	if p.Addr.Network() == "bufconn" {
+		md, _ := metadata.FromIncomingContext(ctx)
+		if v := md.Get("x-forwarded-for"); len(v) > 0 {
+			parts := strings.Split(v[len(v)-1], ",")
+			return strings.TrimSpace(parts[len(parts)-1])
+		}
+		return "gateway"
+	}
+	host, _, err := net.SplitHostPort(p.Addr.String())
+	if err != nil {
+		return p.Addr.String()
+	}
+	return host
 }
 
 // peerChain is the client's certificate chain: the TLS connection's for a
@@ -137,12 +187,20 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	if public[method] {
 		return ctx, nil
 	}
+	addr := clientAddr(ctx)
+	if s.failures.Empty("ip:"+addr, s.failRate) {
+		return nil, fail(pRateLimited, "too many refused credentials from this address")
+	}
 	check, err := s.credential(ctx)
 	if err != nil {
+		s.failures.Allow("ip:"+addr, s.failRate)
 		return nil, err
 	}
 	p, err := check(ctx)
 	if err != nil {
+		if errors.Is(err, errBadKey) || errors.Is(err, errAmbiguous) {
+			s.failures.Allow("ip:"+addr, s.failRate)
+		}
 		if !errors.Is(err, errBadKey) && !errors.Is(err, errAmbiguous) {
 			slog.ErrorContext(ctx, "cannot authenticate", "request_id", id, "error", err)
 			return nil, fail(pUnavailable, "authentication is unavailable")
@@ -156,6 +214,12 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	need, known := roles[method]
 	if !known || !p.may(need) {
 		return nil, fail(pPermission, "not allowed")
+	}
+	if p.Tenant != nil && !s.calls.Allow("t:"+p.Tenant.String(), s.tenantRate) {
+		return nil, fail(pRateLimited, "the tenant's rate limit")
+	}
+	if !s.calls.Allow("p:"+p.ID.String(), s.principalRate) {
+		return nil, fail(pRateLimited, "the principal's rate limit")
 	}
 	tenant := ""
 	if p.Tenant != nil {

@@ -37,6 +37,8 @@ const (
 // JobServiceClient is the client API for JobService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// JobService accepts, shows, cancels and retries replication jobs.
 type JobServiceClient interface {
 	// CreateJob accepts a job (202); the Idempotency-Key header or the
 	// idempotency_key field makes a repeated request return the first job.
@@ -143,6 +145,8 @@ type JobService_WatchJobClient = grpc.ServerStreamingClient[Job]
 // JobServiceServer is the server API for JobService service.
 // All implementations must embed UnimplementedJobServiceServer
 // for forward compatibility.
+//
+// JobService accepts, shows, cancels and retries replication jobs.
 type JobServiceServer interface {
 	// CreateJob accepts a job (202); the Idempotency-Key header or the
 	// idempotency_key field makes a repeated request return the first job.

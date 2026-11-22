@@ -33,11 +33,21 @@ type Config struct {
 
 // API is the API's listener (veho-api-server.md §2, §7).
 type API struct {
-	Listen     string `yaml:"listen"`
-	TLS        TLS    `yaml:"tls"`
-	MaxWatches int    `yaml:"max_watches"`
-	OIDC       []OIDC `yaml:"oidc"`
-	SPIFFE     SPIFFE `yaml:"spiffe"`
+	Listen     string    `yaml:"listen"`
+	TLS        TLS       `yaml:"tls"`
+	MaxWatches int       `yaml:"max_watches"`
+	OIDC       []OIDC    `yaml:"oidc"`
+	SPIFFE     SPIFFE    `yaml:"spiffe"`
+	RateLimit  RateLimit `yaml:"rate_limit"`
+}
+
+// RateLimit is the API's rate limits (§5.2).
+type RateLimit struct {
+	TenantPerSecond    float64 `yaml:"tenant_per_second"`
+	PrincipalPerSecond float64 `yaml:"principal_per_second"`
+	// Burst is a multiple of the rate; default 2.
+	Burst             float64 `yaml:"burst"`
+	FailuresPerMinute float64 `yaml:"failures_per_minute"`
 }
 
 // OIDC is an issuer whose bearer tokens the API accepts (§4.4).
@@ -183,6 +193,15 @@ func (c *Config) complete() error {
 	set(&c.Metrics.Listen, "127.0.0.1:9464")
 	set(&c.API.Listen, ":8443")
 	setI(&c.API.MaxWatches, 1000)
+	setF := func(f *float64, v float64) {
+		if *f == 0 {
+			*f = v
+		}
+	}
+	setF(&c.API.RateLimit.TenantPerSecond, 50)
+	setF(&c.API.RateLimit.PrincipalPerSecond, 20)
+	setF(&c.API.RateLimit.Burst, 2)
+	setF(&c.API.RateLimit.FailuresPerMinute, 30)
 	setD(&c.Engine.Heartbeat, 10*time.Second)
 	setD(&c.Engine.LeaseTTL, 60*time.Second)
 	setI(&c.Engine.PartSizeMiB, 64)
@@ -240,6 +259,8 @@ func (c *Config) validate() error {
 	check(err == nil, "api.listen %q: want host:port", c.API.Listen)
 	check(c.API.TLS.CertFile != "" && c.API.TLS.KeyFile != "", "api.tls.cert_file and api.tls.key_file are required")
 	check(c.API.MaxWatches > 0, "api.max_watches must be positive")
+	rl := c.API.RateLimit
+	check(rl.TenantPerSecond > 0 && rl.PrincipalPerSecond > 0 && rl.Burst >= 1 && rl.FailuresPerMinute > 0, "api.rate_limit: the rates must be positive and the burst at least 1")
 	issuers := map[string]bool{}
 	for i := range c.API.OIDC {
 		o := &c.API.OIDC[i]

@@ -27,6 +27,7 @@ import (
 	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/engine"
+	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/internal/store/migrate"
 	"github.com/dihedron/veho/migrations"
@@ -63,7 +64,8 @@ type fixture struct {
 	srcDir   string
 	keys     map[string]string // by name: a-viewer, a-operator, b-operator, platform
 	// client is the certificate the clients present, if any
-	client *tls.Certificate
+	client  *tls.Certificate
+	secrets *secrets.Store
 }
 
 func (f *fixture) tlsConfig() *tls.Config {
@@ -125,8 +127,28 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 	if err != nil {
 		t.Fatal(err)
 	}
+	// the KEKs under this test's key, with the lock of the other packages'
+	// tests that share veho.kek
+	key := filepath.Join(t.TempDir(), "unwrap.key")
+	if err := os.WriteFile(key, bytes.Repeat([]byte("k"), 32), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"select pg_advisory_lock(hashtext('veho-test-kek'))",
+		"update veho.endpoints set credential_ref = null where credential_ref like 'db://%'", "delete from veho.secrets", "delete from veho.kek"} {
+		if _, err := conn.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := secrets.InitKEK(ctx, conn, secrets.FileSource{Path: key}); err != nil {
+		t.Fatal(err)
+	}
+	ring, err := secrets.LoadKeyring(ctx, worker, secrets.FileSource{Path: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.secrets = secrets.NewStore(ring, f.api, worker, &audit.Recorder{})
 	if f.e, err = engine.New(ctx, engine.Deps{Config: cfg, API: f.api, Worker: worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
-		Version: "test-api", Audit: &audit.Recorder{}, Drivers: map[string]plugin.Driver{"file": file.New()}}); err != nil {
+		Version: "test-api", Audit: &audit.Recorder{}, Secrets: f.secrets, Drivers: map[string]plugin.Driver{"file": file.New()}}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.e.Shutdown(5 * time.Second) })
@@ -166,7 +188,7 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 		t.Fatal(err)
 	}
 
-	o.Engine, o.API = f.e, f.api
+	o.Engine, o.API, o.Secrets = f.e, f.api, f.secrets
 	if ids != nil {
 		o.Identities = ids(f)
 	}
@@ -359,7 +381,8 @@ func TestJobs(t *testing.T) {
 // every method of the service has a role (T-36).
 func TestAuthentication(t *testing.T) {
 	f := setup(t, Options{})
-	for _, sd := range []grpc.ServiceDesc{vehov1.JobService_ServiceDesc, vehov1.PolicyService_ServiceDesc} {
+	for _, sd := range []grpc.ServiceDesc{vehov1.JobService_ServiceDesc, vehov1.PolicyService_ServiceDesc, vehov1.EndpointService_ServiceDesc,
+		vehov1.SecretService_ServiceDesc, vehov1.TenantService_ServiceDesc, vehov1.AdminService_ServiceDesc} {
 		for _, m := range sd.Methods {
 			if _, ok := roles["/"+sd.ServiceName+"/"+m.MethodName]; !ok {
 				t.Errorf("%s/%s has no role", sd.ServiceName, m.MethodName)

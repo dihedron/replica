@@ -15,7 +15,10 @@ import (
 	"time"
 
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
+	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/engine"
+	"github.com/dihedron/veho/internal/ratelimit"
+	"github.com/dihedron/veho/internal/secrets"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
@@ -53,6 +56,11 @@ type Options struct {
 	// Identities verifies OIDC and SPIFFE credentials; nil accepts API
 	// keys only.
 	Identities *Identities
+	// Secrets is the tenants' secrets, for SecretService.
+	Secrets *secrets.Store
+	// RateLimit is the API's rate limits (§5.2); zero values are the
+	// defaults.
+	RateLimit config.RateLimit
 }
 
 // Server is the API of a node.
@@ -69,8 +77,12 @@ type Server struct {
 	max     int64
 	reauth  time.Duration
 	ids     *Identities
-	pipe    *bufconn.Listener
-	client  *grpc.ClientConn
+	secrets *secrets.Store
+
+	calls, failures                     ratelimit.Limiter
+	tenantRate, principalRate, failRate ratelimit.Rate
+	pipe                                *bufconn.Listener
+	client                              *grpc.ClientConn
 }
 
 // New builds the gRPC server, and the REST gateway that reaches it through
@@ -81,6 +93,24 @@ func New(o Options) (*Server, error) {
 	if s.reauth <= 0 {
 		s.reauth = time.Minute
 	}
+	s.secrets = o.Secrets
+	rl := o.RateLimit
+	rate := func(perSecond, def float64) ratelimit.Rate {
+		if perSecond <= 0 {
+			perSecond = def
+		}
+		burst := rl.Burst
+		if burst < 1 {
+			burst = 2
+		}
+		return ratelimit.Rate{PerSecond: perSecond, Burst: perSecond * burst}
+	}
+	s.tenantRate, s.principalRate = rate(rl.TenantPerSecond, 50), rate(rl.PrincipalPerSecond, 20)
+	fails := rl.FailuresPerMinute
+	if fails <= 0 {
+		fails = 30
+	}
+	s.failRate = ratelimit.Rate{PerSecond: fails / 60, Burst: fails}
 	s.grpc = grpc.NewServer(
 		grpc.ChainUnaryInterceptor(s.deadline, s.unary),
 		grpc.ChainStreamInterceptor(s.stream),
@@ -91,6 +121,10 @@ func New(o Options) (*Server, error) {
 	s.pol = policies{s: s}
 	vehov1.RegisterJobServiceServer(s.grpc, s)
 	vehov1.RegisterPolicyServiceServer(s.grpc, s.pol)
+	vehov1.RegisterEndpointServiceServer(s.grpc, endpoints{s: s})
+	vehov1.RegisterSecretServiceServer(s.grpc, secretsService{s: s})
+	vehov1.RegisterTenantServiceServer(s.grpc, tenants{s: s})
+	vehov1.RegisterAdminServiceServer(s.grpc, admin{s: s})
 	healthpb.RegisterHealthServer(s.grpc, s.health)
 
 	s.pipe = bufconn.Listen(1 << 20)
@@ -138,8 +172,13 @@ func New(o Options) (*Server, error) {
 	if err := vehov1.RegisterJobServiceHandlerClient(context.Background(), mux, vehov1.NewJobServiceClient(conn)); err != nil {
 		return nil, fmt.Errorf("api: gateway: %w", err)
 	}
-	if err := vehov1.RegisterPolicyServiceHandlerClient(context.Background(), mux, vehov1.NewPolicyServiceClient(conn)); err != nil {
-		return nil, fmt.Errorf("api: gateway: %w", err)
+	for _, register := range []func(context.Context, *runtime.ServeMux, *grpc.ClientConn) error{
+		vehov1.RegisterPolicyServiceHandler, vehov1.RegisterEndpointServiceHandler, vehov1.RegisterSecretServiceHandler,
+		vehov1.RegisterTenantServiceHandler, vehov1.RegisterAdminServiceHandler,
+	} {
+		if err := register(context.Background(), mux, conn); err != nil {
+			return nil, fmt.Errorf("api: gateway: %w", err)
+		}
 	}
 	s.gateway = mux
 	s.health.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
