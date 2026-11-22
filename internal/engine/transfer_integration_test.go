@@ -376,8 +376,12 @@ func TestStop(t *testing.T) {
 	}
 }
 
-// ENG-6 (in one process): a takeover while a step writes its parts: the
-// step records nothing and the workflow ends; INV-3.
+// INV-3: a write with a stale fence changes nothing, and the execution that
+// lost the fence claims the transfer again instead of ending: DBOS fences a
+// stale execution at its next step, so the one still running is DBOS's
+// owner, and giving up would leave the transfer to nobody (found by AC-5).
+// Here the fence moves once under the first part (another executor's claim);
+// the transfer still succeeds, every part recorded once.
 func TestFenced(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
@@ -386,26 +390,31 @@ func TestFenced(t *testing.T) {
 	f.fileEndpoint(t, "fl", "flaky", "lab-b")
 	f.launch(t)
 	var j job
-	f.flaky.set(func(int) error { // another executor takes the transfer meanwhile
-		return store.InTenant(ctx, f.worker, f.tenant, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, "update veho.transfers set fence = fence + 1, lease_owner = 'other' where id = $1", j.transfers["fl"])
-			return err
+	var once sync.Once
+	f.flaky.set(func(int) error {
+		var err error
+		once.Do(func() {
+			err = store.InTenant(ctx, f.worker, f.tenant, func(tx pgx.Tx) error {
+				_, err := tx.Exec(ctx, "update veho.transfers set fence = fence + 1, lease_owner = 'other' where id = $1", j.transfers["fl"])
+				return err
+			})
 		})
+		return err
 	})
-	j = f.submit(t, srcDir, 6*mib, destPolicy(1, "", "a", "fl"))
+	j = f.submit(t, srcDir, 12*mib, destPolicy(1, "", "a", "fl"))
 	j.run(t, "fl")
-	var parts int
-	var owner, state string
+	var parts, distinct int
+	var state string
 	if err := store.InTenant(ctx, f.api, f.tenant, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, "select count(*) from veho.parts where transfer_id = $1", j.transfers["fl"]).Scan(&parts); err != nil {
+		if err := tx.QueryRow(ctx, "select count(*), count(distinct part_no) from veho.parts where transfer_id = $1", j.transfers["fl"]).Scan(&parts, &distinct); err != nil {
 			return err
 		}
-		return tx.QueryRow(ctx, "select lease_owner, state from veho.transfers where id = $1", j.transfers["fl"]).Scan(&owner, &state)
+		return tx.QueryRow(ctx, "select state from veho.transfers where id = $1", j.transfers["fl"]).Scan(&state)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if parts != 0 || owner != "other" || state != "COPYING" {
-		t.Errorf("after the takeover: %d parts, owner %s, %s", parts, owner, state)
+	if state != "SUCCEEDED" || parts != 3 || distinct != 3 {
+		t.Errorf("after the takeover: %s, %d parts (%d distinct), want SUCCEEDED and 3", state, parts, distinct)
 	}
 }
 
@@ -455,5 +464,38 @@ func TestPartMemoryBudget(t *testing.T) {
 	}
 	if p := peak.Load(); p != 1 {
 		t.Errorf("%d parts written at once, want 1", p)
+	}
+}
+
+// A node fenced while a transfer fails an attempt (a database failover makes
+// its heartbeats fail) must not end the transfer's workflow: the steps that
+// record the failure fail too while fenced, and that is no deadline. Once a
+// good heartbeat unfences it, the job succeeds (found by AC-5).
+func TestFencedDuringRetry(t *testing.T) {
+	f := setup(t)
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	f.fileEndpoint(t, "a", "flaky", "lab-a")
+	f.fileEndpoint(t, "b", "file", "lab-b")
+	var once sync.Once
+	f.flaky.set(func(int) error {
+		err := error(nil)
+		once.Do(func() {
+			f.e.mu.Lock()
+			close(f.e.stop) // fenced, as after half a lease without heartbeat
+			f.e.mu.Unlock()
+			err = plugin.Wrapf(plugin.Transient, "connection reset")
+		})
+		return err
+	})
+	job, _ := f.submitRun(t, srcDir, 12*mib, destPolicy(2, "", "a", "b"))
+	f.launch(t)
+	time.Sleep(3 * time.Second) // the workflow meets the fence in its retry
+	f.e.beat(context.Background(), time.Now())
+	if f.e.Fenced() {
+		t.Fatal("still fenced after a good heartbeat")
+	}
+	s := f.wait(t, job, isSettled)
+	if s.State != "SUCCEEDED" {
+		t.Fatalf("job: %+v", s)
 	}
 }

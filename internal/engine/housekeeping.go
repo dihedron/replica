@@ -37,6 +37,9 @@ func (e *Engine) RunHousekeeping(ctx context.Context) {
 	t := time.NewTicker(e.cfg.Housekeeping.Interval)
 	defer t.Stop()
 	for {
+		if _, err := e.recoverOwn(ctx); err != nil {
+			slog.WarnContext(ctx, "recovering this node's own workflows", "error", err)
+		}
 		if _, err := e.Housekeep(ctx); err != nil {
 			slog.WarnContext(ctx, "housekeeping", "error", err)
 		}
@@ -301,4 +304,53 @@ func (e *Engine) each(ctx context.Context, query string, fn func(tenant, job uui
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// ownQuiet is how long a PENDING workflow of this node must be unchanged, and
+// not executing here, before recoverOwn resumes it: a workflow just dequeued
+// has not registered yet.
+const ownQuiet = time.Minute
+
+// running registers the workflow of ctx as executing in this process until
+// the returned function is called.
+func (e *Engine) running(ctx dbos.Context) func() {
+	id, err := dbos.GetWorkflowID(ctx)
+	if err != nil {
+		return func() {}
+	}
+	e.active.Store(id, struct{}{})
+	return func() { e.active.Delete(id) }
+}
+
+// recoverOwn resumes this node's PENDING workflows that it no longer
+// executes: an execution ends without its outcome recorded when the state
+// store is unreachable (a failover), and the row then stays PENDING under a
+// live executor, which adoption does not touch and DBOS recovers only at
+// start (found by AC-5). It runs on every node, without the housekeeping
+// lock, and not while fenced.
+func (e *Engine) recoverOwn(ctx context.Context) (int, error) {
+	if e.Fenced() {
+		return 0, nil
+	}
+	pending, err := dbos.ListWorkflows(e.dbos, dbos.WithFilterExecutorIDs(e.executor), dbos.WithFilterStatus(dbos.WorkflowStatusPending),
+		dbos.WithFilterLoadInput(false), dbos.WithFilterLoadOutput(false))
+	if err != nil {
+		return 0, err
+	}
+	var resume []string
+	for _, w := range pending {
+		if _, live := e.active.Load(w.ID); !live && time.Since(w.UpdatedAt) > ownQuiet {
+			resume = append(resume, w.ID)
+		}
+	}
+	if len(resume) == 0 {
+		return 0, nil
+	}
+	if _, err := dbos.ResumeWorkflows[string](e.dbos, resume); err != nil {
+		return 0, err
+	}
+	e.metrics.adoptions.Add(float64(len(resume)))
+	e.system(ctx, "SYSTEM_ZOMBIE_ADOPTED", "", map[string]any{"executors": []string{e.executor}, "workflows": resume, "reason": "not executing here"})
+	slog.InfoContext(ctx, "resumed this node's own workflows that no execution was running", "workflows", len(resume))
+	return len(resume), nil
 }

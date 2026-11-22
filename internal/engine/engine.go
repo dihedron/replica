@@ -15,6 +15,7 @@ import (
 	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/secrets"
+	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/semaphore"
@@ -59,8 +60,13 @@ type Engine struct {
 	metrics     *metrics
 	executor    string
 	region      string
+	// dbosPool is DBOS's pool, closed after DBOS (store.DBOSPool)
+	dbosPool *pgxpool.Pool
 	// partMemory is the node's budget of part bytes in memory (NFR-5)
 	partMemory *semaphore.Weighted
+	// active holds the IDs of the workflows this process is executing, for
+	// recoverOwn
+	active sync.Map
 
 	mu     sync.Mutex
 	lastOK time.Time
@@ -78,17 +84,23 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 	// not cancelled with ctx: DBOS durably cancels a workflow whose context
 	// ends for any cause but its own Shutdown, and a stopping node must leave
 	// its work PENDING for adoption (found by AC-4); Shutdown stops it
+	pool, err := store.DBOSPool(d.DBOSURL, "veho/"+c.Node.ID+"/dbos")
+	if err != nil {
+		return nil, fmt.Errorf("engine: %w", err)
+	}
 	dc, err := dbos.NewContext(context.WithoutCancel(ctx), dbos.Config{
 		AppName:            AppName,
-		DatabaseURL:        d.DBOSURL,
+		SystemDBPool:       pool,
 		ApplicationVersion: d.Version,
 		ExecutorID:         c.Node.ID,
 		Logger:             d.Logger,
 	})
 	if err != nil {
+		pool.Close()
 		return nil, fmt.Errorf("engine: %w", err)
 	}
 	e := &Engine{cfg: c, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
+		dbosPool:   pool,
 		partMemory: semaphore.NewWeighted(int64(c.Engine.PartMemoryMiB) << 20),
 		lastOK:     time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}, metrics: newMetrics()}
 	for _, q := range []string{QueueJobs, QueueTransfer} {
@@ -99,7 +111,9 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 			dbos.WithWorkerConcurrency(c.Engine.WorkerConcurrency),
 			dbos.WithQueueOnConflict(dbos.QueueConflictUpdateIfLatestVersion))
 		if err != nil {
-			return nil, errors.Join(fmt.Errorf("engine: queue %s: %w", q, err), dbos.Shutdown(dc, 5*time.Second))
+			err = errors.Join(fmt.Errorf("engine: queue %s: %w", q, err), dbos.Shutdown(dc, 5*time.Second))
+			pool.Close()
+			return nil, err
 		}
 		e.queues[q] = queue
 	}
@@ -118,5 +132,6 @@ func (e *Engine) Launch() error {
 
 // Shutdown stops DBOS, waiting up to timeout for the steps in flight.
 func (e *Engine) Shutdown(timeout time.Duration) error {
+	defer e.dbosPool.Close()
 	return dbos.Shutdown(e.dbos, timeout)
 }

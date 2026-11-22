@@ -296,3 +296,57 @@ func TestFailoverMidTransfer(t *testing.T) {
 		t.Errorf("%d parts (%d distinct), want 16: %v", parts, distinct, err)
 	}
 }
+
+// A node's own PENDING workflow that it no longer runs (DBOS could not record
+// its outcome during a failover, so the execution ended and the row stayed
+// PENDING) is resumed by the node's watchdog: adoption covers dead nodes
+// only, and DBOS recovers a node's own work only at start (found by AC-5).
+func TestRecoverOwn(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	f.fileEndpoint(t, "a", "flaky", "lab-a")
+	f.fileEndpoint(t, "b", "file", "lab-b")
+	cfg := testConfig(t)
+	cfg.Node.ID = f.e.executor // the same node, in its previous life
+	other, err := New(ctx, Deps{Config: cfg, API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
+		Version: "test", Audit: &audit.Recorder{}, Secrets: f.secrets,
+		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := other.Heartbeat(ctx); err != nil {
+		t.Fatal(err)
+	}
+	blocked := make(chan struct{})
+	var once sync.Once
+	f.flaky.set(func(int) error {
+		once.Do(func() { close(blocked) })
+		time.Sleep(300 * time.Millisecond)
+		return nil
+	})
+	if err := other.Launch(); err != nil {
+		t.Fatal(err)
+	}
+	job, _ := f.submitRun(t, srcDir, 12*mib, destPolicy(2, "", "a", "b"))
+	<-blocked
+	_ = other.Shutdown(time.Second) // its workflows stay PENDING, run by nobody
+	dbosConn, err := pgx.Connect(ctx, os.Getenv("VEHO_TEST_DBOS_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = dbosConn.Close(ctx) }()
+	if _, err := dbosConn.Exec(ctx, "update dbos.workflow_status set updated_at = updated_at - 120000 where executor_id = $1 and status = 'PENDING'", f.e.executor); err != nil {
+		t.Fatal(err)
+	}
+	// before Launch, whose own recovery would pick them up: the watchdog's
+	// case is a node that runs on, with a workflow nobody executes
+	n, err := f.e.recoverOwn(ctx)
+	if err != nil || n == 0 {
+		t.Fatalf("recovered %d workflows: %v", n, err)
+	}
+	f.launch(t)
+	if s := f.wait(t, job, isSettled); s.State != "SUCCEEDED" {
+		t.Fatalf("job: %+v", s)
+	}
+}

@@ -73,6 +73,7 @@ func runStep[R any](ctx dbos.Context, name string, fn func(context.Context) R) (
 // transferWorkflow is Transfer (§4.1): attempts until the transfer is
 // terminal, waiting durably between them.
 func (e *Engine) transferWorkflow(ctx dbos.Context, in TransferInput) (string, error) {
+	defer e.running(ctx)()
 	unknown, integrity := 0, 0
 	for n := 0; ; n++ {
 		r, err := e.attempt(ctx, in)
@@ -226,13 +227,18 @@ func (e *Engine) held(ctx context.Context, in TransferInput, fn func(ctx context
 	return fn(gctx, fence)
 }
 
-// check turns a step's error into its result.
+// check turns a step's error into its result. A write that found another
+// fence is retried, not taken for the end of the transfer: two executions of
+// the workflow can overlap (a recovery during a failover), and the one that
+// lost the fence may be the one DBOS keeps; it claims again and continues
+// from the recorded parts, while DBOS stops the other at its next step. A
+// transfer that really ended is Done at the next claim (found by AC-5).
 func check(err error) result {
 	if err == nil {
 		return result{}
 	}
 	if errors.Is(err, errLost) {
-		return result{Done: true}
+		return result{Err: errLost.Error(), Class: plugin.Transient}
 	}
 	return fail(err)
 }

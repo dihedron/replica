@@ -86,6 +86,8 @@ Two things must see every tenant: the reconciler (expired leases, `veho-job-life
 
 ## 6. Connections
 
+- Every pool dials each host with a 5 s timeout (`store.dial`), DBOS's included: with several hosts, a member that does not answer (a partitioned region, listed first) then costs seconds before the next is tried, not the operating system's two minutes (found by AC-6). The timeout is the dialer's, not pgx's `connect_timeout`, and its error does not wrap `context.DeadlineExceeded`: DBOS retries a failed connection only when it does not, and with `connect_timeout` a failover made DBOS give up and end its workflows (found by AC-5). DBOS therefore gets its pool from veho (`store.DBOSPool`, built as DBOS builds its own: 20 connections, an idle-in-transaction timeout of a minute), and a `connect_timeout` in a DSN is overridden.
+
 - Two pools per node, `api` and `worker`, plus DBOS's own (as `veho_dbos`); each DSN is a multi-host DSN with `target_session_attrs=read-write` and `sslmode=verify-full` (refused otherwise, as in ligo; an explicit `allow_insecure` exists for tests only).
 - `application_name` is `veho/<executor-id>/<pool>`; statement timeouts per pool (`api` 5 s, `worker` 30 s by default).
 - The tenant-scoped transaction is the only way the application touches tenant tables: `store.InTenant(ctx, pool, tenantID, func(tx) error)` begins, sets the tenant, runs the function and commits; any error rolls back.

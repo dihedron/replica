@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
 	"time"
 	"uuid"
@@ -37,12 +38,67 @@ type Options struct {
 	AllowInsecure bool
 }
 
+// dialTimeout bounds the TCP connection to one host (a variable for the
+// tests).
+var dialTimeout = 5 * time.Second
+
+// dial connects to one host within dialTimeout. With several hosts, a member
+// that does not answer (a partitioned region, listed first) then costs
+// seconds before the next is tried, not the operating system's two minutes
+// (found by AC-6). Its timeout is not a context deadline: DBOS retries a
+// failed connection only when it is not one, and a failover would otherwise
+// end its workflows (found by AC-5). Every pool uses it, DBOS's included,
+// in place of pgx's connect_timeout.
+func dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	d := net.Dialer{Timeout: dialTimeout, KeepAlive: 5 * time.Minute}
+	conn, err := d.DialContext(ctx, network, addr)
+	if err != nil && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+		return nil, fmt.Errorf("dial %s %s: no answer within %v", network, addr, dialTimeout) // not %w: no deadline for DBOS to see
+	}
+	return conn, err
+}
+
+// dialer sets cfg to connect through dial, with no context-based timeout.
+func dialer(cfg *pgconn.Config) {
+	cfg.DialFunc = dial
+	cfg.ConnectTimeout = 0
+}
+
+// DBOSPool is the pool of DBOS's system database: as DBOS builds its own
+// (veho-store.md §6), with dial and an idle-in-transaction timeout of a
+// minute, which DBOS leaves to a custom pool.
+func DBOSPool(dsn, name string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	if !verifies(cfg.ConnConfig.Config) {
+		return nil, ErrInsecureConnection
+	}
+	dialer(&cfg.ConnConfig.Config)
+	cfg.MaxConns, cfg.MinConns = 20, 0
+	cfg.MaxConnLifetime, cfg.MaxConnIdleTime = time.Hour, 5*time.Minute
+	if name != "" {
+		cfg.ConnConfig.RuntimeParams["application_name"] = name
+	}
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		_, err := conn.Exec(ctx, "SET idle_in_transaction_session_timeout = 60000")
+		return err
+	}
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
+	if err != nil {
+		return nil, fmt.Errorf("store: %w", err)
+	}
+	return pool, nil
+}
+
 // Open connects a pool and pings it.
 func Open(ctx context.Context, dsn string, o Options) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
+	dialer(&cfg.ConnConfig.Config)
 	if !o.AllowInsecure && !verifies(cfg.ConnConfig.Config) {
 		return nil, ErrInsecureConnection
 	}
@@ -97,6 +153,7 @@ func Connect(ctx context.Context, dsn string, allowInsecure bool) (*pgx.Conn, er
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
+	dialer(&cfg.Config)
 	if !allowInsecure && !verifies(cfg.Config) {
 		return nil, ErrInsecureConnection
 	}

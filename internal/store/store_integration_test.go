@@ -421,3 +421,22 @@ func TestTryLockIdle(t *testing.T) {
 	}
 	r2()
 }
+
+// A host that does not answer, first in the DSN, costs a connection only the
+// connect timeout before the next host is tried (found by AC-6: a node in a
+// healthy region, its DSN listing the partitioned region's member first,
+// waited minutes for every new connection).
+func TestConnectSkipsDeadHost(t *testing.T) {
+	dsn := dsn(t, "VEHO_TEST_DATABASE_URL")
+	at := strings.Index(dsn, "@")
+	dead := dsn[:at+1] + "192.0.2.1:5432," + dsn[at+1:] // TEST-NET-1: never answers
+	start := time.Now()
+	conn, err := Connect(context.Background(), dead, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	if d := time.Since(start); d > 15*time.Second {
+		t.Errorf("connected after %v", d)
+	}
+}
