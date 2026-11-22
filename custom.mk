@@ -96,8 +96,8 @@ vuln: ## check go.mod and the code for known vulnerabilities with govulncheck (r
 	exit $$rc
 
 # proto regenerates the Go code of the process plugins' service; the
-# generated files are committed (protoc 3.21+, protoc-gen-go v1.36,
-# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.33,
+# generated files are committed (protoc 3.21+, protoc-gen-go v1.36.12,
+# protoc-gen-go-grpc v1.5, protoc-gen-grpc-gateway v2.34,
 # protoc-gen-connect-openapi v0.30)
 .PHONY: proto
 proto: ## regenerate pkg/plugin/process/proto, api/veho/v1 (with the REST gateway) and api/openapi/veho.v1.yaml from the .proto files
