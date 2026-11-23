@@ -36,6 +36,23 @@ db_certs_renew() {
 	info "database certificates renewed and reloaded"
 }
 
+# db_local_rewind makes sure Patroni can rewind a former primary: each
+# member's certificate names localhost and pg_hba accepts the local
+# replication connection (db_sans). Idempotent; run at every start, since a
+# baseline taken before this fix lacks both.
+db_local_rewind() {
+	local x name renew=0
+	for x in "${REGIONS[@]}"; do
+		inner_exec "db-$x" openssl x509 -in /etc/veho-lab/server.crt -noout -ext subjectAltName 2>/dev/null | grep -q localhost || renew=1
+	done
+	((renew)) && db_certs_renew
+	for x in "${REGIONS[@]}"; do
+		name="db-$x"
+		inner_exec "$name" sh -c "grep -q 'replicator 127.0.0.1/32' /etc/patroni/veho.yml || sed -i 's|^\\(\\s*\\)- hostssl replication replicator \\(.*\\)/16 scram-sha-256|&\\n\\1- hostssl replication replicator 127.0.0.1/32 scram-sha-256|' /etc/patroni/veho.yml"
+	done
+	db_patronictl reload veho --force >/dev/null 2>&1 || true
+}
+
 # db_names: db-a db-b db-c.
 db_names() { printf 'db-%s ' "${REGIONS[@]}"; }
 

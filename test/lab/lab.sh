@@ -61,8 +61,9 @@ commands:
                             node start
   node pause|resume NAME    SIGSTOP / SIGCONT veho
   db kill|start X           force-stop / start db-X (Patroni member)
-  db-certs                  issue the members' certificates again and
-                            reload PostgreSQL (no restart)
+  db-certs                  let Patroni rewind a former primary: the
+                            members' certificates name localhost and pg_hba
+                            takes local replication (also at every start)
   fault X status CODE [--for D] | corrupt [--count N] | delay D [--bucket B]
   fault X clear|show        the fault proxy in front of region X's Garage
   patronictl [args]         patronictl in db-b
@@ -213,7 +214,7 @@ main() {
 	campaign) cmd_campaign "$@" ;;
 	node) cmd_node "$@" ;;
 	db) cmd_db "$@" ;;
-	db-certs) require_lab && db_certs_renew ;;
+	db-certs) require_lab && db_local_rewind ;;
 	fault) cmd_fault "$@" ;;
 	patronictl) require_lab && db_patronictl "$@" ;;
 	etcdctl) require_lab && db_etcdctl "$@" ;;

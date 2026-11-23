@@ -69,6 +69,7 @@ lab_start() {
 	wan_restore
 	for x in "${REGIONS[@]}"; do inner_wait "db-$x"; done
 	db_wait_ready
+	db_local_rewind
 	for x in "${REGIONS[@]}"; do
 		if inner_exists "s3-$x"; then
 			inner_wait "s3-$x"
