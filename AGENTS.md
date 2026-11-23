@@ -22,6 +22,7 @@
 12. **Publish Documentation:** Always produce and attach to the release a Setup Guide, an Operator's Guide and an Architecture and Design Guide, in PDF format from Markdown sources; when diagrams and tables do not fit a page in portrait mode, use the landscape orientation for that page. Additional documents may be produced on a per-project basis.
 13. **Sane Commits:** before every commit, run `go test ./...` (and `make lint`), unless the commit changes no code and no test input (documentation only). Check that everything is still sane.
 14. **Overnight Runs:** Any run that takes hours (soak and chaos runs, full lab rebuilds, release-run campaigns) is written up as a plan and run in an overnight, unattended session, never started in the middle of a working day: propose it, say how long it takes, and report the outcome in the morning.
+15. **Hourly Checks:** Any soak, campaign or other lengthy test (more than about an hour) is checked every hour while it runs (a scheduled check, not an occasional glance): is it still running, are failures or errors growing, is the lab healthy (nodes, database quorum, disk). On a real product failure, evaluate whether to stop, fix and restart on the fixed code; failures of the lab or tooling are fixed in the lab. Report each check in a line.
 
 ## Coding Style & Architecture Standards
 * **Language/Framework:** Go (Golang), standard library routers; propose additional libraries where applicable.
