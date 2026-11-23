@@ -14,6 +14,28 @@ write_files:
 YAML
 }
 
+# db_sans NAME: the subject alternative names of a member's certificate:
+# localhost too, which Patroni uses to read the member's own timeline
+# (verify-full); without it, Patroni cannot see that a former primary
+# diverged, and never rewinds it (found by the soak).
+db_sans() { printf 'DNS:%s.veho.lab,DNS:localhost,IP:127.0.0.1,IP:%s,IP:%s' "$1" "$(inner_ip "$1")" "$(lxd_ip)"; }
+
+# db_certs_renew: issues every member's certificate again (with the SANs of
+# db_sans), installs it and has PostgreSQL reload it, without a restart.
+db_certs_renew() {
+	local x name
+	for x in "${REGIONS[@]}"; do
+		name="db-$x"
+		rm -f "$LAB_STATE_DIR/pki/$name.crt" "$LAB_STATE_DIR/pki/$name.key"
+		pki_issue "$name" "$(db_sans "$name")"
+		inner_push "$LAB_STATE_DIR/pki/$name.crt" "$name" /etc/veho-lab/server.crt 0644
+		inner_push "$LAB_STATE_DIR/pki/$name.key" "$name" /etc/veho-lab/server.key 0600
+		inner_exec "$name" chown postgres:postgres /etc/veho-lab/server.crt /etc/veho-lab/server.key
+		inner_exec "$name" runuser -u postgres -- psql -X -qtAc "select pg_reload_conf()" >/dev/null
+	done
+	info "database certificates renewed and reloaded"
+}
+
 # db_names: db-a db-b db-c.
 db_names() { printf 'db-%s ' "${REGIONS[@]}"; }
 
@@ -36,7 +58,7 @@ db_up() {
 	local x name
 	for x in "${REGIONS[@]}"; do
 		name="db-$x"
-		pki_issue "$name" "DNS:$name.veho.lab,IP:$(inner_ip "$name"),IP:$(lxd_ip)"
+		pki_issue "$name" "$(db_sans "$name")"
 		inner_create "$name" "$LAB_DB_MEMORY" -c cloud-init.user-data="$(db_cloud_init)"
 		inner_start "$name"
 	done
@@ -198,6 +220,8 @@ postgresql:
   pg_hba:
     - local all postgres peer
     - hostssl replication replicator $LAB_REGION_PREFIX.0.0/16 scram-sha-256
+    # Patroni reads the member's own timeline over localhost (db_sans)
+    - hostssl replication replicator 127.0.0.1/32 scram-sha-256
     - hostssl all postgres $LAB_REGION_PREFIX.0.0/16 scram-sha-256
     - hostssl all postgres 0.0.0.0/0 reject
     - hostssl all all $LAB_REGION_PREFIX.0.0/16 scram-sha-256

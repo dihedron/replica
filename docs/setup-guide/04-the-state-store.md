@@ -36,6 +36,8 @@ tcp_keepalives_count: 6
 
 With `pg_hba` lines that accept the veho roles over `hostssl` from the nodes' networks, with `scram-sha-256`, and nothing over plain TCP.
 
+**Let Patroni rewind a former primary.** After a failover, the old primary may hold WAL the others never received; Patroni repairs it with `pg_rewind` (`use_pg_rewind: true`), but only if it can read the member's own timeline, which it does over a replication connection to `localhost`. With `sslmode=verify-full`, each member's certificate must therefore also name `localhost` and `127.0.0.1`, and `pg_hba` must accept the replication user from `127.0.0.1/32`. Without both, the former primary stays a replica that never streams, and the cluster runs with one standby fewer, or none. The lab found this under its chaos runs.
+
 etcd: one member per region, client and peer URLs on the region's address; heartbeat 100 ms and election timeout 1000 ms are right for inter-region round trips of up to about 50 ms. Give the member in the region you least want as primary a lower `failover_priority` tag.
 
 ## The database and its roles
