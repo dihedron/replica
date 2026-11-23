@@ -41,12 +41,14 @@ func envInt(t *testing.T, name string, def int) int {
 
 // TestCampaignSoak is AC-17 (veho-lab-l3.md §6): LAB_SOAK_JOBS jobs (50) kept
 // running for LAB_SOAK_DURATION (8h), each from one of eight source objects
-// of 64 to 512 MiB to two of the nine destinations, while a chaos loop every
+// of 32 to 256 MiB to two of the nine destinations, while a chaos loop every
 // 2 to 10 minutes kills a node (half of them kept down for 5 minutes),
 // pauses one past its lease, kills the PostgreSQL leader, partitions a
 // region for 2 minutes or makes a destination answer 503 for 5 minutes.
-// Every job must succeed with the source's bytes; each job's copies are
-// deleted once verified, so that the lab's disk holds.
+// Every job must succeed with the source's bytes. Each job's copies are
+// deleted once it settles, whatever its outcome, and a janitor aborts stale
+// uploads; below 4 GiB free on the lab VM the campaign stops, failed, rather
+// than run on a full disk (the third soak filled it in under 4 hours).
 func TestCampaignSoak(t *testing.T) {
 	duration := envDuration(t, "LAB_SOAK_DURATION", 8*time.Hour)
 	jobs := envInt(t, "LAB_SOAK_JOBS", 50)
@@ -56,10 +58,37 @@ func TestCampaignSoak(t *testing.T) {
 	var objects []object
 	for i := range 8 {
 		path := "src-" + strconv.Itoa(i)
-		objects = append(objects, object{path, tn.Put("a", path, int64(64+64*i)*mib)})
+		objects = append(objects, object{path, tn.Put("a", path, int64(32+32*i)*mib)})
 	}
 	dests := all9()
 	deadline := time.Now().Add(duration)
+	stop := make(chan struct{}) // the disk guard
+	var stopOnce sync.Once
+	running := func() bool {
+		select {
+		case <-stop:
+			return false
+		default:
+			return time.Now().Before(deadline)
+		}
+	}
+	// the janitor: stale uploads, and the disk guard
+	go func() {
+		for running() {
+			select {
+			case <-stop:
+				return
+			case <-time.After(10 * time.Minute):
+			}
+			if n := tn.AbortStale(time.Hour); n > 0 {
+				t.Logf("janitor: %d stale uploads aborted", n)
+			}
+			if free := l.FreeGiB(); free >= 0 && free < 4 {
+				t.Errorf("the lab VM has %d GiB free: the soak stops", free)
+				stopOnce.Do(func() { close(stop) })
+			}
+		}
+	}()
 
 	var mu sync.Mutex
 	done, failed := 0, 0
@@ -83,9 +112,9 @@ func TestCampaignSoak(t *testing.T) {
 			return
 		}
 		r := rand.New(rand.NewPCG(uint64(time.Now().UnixNano()), 1))
-		for time.Now().Before(deadline) {
+		for running() {
 			time.Sleep(time.Duration(2+r.IntN(9)) * time.Minute)
-			if !time.Now().Before(deadline) {
+			if !running() {
 				return
 			}
 			// only nodes that run: a node still restarting has no process to
@@ -147,7 +176,7 @@ func TestCampaignSoak(t *testing.T) {
 	for w := range jobs {
 		wg.Go(func() {
 			r := rand.New(rand.NewPCG(uint64(w), uint64(time.Now().UnixNano())))
-			for n := 0; time.Now().Before(deadline); n++ {
+			for n := 0; running(); n++ {
 				o := objects[r.IntN(len(objects))]
 				first := r.IntN(len(dests))
 				pair := []labtest.Dest{dests[first], dests[(first+1+r.IntN(len(dests)-1))%len(dests)]}
@@ -175,17 +204,18 @@ func TestCampaignSoak(t *testing.T) {
 					continue
 				}
 				j := waitAny(tn, l, id, 3*time.Hour)
-				if j.GetState() != "SUCCEEDED" {
+				ok := j.GetState() == "SUCCEEDED"
+				if !ok {
 					report(false, "job %s: %s", id, j.GetState())
-					continue
 				}
-				ok := true
 				for _, d := range pair {
-					if got := tn.SHA256(d.Region, d.Bucket, path); got != o.sha {
-						ok = false
-						report(false, "job %s, %s-%s: sha256 %s, want %s", id, d.Region, d.Bucket, got, o.sha)
+					if ok {
+						if got := tn.SHA256(d.Region, d.Bucket, path); got != o.sha {
+							ok = false
+							report(false, "job %s, %s-%s: sha256 %s, want %s", id, d.Region, d.Bucket, got, o.sha)
+						}
 					}
-					tn.Delete(d.Region, d.Bucket, path)
+					tn.Delete(d.Region, d.Bucket, path) // whatever the outcome
 				}
 				if ok {
 					report(true, "")

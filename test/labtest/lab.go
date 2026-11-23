@@ -594,3 +594,46 @@ func (l *Lab) Pending(version string, jobs ...string) int {
 	}
 	return n
 }
+
+// AbortStale aborts the tenant's multipart uploads begun more than age ago
+// in every bucket, and returns how many: the soak's janitor, so that uploads
+// left by failed or cancelled transfers do not fill the lab's disk.
+func (tn *Tenant) AbortStale(age time.Duration) int {
+	ctx := context.Background()
+	n := 0
+	for _, x := range Regions {
+		c := rawS3(x)
+		for _, b := range Buckets {
+			out, err := c.ListMultipartUploads(ctx, &s3.ListMultipartUploadsInput{Bucket: aws.String(b), Prefix: aws.String(tn.Prefix)})
+			if err != nil {
+				continue
+			}
+			for _, u := range out.Uploads {
+				if u.Initiated != nil && time.Since(*u.Initiated) > age {
+					if _, err := c.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: aws.String(b), Key: u.Key, UploadId: u.UploadId}); err == nil {
+						n++
+					}
+				}
+			}
+		}
+	}
+	return n
+}
+
+// FreeGiB is the free space of the lab VM's disk, in GiB, or -1 when it
+// cannot be read.
+func (l *Lab) FreeGiB() int {
+	out, err := l.TrySh("ssh", "lxd", "df", "--output=avail", "-BG", "/")
+	if err != nil {
+		return -1
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(fields[len(fields)-1], "G"))
+	if err != nil {
+		return -1
+	}
+	return n
+}
