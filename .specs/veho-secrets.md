@@ -112,7 +112,7 @@ These act on the KEK rows and need the unwrap key and the migrator's DSN (`VEHO_
 | `veho kek rewrap [--batch N]` | Re-wraps, in batches of N (default 500) with one transaction each, the DEKs that are not under the active version; when a `retiring` version wraps no DEK any more, marks it `retired`. Safe to interrupt and to run again; safe while nodes write, because each update is conditional on the row's `version` and `kek_version` (a secret replaced meanwhile is skipped, and already has a new DEK under the active KEK) |
 | `veho kek rekey --new-unwrap-key <source>` | Re-wraps every non-retired KEK row with a new unwrap key, in one transaction (SEC-27); the nodes then need the new key at their next start. The old key is not needed afterwards |
 
-- The housekeeping loop (`veho-audit-housekeeping.md` §3) will run the re-wrap of `veho kek rewrap` in the background; it comes with the chunk that builds the loop, and then needs a `SECURITY DEFINER` function so that it does not run as the migrator. Until then an operator runs `veho kek rewrap` after `veho kek rotate`.
+- The housekeeping loop runs the re-wrap of `veho kek rewrap` in the background (backlog 24, done 2026-11-22): each pass re-wraps up to 500 DEKs not under the active KEK, as `veho_worker` through the `SECURITY DEFINER` functions `veho.deks_to_rewrap`, `veho.rewrap_dek` (conditional on the row's versions and on the active KEK) and `veho.retire_keks`, then retires the versions no secret uses; audited `KEK_REWRAP` (`Store.Rewrap`, `TestRewrapInBackground`). The worker sees wrapped DEKs, never a value. `veho kek rewrap` remains, to finish at once.
 - `rotate` and `rekey` print the new state; nothing they print or log carries a key.
 
 ## 5. Threat model of C3

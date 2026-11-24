@@ -6,7 +6,7 @@ set -euo pipefail
 LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LAB_DIR/../.." && pwd)"
 
-for lib in common preflight lxd inner pki fetch wan db s3 nodes snapshot selftest; do
+for lib in common preflight lxd inner pki fetch wan db s3 nodes campaign snapshot selftest; do
 	# shellcheck source=/dev/null
 	source "$LAB_DIR/lib/$lib.sh"
 done
@@ -44,17 +44,26 @@ commands:
                             migration edited in place; the tests migrate it
   nodes up|down             create or remove the veho nodes veho-a1 to
                             veho-c2 (not in the baseline snapshot)
-  nodes deploy              build veho and the fault proxy, migrate, set the
-                            KEK and restart the nodes one at a time
+  nodes deploy [--workflow-version V] [NAME...]
+                            build veho and the fault proxy, migrate, set the
+                            KEK and restart the nodes (or NAMEs) one at a
+                            time; V builds veho with that workflow version
   acceptance [-run R] [--no-deploy]
                             nodes deploy, then the daytime acceptance suite
                             (go test -tags acceptance ./test/acceptance)
+  campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long
+                            the long campaigns (AC-17, AC-18, AC-1 at 4 GiB
+                            and AC-8 for 30 minutes), overnight; logs in
+                            .evidence/
   node start|stop|restart NAME
   node kill NAME [--stay-down]
                             SIGKILL veho; --stay-down keeps it down until
                             node start
   node pause|resume NAME    SIGSTOP / SIGCONT veho
   db kill|start X           force-stop / start db-X (Patroni member)
+  db-certs                  let Patroni rewind a former primary: the
+                            members' certificates name localhost and pg_hba
+                            takes local replication (also at every start)
   fault X status CODE [--for D] | corrupt [--count N] | delay D [--bucket B]
   fault X clear|show        the fault proxy in front of region X's Garage
   patronictl [args]         patronictl in db-b
@@ -202,8 +211,10 @@ main() {
 	schema-reset) require_lab && db_psql -c "drop schema veho cascade; create schema veho authorization veho_migrator" ;;
 	nodes) cmd_nodes "$@" ;;
 	acceptance) cmd_acceptance "$@" ;;
+	campaign) cmd_campaign "$@" ;;
 	node) cmd_node "$@" ;;
 	db) cmd_db "$@" ;;
+	db-certs) require_lab && db_local_rewind ;;
 	fault) cmd_fault "$@" ;;
 	patronictl) require_lab && db_patronictl "$@" ;;
 	etcdctl) require_lab && db_etcdctl "$@" ;;

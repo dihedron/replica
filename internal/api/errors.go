@@ -10,6 +10,7 @@ import (
 	"github.com/dihedron/veho/internal/engine"
 	"github.com/dihedron/veho/internal/policy"
 	"github.com/dihedron/veho/internal/secrets"
+	"github.com/dihedron/veho/internal/store"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -33,6 +34,9 @@ func classify(err error) (problem, string) {
 		if errors.Is(err, c.target) {
 			return c.p, c.target.Error()
 		}
+	}
+	if store.Unavailable(err) {
+		return pUnavailable, "the state store is unavailable: try again, or another node"
 	}
 	return pInternal, "internal error"
 }

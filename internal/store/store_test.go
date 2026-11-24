@@ -9,11 +9,16 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
+	"io"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // caFile writes a throwaway CA certificate, for sslrootcert.
@@ -89,5 +94,47 @@ func TestDialTimeout(t *testing.T) {
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("%v: reads as a context deadline", err)
+	}
+}
+
+// STO-C5: the offset is the database's time against the midpoint of the
+// query's round trip, so the trip's length cancels out.
+func TestClockOffset(t *testing.T) {
+	base := time.Date(2026, 11, 22, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		sent, received, db time.Time
+		want               time.Duration
+	}{
+		{base, base.Add(200 * time.Millisecond), base.Add(100 * time.Millisecond), 0},
+		{base, base.Add(200 * time.Millisecond), base.Add(2100 * time.Millisecond), 2 * time.Second},
+		{base, base.Add(40 * time.Millisecond), base.Add(-480 * time.Millisecond), -500 * time.Millisecond},
+	} {
+		if got := clockOffset(tc.sent, tc.received, tc.db); got != tc.want {
+			t.Errorf("sent %v, received %v, db %v: %v, want %v", tc.sent, tc.received, tc.db, got, tc.want)
+		}
+	}
+}
+
+// A request that loses the state store (a connection closed by a failover,
+// a primary turned standby, no server) is unavailable, retryable, not an
+// internal error; a constraint or a bad query is not (found by the soak).
+func TestUnavailable(t *testing.T) {
+	for err, want := range map[error]bool{
+		errors.New("conn closed"):                                   true,
+		fmt.Errorf("engine: submit: %w", errors.New("conn closed")): true,
+		&pgconn.ConnectError{}:                                      true,
+		&net.OpError{Op: "read", Err: errors.New("reset")}:          true,
+		io.ErrUnexpectedEOF:                                         true,
+		&pgconn.PgError{Code: "08006"}:                              true,
+		&pgconn.PgError{Code: "57P01"}:                              true,
+		&pgconn.PgError{Code: "25006"}:                              true,
+		&pgconn.PgError{Code: "23505"}:                              false,
+		&pgconn.PgError{Code: "42P01"}:                              false,
+		errors.New("anything else"):                                 false,
+		fmt.Errorf("query: %w", context.DeadlineExceeded):           false,
+	} {
+		if got := Unavailable(err); got != want {
+			t.Errorf("%v: %v, want %v", err, got, want)
+		}
 	}
 }

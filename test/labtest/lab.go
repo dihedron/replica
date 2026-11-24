@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"uuid"
@@ -27,6 +28,7 @@ import (
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
 	"github.com/dihedron/veho/pkg/plugin"
 	s3driver "github.com/dihedron/veho/pkg/plugin/s3"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	grpccreds "google.golang.org/grpc/credentials"
@@ -110,6 +112,26 @@ func (l *Lab) Sh(args ...string) string {
 		l.t.Fatalf("lab.sh %s: %v: %s", strings.Join(args, " "), err, stderr.String())
 	}
 	return string(out)
+}
+
+// TrySh runs lab.sh with args and returns its error instead of failing the
+// test: for a loop that must go on, such as the soak's chaos, which runs
+// outside the test's goroutine.
+func (l *Lab) TrySh(args ...string) (string, error) {
+	cmd := exec.Command(labSh(), args...) //nolint:gosec // the lab's own script
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return string(out), fmt.Errorf("lab.sh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return string(out), nil
+}
+
+// Active is true when node's veho service is running.
+func (l *Lab) Active(node string) bool {
+	out, err := l.TrySh("ssh", node, "systemctl", "is-active", "veho")
+	return err == nil && strings.TrimSpace(out) == "active"
 }
 
 // Kill sends SIGKILL to node's veho; with stayDown systemd does not restart it.
@@ -256,11 +278,13 @@ type Clients struct {
 // region and an endpoint per region and bucket: "<x>-<bucket>", through the
 // region's fault proxy. Its objects are under Prefix.
 type Tenant struct {
-	lab    *Lab
-	Name   string
-	ID     string
-	Prefix string
-	key    string
+	lab     *Lab
+	Name    string
+	ID      string
+	Prefix  string
+	key     string
+	mu      sync.Mutex
+	clients map[string]Clients
 }
 
 // Tenant creates a tenant with veho bootstrap and registers its endpoints
@@ -310,9 +334,15 @@ func (l *Lab) bootstrap(args ...string) string {
 // RegionNum is a region's number: a is 1.
 func RegionNum(x string) int { return int(x[0]-'a') + 1 }
 
-// Clients connects to node with the tenant's key; closed at the test's end.
+// Clients connects to node with the tenant's key, once per node; closed at
+// the test's end.
 func (tn *Tenant) Clients(node string) Clients {
 	tn.lab.t.Helper()
+	tn.mu.Lock()
+	defer tn.mu.Unlock()
+	if c, ok := tn.clients[node]; ok {
+		return c
+	}
 	addr, ok := tn.lab.nodes[node]
 	if !ok {
 		tn.lab.t.Fatalf("no node %s", node)
@@ -323,8 +353,19 @@ func (tn *Tenant) Clients(node string) Clients {
 		tn.lab.t.Fatalf("connect %s: %v", node, err)
 	}
 	tn.lab.t.Cleanup(func() { _ = conn.Close() })
-	return Clients{Jobs: vehov1.NewJobServiceClient(conn), Policies: vehov1.NewPolicyServiceClient(conn),
+	c := Clients{Jobs: vehov1.NewJobServiceClient(conn), Policies: vehov1.NewPolicyServiceClient(conn),
 		Endpoints: vehov1.NewEndpointServiceClient(conn), Secrets: vehov1.NewSecretServiceClient(conn), Admin: vehov1.NewAdminServiceClient(conn)}
+	if tn.clients == nil {
+		tn.clients = map[string]Clients{}
+	}
+	tn.clients[node] = c
+	return c
+}
+
+// Delete removes an object of region x's bucket at the tenant's prefix +
+// path, if it is there.
+func (tn *Tenant) Delete(x, bucket, path string) {
+	_, _ = rawS3(x).DeleteObject(context.Background(), &s3.DeleteObjectInput{Bucket: aws.String(bucket), Key: aws.String(tn.Prefix + path)})
 }
 
 // Dest is a destination of a policy: endpoint "<x>-<bucket>".
@@ -516,4 +557,83 @@ func (tn *Tenant) Uploads(x, bucket string) int {
 		t.Fatalf("list uploads %s/%s: %v", x, bucket, err)
 	}
 	return len(out.Uploads)
+}
+
+// Pending counts the workflows of the jobs, and of their transfers, that DBOS
+// holds as PENDING or ENQUEUED under the application version: the work a
+// node of that version must still run (AC-20).
+func (l *Lab) Pending(version string, jobs ...string) int {
+	l.t.Helper()
+	ctx := context.Background()
+	var ids []string
+	for _, j := range jobs {
+		ids = append(ids, "job/"+j)
+		rows, err := l.db.Query(ctx, "select id::text from veho.transfers where job_id = $1", j)
+		if err != nil {
+			l.t.Fatal(err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				l.t.Fatal(err)
+			}
+			ids = append(ids, "transfer/"+id)
+		}
+		rows.Close()
+	}
+	conn, err := pgx.Connect(ctx, os.Getenv("VEHO_TEST_DBOS_DATABASE_URL"))
+	if err != nil {
+		l.t.Fatal(err)
+	}
+	defer func() { _ = conn.Close(ctx) }()
+	var n int
+	// a retry adds a suffix to a transfer's workflow ID
+	if err := conn.QueryRow(ctx, `select count(*) from dbos.workflow_status where application_version = $1 and status in ('PENDING', 'ENQUEUED')
+		and split_part(workflow_uuid, '/', 1) || '/' || split_part(workflow_uuid, '/', 2) = any($2)`, version, ids).Scan(&n); err != nil {
+		l.t.Fatal(err)
+	}
+	return n
+}
+
+// AbortStale aborts the tenant's multipart uploads begun more than age ago
+// in every bucket, and returns how many: the soak's janitor, so that uploads
+// left by failed or cancelled transfers do not fill the lab's disk.
+func (tn *Tenant) AbortStale(age time.Duration) int {
+	ctx := context.Background()
+	n := 0
+	for _, x := range Regions {
+		c := rawS3(x)
+		for _, b := range Buckets {
+			out, err := c.ListMultipartUploads(ctx, &s3.ListMultipartUploadsInput{Bucket: aws.String(b), Prefix: aws.String(tn.Prefix)})
+			if err != nil {
+				continue
+			}
+			for _, u := range out.Uploads {
+				if u.Initiated != nil && time.Since(*u.Initiated) > age {
+					if _, err := c.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: aws.String(b), Key: u.Key, UploadId: u.UploadId}); err == nil {
+						n++
+					}
+				}
+			}
+		}
+	}
+	return n
+}
+
+// FreeGiB is the free space of the lab VM's disk, in GiB, or -1 when it
+// cannot be read.
+func (l *Lab) FreeGiB() int {
+	out, err := l.TrySh("ssh", "lxd", "df", "--output=avail", "-BG", "/")
+	if err != nil {
+		return -1
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return -1
+	}
+	n, err := strconv.Atoi(strings.TrimSuffix(fields[len(fields)-1], "G"))
+	if err != nil {
+		return -1
+	}
+	return n
 }

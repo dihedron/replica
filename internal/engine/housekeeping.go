@@ -67,6 +67,7 @@ func (e *Engine) Housekeep(ctx context.Context) (bool, error) {
 		"zombies":   e.zombies,
 		"leases":    e.leases,
 		"retention": e.retain,
+		"rewrap":    e.rewrap,
 	} {
 		if err := task(ctx); err != nil {
 			slog.ErrorContext(ctx, "housekeeping task failed", "task", name, "error", err)
@@ -353,4 +354,22 @@ func (e *Engine) recoverOwn(ctx context.Context) (int, error) {
 	e.system(ctx, "SYSTEM_ZOMBIE_ADOPTED", "", map[string]any{"executors": []string{e.executor}, "workflows": resume, "reason": "not executing here"})
 	slog.InfoContext(ctx, "resumed this node's own workflows that no execution was running", "workflows", len(resume))
 	return len(resume), nil
+}
+
+// rewrap re-wraps a batch of the DEKs left under an old KEK after a rotation
+// and retires the versions no secret uses any more (backlog 24): what
+// veho kek rewrap does, in the background.
+func (e *Engine) rewrap(ctx context.Context) error {
+	if e.secrets == nil {
+		return nil
+	}
+	n, retired, err := e.secrets.Rewrap(ctx, batch)
+	if err != nil {
+		return err
+	}
+	if n > 0 || len(retired) > 0 {
+		e.system(ctx, "KEK_REWRAP", "", map[string]any{"rewrapped": n, "retired": retired})
+		slog.InfoContext(ctx, "re-wrapped data keys after a KEK rotation", "rewrapped", n, "retired", retired)
+	}
+	return nil
 }

@@ -33,10 +33,11 @@ The daytime scenarios, all against the six nodes over the emulated WAN:
 | The source overwritten mid-copy | Passes: never a mix of versions |
 | A region's source down after one copy | Passes: the other copy completes when it returns |
 | The same idempotency key on two nodes | Passes: one job |
+| A rolling upgrade, compatible and incompatible, with transfers in flight | Passes: the old version's work stays with old nodes (an upgraded owner hands it back), the new version runs the new jobs, nothing is stranded |
 | A tenant at its quota | Passes: `quota_exceeded`, running jobs unaffected |
 | A cancel mid-transfer | Passes: no object, no upload left |
 | Nine destinations, `min_copies` and spread | Passes |
 | Audit events in each node's journal | Passes |
 | No plaintext secret or unwrap key in a database dump | Passes |
 
-Planned, as overnight campaigns: a soak of 50 concurrent jobs under random failures of nodes, the primary and the network for 8 hours; the state store's stability over the emulated WAN for 24 hours; a sweep of latencies and jitter; rolling upgrades with transfers in flight; 10 GiB objects and a 30-minute outage.
+Planned, as overnight campaigns: a soak of 50 concurrent jobs under random failures of nodes, the primary and the network for 8 hours; the state store's stability over the emulated WAN for 24 hours; a sweep of latencies and jitter; 10 GiB objects and a 30-minute outage.

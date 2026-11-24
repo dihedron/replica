@@ -280,7 +280,7 @@ func TestChecks(t *testing.T) {
 	migrated(t)
 	ctx := context.Background()
 	worker := dsn(t, "VEHO_TEST_WORKER_DATABASE_URL")
-	if errs := Checks(ctx, open(t, "VEHO_TEST_WORKER_DATABASE_URL"), migrations.FS); len(errs) != 0 {
+	if errs := Checks(ctx, open(t, "VEHO_TEST_WORKER_DATABASE_URL"), migrations.FS, time.Second); len(errs) != 0 {
 		t.Errorf("Checks on the lab: %v", errs)
 	}
 	local, err := Open(ctx, worker+"&synchronous_commit=local", Options{})
@@ -288,7 +288,7 @@ func TestChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer local.Close()
-	if errs := Checks(ctx, local, migrations.FS); !containsErr(errs, ErrSyncCommit) {
+	if errs := Checks(ctx, local, migrations.FS, time.Second); !containsErr(errs, ErrSyncCommit) {
 		t.Errorf("Checks with synchronous_commit = local: %v", errs)
 	}
 	standby := standbyDSN(t, worker)
@@ -297,8 +297,12 @@ func TestChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sp.Close()
-	if errs := Checks(ctx, sp, migrations.FS); !containsErr(errs, ErrNotPrimary) {
+	if errs := Checks(ctx, sp, migrations.FS, time.Second); !containsErr(errs, ErrNotPrimary) {
 		t.Errorf("Checks on a standby: %v", errs)
+	}
+	// STO-C5: no clock agrees with the database's to the nanosecond
+	if errs := Checks(ctx, open(t, "VEHO_TEST_WORKER_DATABASE_URL"), migrations.FS, time.Nanosecond); !containsErr(errs, ErrClock) {
+		t.Errorf("Checks with a 1ns bound: %v", errs)
 	}
 }
 

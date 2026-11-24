@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"time"
 
 	"github.com/dihedron/veho/internal/store/migrate"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,7 +23,18 @@ var (
 	ErrSyncCommit = errors.New("STO-C2: synchronous_commit is off or local")
 	// ErrNoQuorum: STO-C3.
 	ErrNoQuorum = errors.New("STO-C3: synchronous_standby_names is not a quorum (ANY n (...), n >= 1)")
+	// ErrSchema: STO-C4, the schema is not the one this binary carries.
+	ErrSchema = errors.New("the database's schema is not this binary's")
+	// ErrClock: STO-C5, the node's clock is too far from the database's.
+	ErrClock = errors.New("STO-C5: the node's clock differs from the database's")
 )
+
+// clockOffset is the database's time db against the midpoint of the query
+// sent at sent and answered at received: positive when the database is
+// ahead.
+func clockOffset(sent, received, db time.Time) time.Duration {
+	return db.Sub(sent.Add(received.Sub(sent) / 2))
+}
 
 // quorumRE matches synchronous_standby_names of the quorum form.
 var quorumRE = regexp.MustCompile(`(?i)^\s*ANY\s+([1-9][0-9]*)\s*\(.+\)\s*$`)
@@ -31,9 +43,9 @@ var quorumRE = regexp.MustCompile(`(?i)^\s*ANY\s+([1-9][0-9]*)\s*\(.+\)\s*$`)
 func quorum(names string) bool { return quorumRE.MatchString(names) }
 
 // Checks runs the start-up checks of §7 on pool and returns their failures,
-// each wrapping one of the errors above or of migrate (STO-C4); the caller
-// applies the configured severity.
-func Checks(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) []error {
+// each wrapping one of the errors above; the caller applies the configured
+// severity.
+func Checks(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS, maxClockOffset time.Duration) []error {
 	conn, err := pool.Acquire(ctx)
 	if err != nil {
 		return []error{fmt.Errorf("store: checks: %w", err)}
@@ -65,7 +77,15 @@ func Checks(ctx context.Context, pool *pgxpool.Pool, fsys fs.FS) []error {
 		errs = append(errs, fmt.Errorf("%w (%q)", ErrNoQuorum, stdNames))
 	}
 	if err := migrate.Check(ctx, conn, fsys); err != nil {
-		errs = append(errs, fmt.Errorf("STO-C4: %w", err))
+		errs = append(errs, fmt.Errorf("STO-C4: %w: %w", ErrSchema, err))
+	}
+	var db time.Time
+	sent := time.Now()
+	if err := conn.QueryRow(ctx, "select clock_timestamp()").Scan(&db); err != nil {
+		return append(errs, fmt.Errorf("store: checks: %w", err))
+	}
+	if off := clockOffset(sent, time.Now(), db); off > maxClockOffset || off < -maxClockOffset {
+		errs = append(errs, fmt.Errorf("%w by %v (checks.max_clock_offset %v): synchronize it (chrony)", ErrClock, off.Round(time.Millisecond), maxClockOffset))
 	}
 	return errs
 }

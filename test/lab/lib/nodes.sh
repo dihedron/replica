@@ -41,7 +41,10 @@ cmd_nodes() {
 	case "${1:-}" in
 	up) nodes_up ;;
 	down) nodes_down ;;
-	deploy) nodes_deploy ;;
+	deploy)
+		shift
+		nodes_deploy "$@"
+		;;
 	*) die "usage: lab.sh nodes up|down|deploy" ;;
 	esac
 }
@@ -122,24 +125,38 @@ nodes_down() {
 nodes_deploy() {
 	section "Deploy"
 	[[ "$(env_get '.nodes // ""')" == "$(node_names)" ]] || die "no nodes: run lab.sh nodes up"
-	local bin="$LAB_STATE_DIR/bin" name x
+	local bin="$LAB_STATE_DIR/bin" name x wf="" binary targets=()
+	while (($#)); do
+		case "$1" in
+		--workflow-version) wf="${2:?--workflow-version: a version}" && shift 2 ;;
+		*) node_check "$1" && targets+=("$1") && shift ;;
+		esac
+	done
+	((${#targets[@]})) || read -r -a targets <<<"$(node_names)"
 	mkdir -p "$bin"
 	make -C "$REPO_DIR" compile >"$LAB_STATE_DIR/build.log" 2>&1 || die "make compile failed: see $LAB_STATE_DIR/build.log"
 	cp "$REPO_DIR/dist/veho_linux_amd64_v1/veho" "$bin/veho"
+	binary="$bin/veho"
+	if [[ -n "$wf" ]]; then
+		# AC-20: a build whose workflows DBOS takes for another version
+		binary="$bin/veho-wf$wf"
+		(cd "$REPO_DIR" && CGO_ENABLED=0 go build -trimpath -ldflags "-X github.com/dihedron/veho/internal/engine.WorkflowVersion=$wf" \
+			-o "$binary" ./cmd/veho) || die "cannot build veho with workflow version $wf"
+	fi
 	(cd "$REPO_DIR" && CGO_ENABLED=0 go build -trimpath -o "$bin/faultproxy" ./test/lab/faultproxy) || die "cannot build the fault proxy"
-	info "built $("$bin/veho" version | tr -s '\n' ' ')"
+	info "built $("$bin/veho" version | tr -s '\n' ' ')${wf:+, workflow version $wf}"
 	for x in "${REGIONS[@]}"; do fault_install "s3-$x"; done
 	nodes_database
-	for name in $(node_names); do
+	for name in "${targets[@]}"; do
 		inner_exec "$name" systemctl stop veho 2>/dev/null || true
-		inner_push "$bin/veho" "$name" /usr/bin/veho 0755
+		inner_push "$binary" "$name" /usr/bin/veho 0755
 		inner_push "$REPO_DIR/packaging/veho.service" "$name" /usr/lib/systemd/system/veho.service 0644
 		node_unblock "$name"
 		inner_exec "$name" systemctl daemon-reload
 		inner_exec "$name" systemctl enable --now veho >/dev/null 2>&1 || true
 		node_wait "$name"
 	done
-	info "nodes deployed: $(node_names)"
+	info "nodes deployed: ${targets[*]}"
 }
 
 # nodes_database migrates the schema, creates the regions of the topology and
@@ -215,9 +232,30 @@ cmd_db() {
 	start)
 		inner_start "db-$x"
 		inner_wait "db-$x"
+		db_rejoin "db-$x"
 		;;
 	*) die "usage: lab.sh db kill|start X" ;;
 	esac
+}
+
+# db_rejoin NAME: waits until a restarted member streams on the leader's
+# timeline, or leads; a former primary killed with WAL the others never
+# received diverges, and Patroni does not always rewind it (found by the
+# soak), so after two minutes it is reinitialized from the leader.
+db_rejoin() {
+	local name="$1" ok
+	for attempt in 1 2; do
+		for _ in $(seq 1 24); do
+			ok="$(db_members | jq -r --arg m "$name" '(map(select(.Role == "Leader"))[0].TL) as $tl
+				| map(select(.Member == $m and (.Role == "Leader" or (.State == "streaming" and .TL == $tl)))) | length')"
+			[[ "$ok" == 1 ]] && return 0
+			sleep 5
+		done
+		((attempt == 1)) || break
+		warn "$name does not stream on the leader's timeline: reinitializing it"
+		db_patronictl reinit veho "$name" --force >/dev/null
+	done
+	die "$name did not rejoin the cluster"
 }
 
 # fault_install NAME: the fault proxy in an s3 container, under systemd.
@@ -320,9 +358,11 @@ nodes_stop() {
 	info "veho nodes stopped for the integration tests (lab.sh acceptance starts them again)"
 }
 
-# nodes_start starts veho on the nodes and waits until they answer.
+# nodes_start starts veho on the nodes and waits until they answer; the
+# KEK first, which the integration tests replace with their own.
 nodes_start() {
 	local name
+	nodes_database
 	for name in $(node_names); do
 		node_unblock "$name"
 		inner_exec "$name" systemctl start veho

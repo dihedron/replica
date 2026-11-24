@@ -91,7 +91,7 @@ Each scenario's test is named `TestAC<nn>…` and lists the requirement IDs it c
 | AC-17 | C9c overnight | §6 |
 | AC-18 | C9c overnight | §6 |
 | AC-19 | C9b, engine | A poison pill cannot be produced through a real node without a test hook in the binary, which C9 does not add. An `internal/engine` integration test sets a transfer's workflow to `MAX_RECOVERY_ATTEMPTS_EXCEEDED` and checks the housekeeping result: transfer `FAILED`, job decided, audited. The code used `Unknown`, the matrix says `Internal`; C9b aligned the code with the matrix (`TestPoisonPill`) |
-| AC-20 | C9c daytime | Build the current version and a second build with a changed `ApplicationVersion`. Upgrade one node at a time with transfers in flight. Compatible version: the work moves on. Incompatible version: old executors drain their work before they stop; no workflow left `PENDING` |
+| AC-20 | C9c daytime, **done** 2026-11-22 (`TestAC20RollingUpgrade`; `engine.WorkflowVersion`, `lab.sh nodes deploy --workflow-version`) | Build the current version and a second build with a changed `ApplicationVersion`. Upgrade one node at a time with transfers in flight. Compatible version: the work moves on. Incompatible version: old executors drain their work before they stop; no workflow left `PENDING` |
 | AC-23 | covered + C9b | `internal/policy` and `internal/engine` cover the verdicts. Lab: 9 destinations (3 buckets in each region), `min_copies` 7 with source in B; `min_copies` 5 with spread `region` 3 |
 | AC-24 | C9c overnight | §6 |
 | AC-25 | covered + C9b | v1 scope: AUDL-1 to AUDL-5 (`veho-audit.md`), covered; the tamper-evident log is backlog 32. One housekeeping pass at a time is HK-1 in `internal/engine`: the lock is held only for a pass, so the lab cannot see two nodes overlap from outside. Lab: audit events reach the journal of the node that handled the request |
@@ -112,16 +112,16 @@ The lab is a test environment on one machine. Its threats concern the developer'
 
 ## 6. Long runs (C9c)
 
-Each campaign records its results in `test/lab/.evidence/campaign-<name>-<date>/` and ends with a summary: pass or fail per check, and the measurements. Durations are estimates.
+`lab.sh campaign soak|wan24|long` runs them (`test/lab/lib/campaign.sh`, `test/acceptance/campaign_test.go`, built with the tags `acceptance campaign`); the soak passed a 10-minute smoke run (125 jobs, a pause past the lease) on 2026-11-22. Each campaign records its results in `test/lab/.evidence/campaign-<name>-<date>/` and ends with a summary: pass or fail per check, and the measurements. Durations are estimates.
 
 | Campaign | Duration | What runs | Pass |
 | :--- | :--- | :--- | :--- |
-| `soak` (AC-17) | 8 h | 50 concurrent jobs, kept at that level (sizes 64 MiB to 2 GiB, random policies over the 9 destinations). A chaos loop every 2 to 10 min at random: kill a node (half with `--stay-down`, for 5 min), pause a node past its lease, kill the Patroni leader, partition a region for 2 min, a 503 fault for 5 min | Every job `SUCCEEDED`; every object's digest equals the source's; no duplicate final write (the proxy's log); no transfer left `RUNNING` without a live executor |
+| `soak` (AC-17) | 8 h | 50 concurrent jobs, kept at that level (eight source objects of 32 to 256 MiB, each job to two of the 9 destinations; **amended** 2026-11-23: the lab's 38 GB disk filled in under 4 hours with larger objects, so each job's copies are deleted when it settles, a janitor aborts stale uploads, and the campaign stops, failed, below 4 GiB free). A chaos loop every 2 to 10 min at random: kill a node (half with `--stay-down`, for 5 min), pause a node past its lease, kill the Patroni leader, partition a region for 2 min, a 503 fault for 5 min | Every job `SUCCEEDED`; every object's digest equals the source's; no duplicate final write (the proxy's log); no transfer left `RUNNING` without a live executor |
 | `wan24` (AC-18) | 24 h | Idle, plus 1 job a minute, profile `fiber1`, switched to `fiber2` and back every 2 h; then 1 h each at `rtt20`, `rtt30`, `rtt40` | No etcd leader change and no Patroni failover in the logs |
 | `envelope` (AC-24) | 3 nights of about 10 h | 6 RTTs × 5 jitter levels = 30 cells of 1 h of light load, 10 cells a night | Per cell: elections, demotions, acceptance p50 and p99, primary-kill recovery and adoption time, written to `veho-latency-envelope.md` §6 |
-| `long` (AC-1, AC-8) | 2 h | AC-1 at 10 GiB; AC-8 with a 30 min outage | As in §4 |
+| `long` (AC-1, AC-8) | 2 h | AC-1 at 4 GiB (**amended** 2026-11-22: 10 GiB needs the lab VM's disk grown past what the host has free); AC-8 with a 30 min outage | As in §4 |
 
-AC-1 at 10 GiB writes 30 GiB in the lab VM (the source and two copies). The VM's disk is 40 GiB by default, so `long` needs `LAB_LXD_DISK=80GiB`, which `lab.sh` grows with the VM stopped.
+AC-1 at 10 GiB would write 30 GiB in the lab VM (the source and two copies), which needs its disk grown to 80 GiB; the host had 38 GB free, so `long` runs AC-1 at 4 GiB (64 parts, 12 GiB written), which exercises the same paths. A 10 GiB run waits for a host with room.
 
 ## 7. Tests of C9 itself
 

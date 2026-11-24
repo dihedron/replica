@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -20,6 +21,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/semaphore"
 )
+
+// WorkflowVersion is the version of the workflows' code as DBOS sees it
+// (EXT-5): DBOS recovers and dequeues only the workflows of its own version.
+// It is not the build's version, which would strand the work of every older
+// build at each upgrade; raise it only when a change makes a recorded
+// workflow unsafe to replay (its steps, their order or their results), and
+// upgrade as the Operator's Guide says (AC-20). A variable, so that a build
+// can set it with -ldflags -X.
+var WorkflowVersion = "1"
 
 // The DBOS application and its queues (§2).
 const (
@@ -38,7 +48,8 @@ type Deps struct {
 	API, Worker *pgxpool.Pool
 	// DBOSURL is veho_dbos's DSN, for DBOS's own pool.
 	DBOSURL string
-	// Version is the application version of the workflows (EXT-5).
+	// Version is the application version of the workflows (EXT-5); empty
+	// is WorkflowVersion. Tests set their own, to keep apart from nodes.
 	Version string
 	Audit   audit.Auditor
 	// Secrets gives the attempts their credentials (SEC-10).
@@ -91,7 +102,7 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 	dc, err := dbos.NewContext(context.WithoutCancel(ctx), dbos.Config{
 		AppName:            AppName,
 		SystemDBPool:       pool,
-		ApplicationVersion: d.Version,
+		ApplicationVersion: cmp.Or(d.Version, WorkflowVersion),
 		ExecutorID:         c.Node.ID,
 		Logger:             d.Logger,
 	})

@@ -72,11 +72,10 @@ Rotate the KEK periodically, or when a node may have been compromised. *As `veho
 
 ```bash
 veho kek rotate --unwrap-key file:./unwrap.key    # new active version; the old one is "retiring"
-veho kek rewrap --unwrap-key file:./unwrap.key    # re-wraps every data key; retires unused versions
 veho kek show
 ```
 
-New secrets use the new KEK at once. The nodes load the KEK versions at start: restart them, one at a time, after a rotation. `rewrap` works in batches (`--batch`, default 500) and can be run again if interrupted.
+New secrets use the new KEK at once, and the nodes pick it up without a restart. Housekeeping then re-wraps the existing data keys in the background, 500 per pass (every 30 s), and retires the old version once no secret uses it (`KEK_REWRAP` audit events). To finish at once instead, run `veho kek rewrap --unwrap-key file:./unwrap.key` (batches of `--batch`, default 500; it can be run again if interrupted).
 
 ## Replacing the unwrap key
 
@@ -98,6 +97,25 @@ Settled jobs are kept 90 days (`housekeeping.jobs_retention`), DBOS's records of
 - **Adding a node**: install, configure (its own `node.id`), start. It takes work at once.
 - **Removing a node**: `systemctl stop veho`, then remove the host. Its unfinished transfers are adopted after its lease (60 s).
 - **Restarting a node** (a new configuration, a new KEK): `systemctl restart veho`, one node at a time; the copies it had in flight are resumed from their last recorded part.
+
+## Upgrading the nodes
+
+Each build carries a **workflow version**, logged at start (`workflow_version`). DBOS gives each node only the work of its own workflow version, so how you upgrade depends on whether it changes (the release notes say so):
+
+- **The same workflow version** (the usual case): replace the nodes one at a time (stop, install, start). Transfers in flight are resumed by the other nodes, then by the new ones. Measured in the lab: no job affected.
+- **A new workflow version**: the old nodes must finish the old work.
+  1. Upgrade some of the nodes, keeping at least one old node in each region you need. An upgraded node hands the old work it was running back to the queue within a minute, and the old nodes take it.
+  2. Point the clients at the upgraded nodes: a job submitted to an old node is old work.
+  3. Wait until no work of the old version is left. As `veho_dbos`:
+
+     ```sql
+     select application_version, status, count(*) from dbos.workflow_status
+     where status in ('PENDING', 'ENQUEUED') group by 1, 2;
+     ```
+
+  4. Upgrade the remaining nodes.
+
+  Do not stop the last old node while old work is left: nothing would run it until a node of that version starts again.
 
 ## The state store
 

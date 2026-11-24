@@ -299,3 +299,20 @@ func TestRetryBounds(t *testing.T) {
 		}
 	}
 }
+
+// EXT-5, AC-20: DBOS recovers and dequeues only the workflows of its own
+// application version, so a node runs WorkflowVersion, not its build's
+// version: a new build of compatible workflows must pick up the old build's
+// work.
+func TestWorkflowVersion(t *testing.T) {
+	f := setup(t)
+	e, err := New(context.Background(), Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
+		Audit: &audit.Recorder{}, Secrets: f.secrets})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = e.Shutdown(time.Second) }()
+	if v := e.dbos.GetApplicationVersion(); v != WorkflowVersion {
+		t.Errorf("application version %q, want WorkflowVersion %q", v, WorkflowVersion)
+	}
+}

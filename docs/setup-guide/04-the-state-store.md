@@ -36,6 +36,8 @@ tcp_keepalives_count: 6
 
 With `pg_hba` lines that accept the veho roles over `hostssl` from the nodes' networks, with `scram-sha-256`, and nothing over plain TCP.
 
+**Let Patroni rewind a former primary.** After a failover, the old primary may hold WAL the others never received; Patroni repairs it with `pg_rewind` (`use_pg_rewind: true`), but only if it can read the member's own timeline, which it does over a replication connection to `localhost`. With `sslmode=verify-full`, each member's certificate must therefore also name `localhost` and `127.0.0.1`, and `pg_hba` must accept the replication user from `127.0.0.1/32`. Without both, the former primary stays a replica that never streams, and the cluster runs with one standby fewer, or none. The lab found this under its chaos runs.
+
 etcd: one member per region, client and peer URLs on the region's address; heartbeat 100 ms and election timeout 1000 ms are right for inter-region round trips of up to about 50 ms. Give the member in the region you least want as primary a lower `failover_priority` tag.
 
 ## The database and its roles
@@ -92,6 +94,9 @@ veho migrate
 | Synchronous commit | `synchronous_commit` is `off` or `local` |
 | A quorum over other regions | `synchronous_standby_names` is empty, or not `ANY n (...)` with `n` of 1 or more |
 | The schema version | The database is behind or ahead of the migrations in the binary |
+| The clock | The node's clock differs from the database's by more than `checks.max_clock_offset` (1 s) |
+
+Each check but the schema version can be relaxed to a warning in `veho.yaml` (`checks`, chapter *Configuration reference*), for a PostgreSQL that others manage and that you cannot change. A node never starts on a schema that is not its own.
 
 ## Topology: the regions
 

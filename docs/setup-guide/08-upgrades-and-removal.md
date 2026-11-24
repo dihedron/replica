@@ -11,7 +11,7 @@ Until then, to move to a new version:
 3. Recreate the schema as `veho_migrator`: `drop schema veho cascade; create schema veho authorization veho_migrator;`, then `veho migrate`, `veho kek init` and the bootstrap steps of chapter *A first replication*. Tenants, endpoints, policies and secrets must be created again.
 4. Install the new version on every node and start them.
 
-From the first deployed release on, migrations are additive within a release series, and nodes of the old and the new version can run side by side during an upgrade. Rolling upgrades with transfers in flight are the subject of an acceptance scenario still to be run; until it passes, upgrade with the jobs settled.
+From the first deployed release on, migrations are additive within a release series, and nodes of the old and the new version run side by side during an upgrade, with transfers in flight: the *Operator's Guide* gives the procedure, which depends on whether the release changes the workflow version.
 
 ## Adding and removing nodes
 

@@ -95,16 +95,17 @@ Two things must see every tenant: the reconciler (expired leases, `veho-job-life
 
 ## 7. Start-up checks
 
-At start, on the worker pool (`veho-architecture.md` §7.3, backlog 30); each with a severity from the configuration (`refuse` by default, `warn` allowed):
+At start, on the worker pool (`veho-architecture.md` §7.3, backlog 30); each with a severity from `veho.yaml`'s `checks` block, `refuse` (the default: the node does not start) or `warn` (it logs the failure and starts), for a tier-2 PostgreSQL managed by others (decided 2026-11-22, for review):
 
-| ID | Check | Fails when |
-| :--- | :--- | :--- |
-| STO-C1 | Direct connection to a primary | `pg_is_in_recovery()` is true, or the session is not on a real backend (`SHOW server_version` answered by a pooler: the backend PID is 0 or `pg_backend_pid()` changes between two calls) |
-| STO-C2 | Synchronous commit | `synchronous_commit` is `off` or `local` |
-| STO-C3 | Quorum over other regions | `synchronous_standby_names` is empty or not of the form `ANY n (...)` with `n >= 1` |
-| STO-C4 | Schema version | §5 |
+| ID | Check | Key | Fails when |
+| :--- | :--- | :--- | :--- |
+| STO-C1 | Direct connection to a primary | `checks.primary` | `pg_is_in_recovery()` is true, or the session is not on a real backend (`SHOW server_version` answered by a pooler: the backend PID is 0 or `pg_backend_pid()` changes between two calls) |
+| STO-C2 | Synchronous commit | `checks.synchronous_commit` | `synchronous_commit` is `off` or `local` |
+| STO-C3 | Quorum over other regions | `checks.quorum` | `synchronous_standby_names` is empty or not of the form `ANY n (...)` with `n >= 1` |
+| STO-C4 | Schema version | none: always refuses | §5; a node on another schema could corrupt the data |
+| STO-C5 | Clock | `checks.clock` | the node's clock differs from the database's by more than `checks.max_clock_offset` [1s], measured as `now()` against the midpoint of the query's round trip. Leases are compared on the database's clock, but logs, audit events, token expiry and certificate validity use the node's |
 
-The checks of the unwrap key (C3) and of the clock (C6) join this list in their chunks.
+The unwrap key is checked when the node loads its keyring (`veho-secrets.md`): a node that cannot unwrap the active KEK never starts, whatever the severities.
 
 ## 8. Requirements
 

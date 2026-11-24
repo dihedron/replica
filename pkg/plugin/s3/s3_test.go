@@ -16,11 +16,17 @@ import (
 // fake answers every request with status and an S3 error of code.
 func fake(t *testing.T, status int, code string) plugin.Client {
 	t.Helper()
+	return fakeMsg(t, status, code, "m")
+}
+
+// fakeMsg is fake with the error's message.
+func fakeMsg(t *testing.T, status int, code, msg string) plugin.Client {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/xml")
 		w.WriteHeader(status)
 		if r.Method != http.MethodHead {
-			_, _ = fmt.Fprintf(w, `<?xml version="1.0"?><Error><Code>%s</Code><Message>m</Message></Error>`, code)
+			_, _ = fmt.Fprintf(w, `<?xml version="1.0"?><Error><Code>%s</Code><Message>%s</Message></Error>`, code, msg)
 		}
 	}))
 	t.Cleanup(srv.Close)
@@ -96,6 +102,28 @@ func TestParseRef(t *testing.T) {
 	for _, bad := range []string{"s3://bucket", "s3://bucket/", "file:///x", "s3:///k"} {
 		if _, err := New().ParseRef(bad); err == nil {
 			t.Errorf("ParseRef(%q) accepted", bad)
+		}
+	}
+}
+
+// A commit the service refuses because the upload does not hold the parts
+// given (another execution began the upload again) begins the upload again
+// instead of failing the transfer (found by the soak, AC-17).
+func TestCommitRefused(t *testing.T) {
+	ctx := context.Background()
+	parts := []plugin.PartResult{{PartNo: 0, Size: 5 << 20, ETag: `"e"`}}
+	for _, c := range []struct {
+		code, msg string
+		class     plugin.Class
+	}{
+		{"InvalidPart", "One or more of the specified parts could not be found", plugin.ResumeInvalid},
+		{"InvalidPartOrder", "m", plugin.ResumeInvalid},
+		{"InvalidRequest", "Bad request: No data was uploaded", plugin.ResumeInvalid},
+		{"InvalidRequest", "Bad request: something else", plugin.Permanent},
+	} {
+		up := &upload{c: fakeMsg(t, 400, c.code, c.msg).(*client), t: token{Bucket: "b", Key: "k", UploadID: "u"}}
+		if _, err := up.Commit(ctx, parts); plugin.ClassOf(err) != c.class {
+			t.Errorf("%s %q: %v, want %v", c.code, c.msg, err, c.class)
 		}
 	}
 }
