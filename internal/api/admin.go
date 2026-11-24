@@ -163,6 +163,9 @@ func (ss secretsService) PutSecret(ctx context.Context, r *vehov1.PutSecretReque
 	if err != nil {
 		return nil, err
 	}
+	if reserved(r.GetName()) {
+		return nil, fail(pInvalid, "secret names starting with "+engine.SecretPrefix+" are veho's own")
+	}
 	m, err := ss.s.secrets.Put(ctx, t, r.GetName(), r.GetValue())
 	if err != nil {
 		return nil, err
@@ -175,6 +178,9 @@ func (ss secretsService) GetSecret(ctx context.Context, r *vehov1.SecretName) (*
 	t, err := tenant(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if reserved(r.GetName()) {
+		return nil, engine.ErrNotFound
 	}
 	m, err := ss.s.secrets.Show(ctx, t, r.GetName())
 	if err != nil {
@@ -195,6 +201,9 @@ func (ss secretsService) ListSecrets(ctx context.Context, _ *vehov1.ListSecretsR
 	}
 	out := &vehov1.ListSecretsResponse{}
 	for _, m := range all {
+		if reserved(m.Name) {
+			continue
+		}
 		out.Secrets = append(out.Secrets, toSecret(m))
 	}
 	return out, nil
@@ -205,6 +214,9 @@ func (ss secretsService) DeleteSecret(ctx context.Context, r *vehov1.SecretName)
 	t, err := tenant(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if reserved(r.GetName()) {
+		return nil, engine.ErrNotFound
 	}
 	return &vehov1.Empty{}, ss.s.secrets.Delete(ctx, t, r.GetName())
 }

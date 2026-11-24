@@ -122,6 +122,7 @@ func setupWith(t *testing.T, o Options, ids func(f *fixture) *Identities) *fixtu
 node: {id: test-api-` + uuid.New().String()[:8] + `, region: lab-a}
 secrets: {unwrap_key: "file:/unused"}
 engine: {part_size_mib: 5}
+notifications: {enabled: true}
 api: {tls: {cert_file: /unused, key_file: /unused}}
 `))
 	if err != nil {

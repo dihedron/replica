@@ -539,3 +539,170 @@ AS $$ UPDATE veho.tenants SET settings = p_settings WHERE id = veho.current_tena
 
 REVOKE ALL ON FUNCTION veho.list_tenants(), veho.update_tenant(uuid, text, jsonb), veho.set_tenant_settings(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.list_tenants(), veho.update_tenant(uuid, text, jsonb), veho.set_tenant_settings(jsonb) TO veho_api;
+
+-- ---------------------------------------------------------------------------
+-- Webhooks (.specs/veho-webhooks.md): a tenant's HTTPS URLs, and the outbox
+-- of the events they receive. An event is written by a trigger, in the
+-- transaction that moves a job to a terminal state (INV-1), whichever code
+-- path does it. The secret of a webhook is in the secret store, under
+-- webhook.<id> (and webhook.<id>.prev during a rotation): never here.
+
+CREATE TABLE veho.webhooks (
+	id                   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id            uuid NOT NULL REFERENCES veho.tenants (id),
+	name                 text NOT NULL CHECK (name ~ '^[a-z0-9][a-z0-9._-]{0,62}$'),
+	url                  text NOT NULL CHECK (url ~ '^https://' AND length(url) <= 2048),
+	events               text[] NOT NULL CHECK (events <> '{}' AND events <@ ARRAY['job.succeeded', 'job.failed', 'job.cancelled']),
+	enabled              boolean NOT NULL DEFAULT true,
+	disabled_reason      text,
+	-- while set and in the future, deliveries are signed with the previous
+	-- secret too
+	prev_secret_until    timestamptz,
+	consecutive_failures int NOT NULL DEFAULT 0,
+	created_at           timestamptz NOT NULL DEFAULT now(),
+	last_success_at      timestamptz,
+	last_failure_at      timestamptz,
+	UNIQUE (tenant_id, name),
+	UNIQUE (tenant_id, id)
+);
+
+CREATE TABLE veho.webhook_outbox (
+	id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id       uuid NOT NULL,
+	webhook_id      uuid NOT NULL,
+	event_type      text NOT NULL,
+	payload         jsonb NOT NULL,
+	created_at      timestamptz NOT NULL DEFAULT now(),
+	state           text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'delivered', 'abandoned')),
+	attempts        int NOT NULL DEFAULT 0,
+	next_attempt_at timestamptz NOT NULL DEFAULT now(),
+	finished_at     timestamptz,
+	last_class      text,
+	FOREIGN KEY (tenant_id, webhook_id) REFERENCES veho.webhooks (tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX webhook_outbox_pending ON veho.webhook_outbox (webhook_id, created_at) WHERE state = 'pending';
+CREATE INDEX webhook_outbox_finished ON veho.webhook_outbox (finished_at) WHERE state <> 'pending';
+
+ALTER TABLE veho.webhooks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.webhook_outbox ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.webhooks
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.webhook_outbox
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+GRANT SELECT, INSERT, UPDATE, DELETE ON veho.webhooks TO veho_api;
+GRANT SELECT ON veho.webhook_outbox TO veho_api;
+GRANT SELECT ON veho.webhooks TO veho_worker;
+
+-- The event of a job that reaches a terminal state. A job that is reopened
+-- (retry) and settles again is announced again, with its own event id.
+CREATE FUNCTION veho.job_settled_event() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+DECLARE
+	ev text := CASE NEW.state WHEN 'SUCCEEDED' THEN 'job.succeeded' WHEN 'FAILED' THEN 'job.failed' ELSE 'job.cancelled' END;
+	done int;
+	failed int;
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM veho.webhooks w WHERE w.tenant_id = NEW.tenant_id AND w.enabled AND ev = ANY (w.events)) THEN
+		RETURN NEW;
+	END IF;
+	SELECT count(*) FILTER (WHERE t.state = 'SUCCEEDED'), count(*) FILTER (WHERE t.state = 'FAILED')
+	  INTO done, failed FROM veho.transfers t WHERE t.job_id = NEW.id;
+	INSERT INTO veho.webhook_outbox (tenant_id, webhook_id, event_type, payload)
+	SELECT w.tenant_id, w.id, ev, jsonb_build_object(
+		'tenant_id', NEW.tenant_id,
+		'job', jsonb_build_object('id', NEW.id, 'state', NEW.state,
+			'settled_at', coalesce(NEW.settled_at, NEW.finished_at, now()),
+			'destinations', jsonb_build_object('succeeded', done, 'failed', failed)))
+	FROM veho.webhooks w WHERE w.tenant_id = NEW.tenant_id AND w.enabled AND ev = ANY (w.events);
+	RETURN NEW;
+END $$;
+CREATE TRIGGER jobs_settled_event AFTER UPDATE OF state ON veho.jobs
+	FOR EACH ROW WHEN (NEW.state IN ('SUCCEEDED', 'FAILED', 'CANCELLED') AND OLD.state IS DISTINCT FROM NEW.state)
+	EXECUTE FUNCTION veho.job_settled_event();
+
+-- What the dispatcher (veho_worker) does across tenants: the head of each
+-- webhook's queue when it is due, the outcome of a delivery, and the
+-- retention. Per-webhook queues: a stuck webhook delays only itself (W-6).
+CREATE FUNCTION veho.due_webhook_events(p_limit int)
+RETURNS TABLE (id uuid, tenant_id uuid, webhook_id uuid, event_type text, payload jsonb, created_at timestamptz, attempts int,
+               url text, prev_secret_until timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT h.id, h.tenant_id, h.webhook_id, h.event_type, h.payload, h.created_at, h.attempts, w.url, w.prev_secret_until
+	  FROM (SELECT DISTINCT ON (o.webhook_id) o.* FROM veho.webhook_outbox o WHERE o.state = 'pending'
+	         ORDER BY o.webhook_id, o.created_at) h
+	  JOIN veho.webhooks w ON w.id = h.webhook_id AND w.enabled
+	 WHERE h.next_attempt_at <= now()
+	 ORDER BY h.next_attempt_at
+	 LIMIT p_limit
+$$;
+
+-- p_ok: delivered; otherwise the event waits p_wait, or is abandoned after
+-- p_max attempts, and a webhook that fails p_disable times in a row is
+-- disabled. Returns the event's new state and whether the webhook was
+-- disabled by this call.
+CREATE FUNCTION veho.webhook_delivered(p_id uuid, p_ok boolean, p_class text, p_wait interval, p_max int, p_disable int)
+RETURNS TABLE (state text, disabled boolean)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+DECLARE
+	wh uuid;
+	n int;
+	st text;
+	dis boolean := false;
+BEGIN
+	IF p_ok THEN
+		UPDATE veho.webhook_outbox o SET state = 'delivered', attempts = o.attempts + 1, finished_at = now(), last_class = p_class
+		 WHERE o.id = p_id AND o.state = 'pending' RETURNING o.webhook_id INTO wh;
+		UPDATE veho.webhooks w SET consecutive_failures = 0, last_success_at = now() WHERE w.id = wh;
+		RETURN QUERY SELECT 'delivered'::text, false;
+		RETURN;
+	END IF;
+	UPDATE veho.webhook_outbox o
+	   SET attempts = o.attempts + 1, last_class = p_class,
+	       state = CASE WHEN o.attempts + 1 >= p_max THEN 'abandoned' ELSE 'pending' END,
+	       finished_at = CASE WHEN o.attempts + 1 >= p_max THEN now() END,
+	       next_attempt_at = now() + p_wait
+	 WHERE o.id = p_id AND o.state = 'pending' RETURNING o.webhook_id, o.state INTO wh, st;
+	UPDATE veho.webhooks w SET consecutive_failures = w.consecutive_failures + 1, last_failure_at = now() WHERE w.id = wh
+	RETURNING w.consecutive_failures INTO n;
+	IF n >= p_disable THEN
+		UPDATE veho.webhooks w SET enabled = false, disabled_reason = n || ' consecutive failed deliveries'
+		 WHERE w.id = wh AND w.enabled;
+		dis := FOUND;
+	END IF;
+	RETURN QUERY SELECT coalesce(st, 'pending'), dis;
+END $$;
+
+-- Retention (§3.4): delivered and abandoned events after their own times,
+-- anything older than the abandoned time, and the oldest pending events of
+-- a webhook beyond p_cap, abandoned. Returns the events abandoned for the cap.
+CREATE FUNCTION veho.purge_webhook_outbox(p_delivered interval, p_abandoned interval, p_cap int) RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+DECLARE capped int;
+BEGIN
+	DELETE FROM veho.webhook_outbox o WHERE
+		(o.state = 'delivered' AND o.finished_at < now() - p_delivered)
+		OR (o.state = 'abandoned' AND o.finished_at < now() - p_abandoned)
+		OR (o.state = 'pending' AND o.created_at < now() - p_abandoned);
+	WITH ranked AS (
+		SELECT o.id, row_number() OVER (PARTITION BY o.webhook_id ORDER BY o.created_at DESC) AS r
+		  FROM veho.webhook_outbox o WHERE o.state = 'pending')
+	UPDATE veho.webhook_outbox o SET state = 'abandoned', finished_at = now(), last_class = 'capped'
+	  FROM ranked WHERE ranked.id = o.id AND ranked.r > p_cap;
+	GET DIAGNOSTICS capped = ROW_COUNT;
+	RETURN capped;
+END $$;
+
+-- Pending events across tenants, for the metric (no tenant is named).
+CREATE FUNCTION veho.webhook_outbox_pending() RETURNS bigint
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$ SELECT count(*) FROM veho.webhook_outbox WHERE state = 'pending' $$;
+
+REVOKE ALL ON FUNCTION veho.job_settled_event(), veho.due_webhook_events(int),
+	veho.webhook_delivered(uuid, boolean, text, interval, int, int), veho.purge_webhook_outbox(interval, interval, int),
+	veho.webhook_outbox_pending() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.due_webhook_events(int), veho.webhook_delivered(uuid, boolean, text, interval, int, int),
+	veho.purge_webhook_outbox(interval, interval, int), veho.webhook_outbox_pending() TO veho_worker;
