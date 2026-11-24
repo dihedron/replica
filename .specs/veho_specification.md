@@ -67,7 +67,7 @@ accepted it (or an entire region) fails.
 - Hosting or managing the storage systems themselves.
 - Client-side upload of the data into veho (data must already be in a
   reachable source).
-- Webhooks/event streams (polling only in v1; see 07).
+- Event streams (polling and long polling are primary; webhooks for job completion are optional and off by default, `veho-webhooks.md`).
 
 ## 4. Glossary
 
@@ -227,7 +227,7 @@ Each invariant MUST have at least one automated test (`veho-acceptance-matrix.md
 - **OI-6 Glance.** *Decided* (2026-11-21): S3 first (Garage in the lab); the Glance driver follows once the OpenStack release and upload mechanism (plain PUT, staged upload plus import, multi-store) are known; they decide whether it can resume.
 - **OI-7 Policy richness.** *Decided* (2026-11-21): named, versioned policies are in v1, with per-policy grants (who may trigger which policy; SEC-21). Still open: other policy options (encryption, storage class,
   metadata/tag propagation, retention)?
-- **OI-8 Notifications.** *Decided* (2026-11-21): polling stays the primary mechanism, because only clients reach the servers and never the reverse (no inbound path to clients, no outbound calls to tenant-supplied URLs). To avoid wasted polls, `GET /v1/jobs/{id}` supports long polling (`?wait=<seconds>` with `If-None-Match`): it answers when the job changes or the wait ends, still a client-initiated request. Webhooks stay a later option, off by default, calling only registered endpoints under the SSRF rules (SEC-12, SEC-13), signed and retried from an outbox (backlog 11).
+- **OI-8 Notifications.** *Decided* (2026-11-21): polling stays the primary mechanism, because only clients reach the servers and never the reverse (no inbound path to clients, no outbound calls to tenant-supplied URLs). To avoid wasted polls, `GET /v1/jobs/{id}` supports long polling (`?wait=<seconds>` with `If-None-Match`): it answers when the job changes or the wait ends, still a client-initiated request. Webhooks are an optional addition, off by default, calling only URLs a tenant registered, under the SSRF rules (SEC-12, SEC-13), signed and retried from an outbox: implemented 2026-11-24 (backlog 11, `veho-webhooks.md`).
 - **OI-9 Delete/update propagation.** Is replication create-only (new object
   versions) or should overwrites/deletes of X be supported?
 - **OI-10 Out-of-process plugins.** *Decided* (2026-11-21): plugins use `hashicorp/go-plugin` (gRPC) and are incorporated in the design now (`veho-plugins.md` §6). The core supports both an out-of-process and an in-process loader. Still to decide, later: whether the built-in drivers ship as separate plugin binaries or compiled in (backlog 12).

@@ -66,6 +66,7 @@ secrets: {unwrap_key: "file:`+key+`"}
 audit: {sink: stderr}
 engine: {part_size_mib: 5}
 metrics: {listen: "off"}
+notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}
 api: {listen: "127.0.0.1:18445", tls: {cert_file: "`+crt+`", key_file: "`+keyFile+`"}}
 `), 0o600); err != nil {
 		t.Fatal(err)
@@ -166,6 +167,45 @@ func TestCLI(t *testing.T) {
 			if out := c.must(sec); strings.Contains(out, "canary") || field(t, out, "name") != "s-"+s {
 				t.Errorf("secret set: %s", out)
 			}
+			// webhooks: the secret is shown once; a ping to a receiver whose
+			// certificate veho does not trust fails, and exits 1
+			hook := &WebhookCreateCommand{apiOptions: c.opts("json"), URL: "https://localhost:1/veho", Events: []string{"job.succeeded", "job.failed"}}
+			hook.Args.Name = "hook-" + s
+			out := c.must(hook)
+			var created struct {
+				Secret  string
+				Webhook map[string]any
+			}
+			if err := json.Unmarshal([]byte(out), &created); err != nil || !strings.HasPrefix(created.Secret, "whsec_") || created.Webhook["name"] != "hook-"+s {
+				t.Errorf("webhook create: %v %s", err, out)
+			}
+			hl := &WebhookListCommand{apiOptions: c.opts("text")}
+			if out := c.must(hl); !strings.Contains(out, "hook-"+s) || strings.Contains(out, created.Secret) {
+				t.Errorf("webhook list: %s", out)
+			}
+			hu := &WebhookUpdateCommand{apiOptions: c.opts("json"), Events: []string{"job.cancelled"}, Disable: true}
+			hu.Args.Name = "hook-" + s
+			if out := c.must(hu); !strings.Contains(out, "job.cancelled") || strings.Contains(out, `"enabled": true`) {
+				t.Errorf("webhook update: %s", out)
+			}
+			hu = &WebhookUpdateCommand{apiOptions: c.opts("json"), Enable: true, Disable: true}
+			hu.Args.Name = "hook-" + s
+			if err := c.run(hu); err == nil {
+				t.Error("--enable with --disable was accepted")
+			}
+			hr := &WebhookRotateCommand{apiOptions: c.opts("json")}
+			hr.Args.Name = "hook-" + s
+			if out := c.must(hr); field(t, out, "secret") == created.Secret || !strings.HasPrefix(field(t, out, "secret"), "whsec_") {
+				t.Errorf("webhook rotate: %s", out)
+			}
+			ht := &WebhookTestCommand{apiOptions: c.opts("json")}
+			ht.Args.Name = "hook-" + s
+			if err := c.run(ht); exitCode(err) != 1 {
+				t.Errorf("webhook test to a closed port: %v, exit %d", err, exitCode(err))
+			}
+			hd := &WebhookDeleteCommand{apiOptions: c.opts("json")}
+			hd.Args.Name = "hook-" + s
+			c.must(hd)
 			pol := write("geo.json", `{"destinations": [{"endpoint": "d1-`+s+`", "path": "ref/obj"}, {"endpoint": "d2-`+s+`", "path": "ref/obj"}]}`)
 			pc := &PolicyCreateCommand{apiOptions: c.opts("json"), File: pol}
 			pc.Args.Name = "geo-" + s

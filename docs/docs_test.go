@@ -132,7 +132,7 @@ func TestMonitoring(t *testing.T) {
 			t.Errorf("%s: the metric %s is not documented", monitoring, m)
 		}
 	}
-	actions := distinct(`"((?:JOB|POLICY|ENDPOINT|SECRET|TENANT|APIKEY|ENTITLEMENT|KEK|SYSTEM)_[A-Z_]+)"`, code)
+	actions := distinct(`"((?:JOB|POLICY|ENDPOINT|SECRET|TENANT|APIKEY|ENTITLEMENT|KEK|WEBHOOK|SYSTEM)_[A-Z_]+)"`, code)
 	if len(actions) < 20 {
 		t.Fatalf("only %d audit actions found: the pattern is broken", len(actions))
 	}
@@ -146,7 +146,8 @@ func TestMonitoring(t *testing.T) {
 // Every top-level command of veho is in one of the guides.
 func TestCommands(t *testing.T) {
 	guides := read(t, "setup-guide/07-a-first-replication.md") + read(t, "operators-guide/03-routine-procedures.md") +
-		read(t, "setup-guide/04-the-state-store.md") + read(t, "setup-guide/05-the-unwrap-key.md") + read(t, "setup-guide/06-configuring-and-starting-veho.md")
+		read(t, "setup-guide/04-the-state-store.md") + read(t, "setup-guide/05-the-unwrap-key.md") + read(t, "setup-guide/06-configuring-and-starting-veho.md") +
+		read(t, "operators-guide/07-webhooks.md")
 	commands := distinct("`command:\"([a-z]+)\"", read(t, "../cmd/veho/command.go"))
 	if len(commands) < 10 {
 		t.Fatalf("only %d commands found: the pattern is broken", len(commands))

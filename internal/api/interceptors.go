@@ -48,6 +48,14 @@ var roles = map[string]string{
 	"/veho.v1.SecretService/ListSecrets":  RoleAdmin,
 	"/veho.v1.SecretService/DeleteSecret": RoleAdmin,
 
+	"/veho.v1.WebhookService/CreateWebhook":       RoleAdmin,
+	"/veho.v1.WebhookService/GetWebhook":          RoleAdmin,
+	"/veho.v1.WebhookService/ListWebhooks":        RoleAdmin,
+	"/veho.v1.WebhookService/UpdateWebhook":       RoleAdmin,
+	"/veho.v1.WebhookService/RotateWebhookSecret": RoleAdmin,
+	"/veho.v1.WebhookService/DeleteWebhook":       RoleAdmin,
+	"/veho.v1.WebhookService/TestWebhook":         RoleAdmin,
+
 	"/veho.v1.TenantService/CreateTenant": RolePlatformAdmin,
 	"/veho.v1.TenantService/GetTenant":    RolePlatformAdmin,
 	"/veho.v1.TenantService/ListTenants":  RolePlatformAdmin,

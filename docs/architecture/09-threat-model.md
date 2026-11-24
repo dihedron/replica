@@ -28,6 +28,8 @@ The threats veho is designed against, how it meets them in this version, and wha
 | A poisoned release or dependency | Releases signed (checksums, `.deb`, `.rpm`); dependencies checked with govulncheck; secret scans in CI |
 | The configuration redirects a node | Configuration files root-owned; their SHA-256 logged at start; DSNs only from the environment file |
 | Theft of the key that protects the secrets | Unwrap key outside the database, in a systemd credential; KEK rotation and unwrap-key replacement without downtime; no core dumps |
+| A tenant aims a webhook at an internal service (SSRF), or uses it to flood a victim | `https` only, no redirects; the dialled address is checked after resolution against loopback, private, link-local, multicast and metadata ranges; at most 10 webhooks per tenant, one request in flight per webhook, backoff, a cap on pending events; the tenant sees only a class of failure |
+| A webhook receiver is fooled by a forged event, or a secret leaks | HMAC-SHA256 with a per-webhook secret and the timestamp inside the signature; event IDs for replay detection; secrets in the secret store, shown once, rotated with an overlap, and unreadable through the secrets API |
 | Abuse of the API or its streams | Size limits, strict decoding, pagination, rate limits, a cap on open streams, no gRPC reflection, keepalive enforcement |
 
 :::

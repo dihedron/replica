@@ -15,6 +15,7 @@ type Command struct {
 	Policy      PolicyCommand      `command:"policy" description:"Manage named policies and their grants"`
 	Endpoint    EndpointCommand    `command:"endpoint" description:"Manage the tenant's storage endpoints"`
 	Secret      SecretCommand      `command:"secret" description:"Manage the tenant's secrets (write-only)"`
+	Webhook     WebhookCommand     `command:"webhook" description:"Manage the tenant's webhooks for job completion"`
 	APIKey      APIKeyCommand      `command:"apikey" description:"Manage the tenant's API keys"`
 	Entitlement EntitlementCommand `command:"entitlement" description:"Manage the entitlements of OIDC and SPIFFE identities in the tenant"`
 	Settings    SettingsCommand    `command:"settings" description:"Show and change the tenant's settings"`
