@@ -41,6 +41,7 @@ The threats veho is designed against, how it meets them in this version, and wha
 - A tenant's storage credential is as powerful as the tenant made it.
 - A zombie can finish one part after a takeover: bandwidth spent twice, the object unaffected.
 - A partitioned region cannot accept jobs, by design.
+- The built-in drivers are compiled in: a malicious one would be a full compromise, so only reviewed drivers from this repository are linked; third-party drivers run as process plugins, out of the core's memory.
 - A node holds the unwrapped KEK in memory: a compromised node can read every tenant's secrets. Vault, HSM and Shamir-unseal strategies, which remove or narrow this, are planned.
 - Someone who can write the state store can put back an older, authentic version of a secret.
 - The audit is lightweight: events can be lost on a node crash and are not tamper-evident until the full audit log exists.
