@@ -37,6 +37,16 @@ type Driver struct{}
 // New returns the file driver.
 func New() Driver { return Driver{} }
 
+// Factory builds the driver from its settings; it has none yet, so any key
+// is refused (veho-plugin-distribution.md §4).
+func Factory(settings json.RawMessage) (plugin.Driver, error) {
+	var none struct{}
+	if err := plugin.DecodeSettings(settings, &none); err != nil {
+		return nil, fmt.Errorf("file: %w", err)
+	}
+	return New(), nil
+}
+
 func (Driver) Name() string      { return "file" }
 func (Driver) Schemes() []string { return []string{"file"} }
 

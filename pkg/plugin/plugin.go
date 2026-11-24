@@ -6,8 +6,10 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -117,4 +119,19 @@ type PartResult struct {
 	Size   int64  `json:"size"`
 	ETag   string `json:"etag,omitempty"`
 	SHA256 string `json:"sha256,omitempty"` // hex, of the bytes written; empty when unknown (ListParts)
+}
+
+// DecodeSettings decodes a driver's settings, a JSON object, into v,
+// refusing keys v does not have, so that a misspelled setting is not dropped
+// (veho-plugin-distribution.md §4). Empty settings are {}.
+func DecodeSettings(settings json.RawMessage, v any) error {
+	if len(bytes.TrimSpace(settings)) == 0 {
+		settings = json.RawMessage("{}")
+	}
+	dec := json.NewDecoder(bytes.NewReader(settings))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("settings: %w", err)
+	}
+	return nil
 }

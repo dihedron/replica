@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"sync"
 
 	"github.com/dihedron/veho/pkg/plugin"
@@ -20,9 +23,24 @@ import (
 // chunkSize is the size of the data messages.
 const chunkSize = 1 << 20
 
-// Serve serves d as a process plugin, on the channel go-plugin sets up with
-// the core (PLG-12, PLG-13); it is a plugin binary's main.
-func Serve(d plugin.Driver) {
+// Factory builds a driver from its settings, a JSON object
+// (veho-plugin-distribution.md §4); it refuses settings it does not know.
+type Factory func(settings json.RawMessage) (plugin.Driver, error)
+
+// Serve builds the driver from the settings in SettingsEnv and serves it as
+// a process plugin, on the channel go-plugin sets up with the core. Settings
+// the factory refuses end the process before the handshake.
+func Serve(factory Factory) {
+	settings := os.Getenv(SettingsEnv)
+	if settings == "" {
+		settings = "{}"
+	}
+	d, err := factory(json.RawMessage(settings))
+	if err != nil {
+		// before the handshake: Load reports this line
+		fmt.Fprintf(os.Stderr, "settings refused: %v\n", err)
+		os.Exit(1)
+	}
 	goplugin.Serve(&goplugin.ServeConfig{
 		HandshakeConfig: Handshake,
 		Plugins:         goplugin.PluginSet{pluginName: &grpcPlugin{impl: d}},

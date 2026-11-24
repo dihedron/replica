@@ -20,15 +20,19 @@ A transfer's bytes flow from the source driver, through the core, to the destina
 | Driver | Configuration | Notes |
 | :------- | :-------------------------------------------- | :-------------------------------------------------------- |
 | `file` | `{"root": "/srv/replicas"}` | A directory; uploads are staged and renamed into place |
-| `s3` | `{"endpoint": ..., "region": ..., "bucket": ..., "path_style": ...}` | Any S3-compatible service; multipart uploads; each part's MD5 is sent as `Content-MD5`, so the service verifies it; parts of 5 to 512 MiB, at most 10,000; an optional `storage_class` is sent on every write and read back after every commit, so a backend that ignores it is caught; archive classes refused |
+| `s3` (plugin) | `{"endpoint": ..., "region": ..., "bucket": ..., "path_style": ...}` | Any S3-compatible service; multipart uploads; each part's MD5 is sent as `Content-MD5`, so the service verifies it; parts of 5 to 512 MiB, at most 10,000; an optional `storage_class` is sent on every write and read back after every commit, so a backend that ignores it is caught; archive classes refused |
 
 Both pass the same **conformance suite**, which any driver must pass: idempotent commits, resumes from a token in another process, refusal of a changed source, classification of errors, and the rest of the contract. The S3 driver passes it on Garage, an S3-compatible service, in the lab.
 
 ## Process plugins
 
-A driver can also run as a separate process, loaded with HashiCorp's go-plugin over gRPC: `plugins[]` in `veho.yaml` names its executable and its SHA-256, and veho refuses to start a file whose hash differs. A crashed plugin process is restarted. The process boundary keeps a third-party driver out of the core's memory and away from the other tenants' credentials in use.
+Only the drivers that need nothing but Go's standard library are compiled into veho (`file`, and `http` to come). Every driver with dependencies of its own is a separate binary, `veho-plugin-<name>`, run as a process plugin with HashiCorp's go-plugin over gRPC: `s3` is the first, so the core carries no AWS SDK. A crashed plugin process is restarted. The process boundary keeps a driver out of the core's memory.
 
-Measured in the lab, a transfer through a process plugin ran at 325 MB/s against 380 MB/s compiled in, so performance does not decide between the two; whether the shipped drivers stay compiled in is open.
+- **Which drivers run.** `drivers[]` in `veho.yaml` lists them; a driver not listed is not available.
+- **Trust.** A plugin of the release is installed by its package with a manifest (name, version, SHA-256, protocol) signed with an Ed25519 key of the release, whose public half is compiled into veho. At start veho checks that the files are root's, the signature, the name, and that the version is veho's own, so that an older plugin cannot be put back; go-plugin then checks the SHA-256 before running the file. A third-party plugin is pinned by its path and SHA-256 in `veho.yaml`.
+- **Settings.** Each driver gets its own `settings` from `veho.yaml`, and nothing else of the configuration: a plugin receives them in its environment at start and refuses keys it does not know, which stops the node with the plugin's message.
+
+Measured in the lab, a transfer through a process plugin ran at 325 MB/s against 380 MB/s compiled in: about 15 %, far above what one transfer gets over a WAN link.
 
 ## Credentials
 

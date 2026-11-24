@@ -81,23 +81,13 @@ node_configure() {
 	inner_push "$LAB_STATE_DIR/pki/$name.key" "$name" /etc/veho/tls/server.key 0640
 	inner_push "$(unwrap_key)" "$name" /etc/veho/unwrap.key 0600
 	inner_exec "$name" chgrp veho /etc/veho/tls/server.key
-	inner_write "$name" /etc/veho/veho.yaml 0640 <<YAML
-# veho node $name of the lab (test/lab/lib/nodes.sh)
-node: {id: $name, region: region-$x}
-# parts in memory: at most 512 MiB (.specs/veho-engine.md, memory)
-engine: {worker_concurrency: 4, parts_in_flight: 2, part_memory_mib: 512}
-secrets: {unwrap_key: "systemd-credential:unwrap-key"}
-api:
-  listen: "$(inner_ip "$name"):$NODE_API_PORT"
-  tls: {cert_file: /etc/veho/tls/server.crt, key_file: /etc/veho/tls/server.key}
-YAML
 	{
 		for role in api worker dbos; do
 			upper="$(tr '[:lower:]' '[:upper:]' <<<"$role")"
 			printf 'VEHO_%s_DATABASE_URL=%s\n' "$upper" "$(node_dsn "$role")"
 		done
 	} | inner_write "$name" /etc/veho/veho.env 0640
-	inner_exec "$name" chgrp veho /etc/veho/veho.yaml /etc/veho/veho.env
+	inner_exec "$name" chgrp veho /etc/veho/veho.env
 	inner_exec "$name" mkdir -p /etc/systemd/system/veho.service.d
 	inner_write "$name" /etc/systemd/system/veho.service.d/lab.conf 0644 <<'UNIT'
 # the lab's unwrap key (test/lab/lib/nodes.sh)
@@ -105,6 +95,27 @@ YAML
 LoadCredential=unwrap-key:/etc/veho/unwrap.key
 UNIT
 	inner_exec "$name" systemctl daemon-reload
+}
+
+# node_yaml NAME SHA256: NAME's configuration, with the s3 plugin of the
+# build pinned by its SHA-256 (a snapshot's manifest is not signed by a
+# release key: .specs/veho-plugin-distribution.md §3.2).
+node_yaml() {
+	local name="$1" x="${1:5:1}"
+	inner_write "$name" /etc/veho/veho.yaml 0640 <<YAML
+# veho node $name of the lab (test/lab/lib/nodes.sh)
+node: {id: $name, region: region-$x}
+# parts in memory: at most 512 MiB (.specs/veho-engine.md, memory)
+engine: {worker_concurrency: 4, parts_in_flight: 2, part_memory_mib: 512}
+secrets: {unwrap_key: "systemd-credential:unwrap-key"}
+drivers:
+  - {name: file}
+  - {name: s3, path: /usr/libexec/veho/plugins/veho-plugin-s3, sha256: $2}
+api:
+  listen: "$(inner_ip "$name"):$NODE_API_PORT"
+  tls: {cert_file: /etc/veho/tls/server.crt, key_file: /etc/veho/tls/server.key}
+YAML
+	inner_exec "$name" chgrp veho /etc/veho/veho.yaml
 }
 
 # nodes_down removes the nodes.
@@ -125,7 +136,7 @@ nodes_down() {
 nodes_deploy() {
 	section "Deploy"
 	[[ "$(env_get '.nodes // ""')" == "$(node_names)" ]] || die "no nodes: run lab.sh nodes up"
-	local bin="$LAB_STATE_DIR/bin" name x wf="" binary targets=()
+	local bin="$LAB_STATE_DIR/bin" name x wf="" binary s3sum targets=()
 	while (($#)); do
 		case "$1" in
 		--workflow-version) wf="${2:?--workflow-version: a version}" && shift 2 ;;
@@ -136,6 +147,8 @@ nodes_deploy() {
 	mkdir -p "$bin"
 	make -C "$REPO_DIR" compile >"$LAB_STATE_DIR/build.log" 2>&1 || die "make compile failed: see $LAB_STATE_DIR/build.log"
 	cp "$REPO_DIR/dist/veho_linux_amd64_v1/veho" "$bin/veho"
+	cp "$REPO_DIR/dist/veho-plugin-s3_linux_amd64_v1/veho-plugin-s3" "$bin/veho-plugin-s3"
+	s3sum="$(sha256sum "$bin/veho-plugin-s3" | cut -d' ' -f1)"
 	binary="$bin/veho"
 	if [[ -n "$wf" ]]; then
 		# AC-20: a build whose workflows DBOS takes for another version
@@ -150,6 +163,9 @@ nodes_deploy() {
 	for name in "${targets[@]}"; do
 		inner_exec "$name" systemctl stop veho 2>/dev/null || true
 		inner_push "$binary" "$name" /usr/bin/veho 0755
+		inner_exec "$name" install -d -o root -g root -m 0755 /usr/libexec/veho/plugins
+		inner_push "$bin/veho-plugin-s3" "$name" /usr/libexec/veho/plugins/veho-plugin-s3 0755
+		node_yaml "$name" "$s3sum"
 		inner_push "$REPO_DIR/packaging/veho.service" "$name" /usr/lib/systemd/system/veho.service 0644
 		node_unblock "$name"
 		inner_exec "$name" systemctl daemon-reload

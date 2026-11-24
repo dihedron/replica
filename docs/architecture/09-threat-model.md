@@ -24,7 +24,7 @@ The threats veho is designed against, how it meets them in this version, and wha
 | A poison job crashes every executor | Adoptions counted per transfer; failed after 20 |
 | Someone with database write access alters an accepted job | Jobs' identity, source and policy, and transfers' destinations, immutable by triggers; the application roles cannot alter them |
 | A user denies an action | Audit events for every change, forwarded to the SIEM; gaps visible by sequence numbers (not tamper-evident: planned) |
-| A malicious or compromised plugin | Process plugins pinned by SHA-256, out of the core's memory; only reviewed drivers compiled in |
+| A malicious or compromised plugin | Plugins out of the core's memory, from root-owned files with a manifest signed by the release, of veho's own version (no downgrade), checked again by SHA-256 before the start; third-party plugins pinned by SHA-256; only drivers listed in the configuration run; each gets its own settings only; only standard-library drivers compiled in |
 | A poisoned release or dependency | Releases signed (checksums, `.deb`, `.rpm`); dependencies checked with govulncheck; secret scans in CI |
 | The configuration redirects a node | Configuration files root-owned; their SHA-256 logged at start; DSNs only from the environment file |
 | Theft of the key that protects the secrets | Unwrap key outside the database, in a systemd credential; KEK rotation and unwrap-key replacement without downtime; no core dumps |
@@ -41,7 +41,8 @@ The threats veho is designed against, how it meets them in this version, and wha
 - A tenant's storage credential is as powerful as the tenant made it.
 - A zombie can finish one part after a takeover: bandwidth spent twice, the object unaffected.
 - A partitioned region cannot accept jobs, by design.
-- The built-in drivers are compiled in: a malicious one would be a full compromise, so only reviewed drivers from this repository are linked; third-party drivers run as process plugins, out of the core's memory.
+- The built-in drivers share the core's memory: a malicious one would be a full compromise, so only drivers from this repository that use Go's standard library alone are linked. A plugin runs as the same user as veho until its confinement comes with the packaging, so a malicious one reads what that user reads.
+- A plugin is as trustworthy as the custody of the plugin-signing key, as releases are of the packaging key.
 - A node holds the unwrapped KEK in memory: a compromised node can read every tenant's secrets. Vault, HSM and Shamir-unseal strategies, which remove or narrow this, are planned.
 - Someone who can write the state store can put back an older, authentic version of a secret.
 - The audit is lightweight: events can be lost on a node crash and are not tamper-evident until the full audit log exists.

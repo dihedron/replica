@@ -41,7 +41,7 @@ builds:
       - static_build
     flags:
       - -trimpath
-    ldflags:
+    ldflags: &ldflags
       - -s -w
       - -X '{{.Env._GO_MK_VARS_METADATA_PACKAGE}}.Name={{.Env._GO_MK_VARS_NAME}}'
       - -X '{{.Env._GO_MK_VARS_METADATA_PACKAGE}}.Description={{.Env._GO_MK_VARS_DESCRIPTION}}'
@@ -64,8 +64,39 @@ builds:
       - -X '{{.Env._GO_MK_VARS_METADATA_PACKAGE}}.GoReleaserVersion={{.Env._GORELEASER_VERSION}}'
     mod_timestamp: "{{ .CommitTimestamp }}"
 
+  # the drivers with third-party dependencies are plugins, each a binary and a
+  # package of its own, with a signed manifest (.specs/veho-plugin-distribution.md);
+  # one amd64 level, so that one manifest matches the one packaged binary
+  - id: veho-plugin-s3
+    binary: veho-plugin-s3
+    main: ./cmd/veho-plugin-s3
+    goos: [linux]
+    goarch: [amd64, arm64]
+    goamd64: [v1]
+    tags: [osusergo, netgo, static_build]
+    flags: [-trimpath]
+    ldflags: *ldflags
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      post:
+        - cmd: go run ./tools/plugin-manifest sign -name s3 -version {{ .Version }} -out build/plugins/{{ .Os }}_{{ .Arch }} {{ if .IsSnapshot }}-allow-unsigned{{ end }} {{ .Path }}
+          output: true
+
 archives:
+  - id: veho-plugin-s3
+    ids: [veho-plugin-s3]
+    formats: [tar.gz]
+    name_template: >-
+      veho-plugin-s3_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    files:
+      - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-s3.manifest*"
+        strip_parent: true
+
   - id: veho
+    ids: [veho]
     formats:
       - tar.gz
     name_template: >-
@@ -151,6 +182,41 @@ nfpms:
           mode: 0644
     scripts:
       postinstall: ./packaging/postinstall.sh
+
+  - id: veho-plugin-s3
+    package_name: veho-plugin-s3
+    ids: [veho-plugin-s3]
+    description: |
+      The S3 storage driver of veho, as a process plugin: veho starts it when
+      its configuration lists the s3 driver, after checking its signed
+      manifest. Any S3-compatible service.
+    homepage: "https://github.com/dihedron/veho"
+    maintainer: "Andrea Funtò <dihedron.dev@gmail.com>"
+    vendor: "Andrea Funtò"
+    license: "MIT"
+    formats: [rpm, deb]
+    epoch: "1"
+    release: "1"
+    section: default
+    priority: "optional"
+    bindir: /usr/libexec/veho/plugins
+    # nfpm does not template dependencies: veho itself refuses a plugin of
+    # another release at start (its manifest's version, PD-2)
+    dependencies: [veho]
+    rpm:
+      signature:
+        key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
+    deb:
+      signature:
+        key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
+        type: origin
+    contents:
+      - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-s3.manifest"
+        dst: /usr/libexec/veho/plugins/veho-plugin-s3.manifest
+        file_info: {mode: 0644}
+      - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-s3.manifest.sig"
+        dst: /usr/libexec/veho/plugins/veho-plugin-s3.manifest.sig
+        file_info: {mode: 0644}
 
 # MSI packaging is a GoReleaser Pro feature.
 # If you have GoReleaser Pro, you can uncomment the following section.

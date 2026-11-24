@@ -74,6 +74,9 @@ jobs:
           GPG_FINGERPRINT: ${{ steps.gpg.outputs.fingerprint }}
           GPG_KEY_FILE: ${{ runner.temp }}/packaging-key.asc
           NFPM_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          # signs the plugins' manifests; its public half is in
+          # packaging/plugin-signing.pub (.specs/veho-plugin-distribution.md §3.3)
+          PLUGIN_SIGNING_KEY: ${{ secrets.PLUGIN_SIGNING_KEY }}
 
       - name: Remove the packaging key
         if: always()

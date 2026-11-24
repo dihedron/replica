@@ -1,0 +1,4 @@
+# Public Ed25519 keys that sign the manifests of veho's plugins
+# (.specs/veho-plugin-distribution.md §3), one base64 key a line; compiled
+# into veho. A new key is added here one release before the old one goes.
+N2c6hXl1pEU3bv/ZsjcrYVHUW35gsNWaYktJ/7tZD58=

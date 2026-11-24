@@ -46,6 +46,16 @@ type Driver struct{}
 // New returns the S3 driver.
 func New() Driver { return Driver{} }
 
+// Factory builds the driver from its settings; it has none yet, so any key
+// is refused (veho-plugin-distribution.md §4).
+func Factory(settings json.RawMessage) (plugin.Driver, error) {
+	var none struct{}
+	if err := plugin.DecodeSettings(settings, &none); err != nil {
+		return nil, fmt.Errorf("s3: %w", err)
+	}
+	return New(), nil
+}
+
 func (Driver) Name() string      { return "s3" }
 func (Driver) Schemes() []string { return []string{"s3"} }
 

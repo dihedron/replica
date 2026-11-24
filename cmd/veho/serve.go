@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,11 +22,11 @@ import (
 	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/migrations"
+	"github.com/dihedron/veho/packaging"
 	"github.com/dihedron/veho/pkg/metadata"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
 	"github.com/dihedron/veho/pkg/plugin/process"
-	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -151,30 +152,56 @@ func connect(ctx context.Context, cfg *config.Config) (map[string]*pgxpool.Pool,
 	return pools, ring, nil
 }
 
-// loadDrivers returns the compiled-in drivers and the process plugins of the
-// configuration (.specs/veho-engine.md §6); stop kills the plugins.
+// builtins are the drivers compiled into veho: those that need only the
+// standard library (veho-plugin-distribution.md §1).
+var builtins = map[string]process.Factory{"file": file.Factory}
+
+// loadDrivers returns the drivers the configuration lists: built-in ones,
+// plugins installed with their signed manifests, and plugins pinned by path
+// and SHA-256 (veho-plugin-distribution.md §2, §3); stop kills the plugins.
 func loadDrivers(cfg *config.Config) (map[string]plugin.Driver, func(), error) {
 	drivers := map[string]plugin.Driver{}
-	for _, d := range []plugin.Driver{file.New(), s3.New()} {
-		drivers[d.Name()] = d
-	}
 	var procs []*process.Process
 	stop := func() {
 		for _, p := range procs {
 			p.Kill()
 		}
 	}
-	for _, p := range cfg.Plugins {
-		sum, _ := hex.DecodeString(p.SHA256) // checked by config
-		proc, err := process.Load(process.Options{Path: p.Path, SHA256: sum, RequireRootOwned: true})
+	for _, d := range cfg.Drivers {
+		settings, err := json.Marshal(d.Settings)
+		if err != nil || d.Settings == nil {
+			settings = []byte("{}")
+		}
+		if factory, ok := builtins[d.Name]; ok && d.Path == "" {
+			drv, err := factory(settings)
+			if err != nil {
+				return nil, stop, fmt.Errorf("serve: driver %s: %w", d.Name, err)
+			}
+			drivers[d.Name] = drv
+			continue
+		}
+		opts := process.Options{Path: d.Path, RequireRootOwned: true}
+		if d.Path == "" {
+			keys, err := packaging.PluginKeys()
+			if err != nil {
+				return nil, stop, fmt.Errorf("serve: %w", err)
+			}
+			if opts, err = process.Installed(process.Dir, d.Name, metadata.Version, keys, true); err != nil {
+				return nil, stop, fmt.Errorf("serve: %w", err)
+			}
+		} else {
+			opts.SHA256, _ = hex.DecodeString(d.SHA256) // checked by config
+		}
+		opts.Settings = settings
+		proc, err := process.Load(opts)
 		if err != nil {
-			return nil, stop, fmt.Errorf("serve: plugin %s: %w", p.Name, err)
+			return nil, stop, fmt.Errorf("serve: driver %s: %w", d.Name, err)
 		}
 		procs = append(procs, proc)
-		if _, ok := drivers[p.Name]; ok {
-			return nil, stop, fmt.Errorf("serve: plugin %s: a driver of that name exists", p.Name)
+		if got := proc.Driver().Name(); got != d.Name {
+			return nil, stop, fmt.Errorf("serve: driver %s: the plugin serves %q", d.Name, got)
 		}
-		drivers[p.Name] = proc.Driver()
+		drivers[d.Name] = proc.Driver()
 	}
 	return drivers, stop, nil
 }

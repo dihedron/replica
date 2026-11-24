@@ -20,5 +20,5 @@ func main() {
 		metadata.Print(os.Stdout)
 		return
 	}
-	process.Serve(file.New())
+	process.Serve(file.Factory)
 }

@@ -66,6 +66,21 @@ veho endpoint test b-images
 
 An endpoint referenced by a job (settled ones included, until retention removes them) cannot be deleted; a secret referenced by an endpoint cannot be deleted either.
 
+## Drivers
+
+A node offers the drivers `drivers[]` lists in `veho.yaml`, and no other: an endpoint of a driver no node lists cannot be created. List the same drivers on every node. A driver of the release other than `file` comes in its own package (`veho-plugin-<name>`). A third-party plugin is listed with its executable and SHA-256:
+
+```yaml
+drivers:
+  - name: file
+  - name: s3
+  - name: acme
+    path: /opt/acme/veho-plugin-acme
+    sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+```
+
+Its file and directory must be root's and writable only by root. After you replace the file, update the SHA-256 and restart the node.
+
 ## Storage classes
 
 The storage class of the copies is a property of the endpoint: the `s3` driver's `storage_class` key. To write copies in two classes to one bucket, register two endpoints on it, for example `eu2-images` and `eu2-images-ia` with `"storage_class": "STANDARD_IA"`, and let the policies choose between them. Without the key, veho sends no class and the service uses its default.
@@ -109,6 +124,8 @@ Settled jobs are kept 90 days (`housekeeping.jobs_retention`), DBOS's records of
 - **Restarting a node** (a new configuration, a new KEK): `systemctl restart veho`, one node at a time; the copies it had in flight are resumed from their last recorded part.
 
 ## Upgrading the nodes
+
+Upgrade veho and its plugin packages together (`apt upgrade`, `dnf upgrade`): a node refuses to start a plugin of another release.
 
 Each build carries a **workflow version**, logged at start (`workflow_version`). DBOS gives each node only the work of its own workflow version, so how you upgrade depends on whether it changes (the release notes say so):
 

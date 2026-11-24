@@ -125,7 +125,7 @@ The deadline is enforced outside this workflow, as `veho-job-lifecycle.md` §6.2
 
 ## 6. Drivers and endpoints (C6b)
 
-- The compiled-in drivers are registered (`file`, `s3`); `plugins` in the configuration loads process plugins (`pkg/plugin/process`) and registers them under their names. Which ships how is backlog 12.
+- The drivers listed in `drivers` are registered (`veho-plugin-distribution.md` §2): the compiled-in ones (`file`) from their factories with their settings, the plugins of the release after the check of their signed manifests, and pinned plugins by `path` and `sha256`; a driver not listed is not available. Which ships how is backlog 12.
 - An endpoint gives the driver (`endpoints.driver`), its configuration (`endpoints.config`, passed as is) and `credential_ref` (`db://<name>`; a JSON object of strings, decoded into `plugin.Credentials`). A secret that is not a JSON object of strings fails as `Permanent`.
 - The position of an endpoint for the policy is its location in the topology (`veho.locations`).
 

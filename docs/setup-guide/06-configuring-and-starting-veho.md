@@ -17,12 +17,16 @@ node:
   region: region-a          # a location created in the topology
 secrets:
   unwrap_key: "systemd-credential:unwrap-key"
+drivers:                    # the storage drivers this node offers: no other
+  - name: s3                # the plugin of its package (veho-plugin-s3)
 api:
   listen: ":8443"
   tls:
     cert_file: /etc/veho/tls/server.crt
     key_file: /etc/veho/tls/server.key
 ```
+
+Every node must list the same drivers: a transfer runs on any node.
 
 `node.id` must never change for a host and never be shared: housekeeping uses it to tell a dead node's work from a live one's. It defaults to the host name.
 
@@ -56,7 +60,7 @@ sudo systemctl enable --now veho
 journalctl -u veho -f
 ```
 
-A node starts in this order, and stops at the first step that fails, saying why: the configuration; the audit sink; the database pools and the checks of *The state store*; the unwrap key and the KEK; the topology (its region must exist); the plugins; one heartbeat, so that the node is registered before it takes any work; the workflow engine; the API.
+A node starts in this order, and stops at the first step that fails, saying why: the configuration; the audit sink; the database pools and the checks of *The state store*; the unwrap key and the KEK; the topology (its region must exist); the drivers, each plugin's manifest checked and the plugin started with its settings; one heartbeat, so that the node is registered before it takes any work; the workflow engine; the API.
 
 Check each node:
 
