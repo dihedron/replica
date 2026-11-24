@@ -66,6 +66,16 @@ veho endpoint test b-images
 
 An endpoint referenced by a job (settled ones included, until retention removes them) cannot be deleted; a secret referenced by an endpoint cannot be deleted either.
 
+## Storage classes
+
+The storage class of the copies is a property of the endpoint: the `s3` driver's `storage_class` key. To write copies in two classes to one bucket, register two endpoints on it, for example `eu2-images` and `eu2-images-ia` with `"storage_class": "STANDARD_IA"`, and let the policies choose between them. Without the key, veho sends no class and the service uses its default.
+
+- The archive classes `GLACIER` and `DEEP_ARCHIVE` are refused: their copies cannot be read without a restore. `GLACIER_IR` is accepted.
+- The class is read back after every commit; a missing header counts as `STANDARD`. A service that ignores the class fails the endpoint test (`stored as STANDARD, not STANDARD_IA`, at the `write` step), so run `veho endpoint test` after setting one.
+- Garage accepts the header and ignores it: on Garage, leave `storage_class` unset or use `STANDARD`.
+- A transfer that meets a different class fails permanently, and the copy is left in place under its final name: deleting it is the client's choice.
+- Lifecycle rules of the bucket can move copies to another class later; veho does not watch them.
+
 ## Rotating the key-encryption key
 
 Rotate the KEK periodically, or when a node may have been compromised. *As `veho_migrator`*, from a host with the unwrap key:

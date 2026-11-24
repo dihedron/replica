@@ -50,7 +50,7 @@ veho endpoint create a-images --driver s3 --location region-a --config-file a.js
 veho endpoint test a-images     # writes, reads and deletes a probe object
 ```
 
-Register `b-images` and `c-images` the same way. For the `s3` driver, `endpoint` may be empty for AWS itself; `path_style` puts the bucket in the path, as most S3-compatible services want. The `file` driver takes `{"root": "/srv/replicas"}`.
+Register `b-images` and `c-images` the same way. For the `s3` driver, `endpoint` may be empty for AWS itself; `path_style` puts the bucket in the path, as most S3-compatible services want; `storage_class` (optional) is the class of the copies written there (see the Operator's Guide, storage classes). Unknown keys are refused. The `file` driver takes `{"root": "/srv/replicas"}`.
 
 ## A policy
 

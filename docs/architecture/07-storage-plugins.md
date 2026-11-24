@@ -20,7 +20,7 @@ A transfer's bytes flow from the source driver, through the core, to the destina
 | Driver | Configuration | Notes |
 | :------- | :-------------------------------------------- | :-------------------------------------------------------- |
 | `file` | `{"root": "/srv/replicas"}` | A directory; uploads are staged and renamed into place |
-| `s3` | `{"endpoint": ..., "region": ..., "bucket": ..., "path_style": ...}` | Any S3-compatible service; multipart uploads; each part's MD5 is sent as `Content-MD5`, so the service verifies it; parts of 5 to 512 MiB, at most 10,000 |
+| `s3` | `{"endpoint": ..., "region": ..., "bucket": ..., "path_style": ...}` | Any S3-compatible service; multipart uploads; each part's MD5 is sent as `Content-MD5`, so the service verifies it; parts of 5 to 512 MiB, at most 10,000; an optional `storage_class` is sent on every write and read back after every commit, so a backend that ignores it is caught; archive classes refused |
 
 Both pass the same **conformance suite**, which any driver must pass: idempotent commits, resumes from a token in another process, refusal of a changed source, classification of errors, and the rest of the contract. The S3 driver passes it on Garage, an S3-compatible service, in the lab.
 

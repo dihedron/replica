@@ -127,3 +127,131 @@ func TestCommitRefused(t *testing.T) {
 		}
 	}
 }
+
+// open opens a client on url with cfg's extra keys.
+func open(t *testing.T, url string, extra map[string]any) (plugin.Client, error) {
+	t.Helper()
+	m := map[string]any{"endpoint": url, "region": "r", "bucket": "b", "path_style": true}
+	for k, v := range extra {
+		m[k] = v
+	}
+	cfg, _ := json.Marshal(m)
+	c, err := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	if err == nil {
+		t.Cleanup(func() { _ = c.Close() })
+	}
+	return c, err
+}
+
+// TestOpenStorageClass: archive classes and unknown keys are refused
+// (SC-T1, SC-T2, veho-storage-class.md).
+func TestOpenStorageClass(t *testing.T) {
+	for _, c := range []struct {
+		extra map[string]any
+		ok    bool
+	}{
+		{map[string]any{"storage_class": "GLACIER"}, false},
+		{map[string]any{"storage_class": "DEEP_ARCHIVE"}, false},
+		{map[string]any{"storage_class": "GLACIER_IR"}, true},
+		{map[string]any{"storage_class": "STANDARD_IA"}, true},
+		{map[string]any{"storage_class": ""}, true},
+		{map[string]any{"storage_clas": "STANDARD_IA"}, false},
+	} {
+		_, err := open(t, "http://127.0.0.1:1", c.extra)
+		if (err == nil) != c.ok || (err != nil && plugin.ClassOf(err) != plugin.Permanent) {
+			t.Errorf("%v: %v, want ok %v", c.extra, err, c.ok)
+		}
+	}
+}
+
+// recorder is a fake S3 service that records the storage class of each
+// write and reports class on HEAD ("" sends no header).
+type recorder struct {
+	class string
+	sent  map[string]string // "create", "put" → x-amz-storage-class received
+}
+
+func (rec *recorder) serve(t *testing.T) string {
+	t.Helper()
+	rec.sent = map[string]string{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		switch {
+		case r.Method == http.MethodPost && q.Has("uploads"):
+			rec.sent["create"] = r.Header.Get("x-amz-storage-class")
+			_, _ = fmt.Fprint(w, `<?xml version="1.0"?><InitiateMultipartUploadResult><Bucket>b</Bucket><Key>k</Key><UploadId>u</UploadId></InitiateMultipartUploadResult>`)
+		case r.Method == http.MethodPost && q.Has("uploadId"):
+			_, _ = fmt.Fprint(w, `<?xml version="1.0"?><CompleteMultipartUploadResult><Bucket>b</Bucket><Key>k</Key><ETag>"e-1"</ETag></CompleteMultipartUploadResult>`)
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPut:
+			rec.sent["put"] = r.Header.Get("x-amz-storage-class")
+			w.Header().Set("ETag", emptyMD5)
+		case r.Method == http.MethodHead:
+			if rec.class != "" {
+				w.Header().Set("x-amz-storage-class", rec.class)
+			}
+			w.Header().Set("ETag", `"e-1"`)
+			w.Header().Set("Content-Length", "0")
+		default:
+			w.WriteHeader(http.StatusNotImplemented)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// TestStorageClassSent: the class goes on CreateMultipartUpload and on the
+// empty object's PutObject, nothing when unset (SC-T3).
+func TestStorageClassSent(t *testing.T) {
+	ctx := context.Background()
+	for _, class := range []string{"STANDARD_IA", ""} {
+		rec := &recorder{class: class}
+		c, err := open(t, rec.serve(t), map[string]any{"storage_class": class})
+		if err != nil {
+			t.Fatal(err)
+		}
+		up, err := c.Begin(ctx, plugin.Ref{Key: "k"}, plugin.ObjectInfo{}, plugin.PutOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := up.Commit(ctx, []plugin.PartResult{{PartNo: 0}}); err != nil {
+			t.Fatal(err)
+		}
+		if rec.sent["create"] != class || rec.sent["put"] != class {
+			t.Errorf("class %q: sent %v", class, rec.sent)
+		}
+	}
+}
+
+// TestStorageClassChecked: after a commit the reported class must be the
+// configured one; no header means STANDARD; unset checks nothing (SC-T4).
+func TestStorageClassChecked(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct {
+		configured, reported string
+		ok                   bool
+	}{
+		{"STANDARD_IA", "STANDARD_IA", true},
+		{"STANDARD_IA", "", false},
+		{"STANDARD_IA", "STANDARD", false},
+		{"STANDARD", "", true},
+		{"", "STANDARD_IA", true},
+	} {
+		rec := &recorder{class: c.reported}
+		cl, err := open(t, rec.serve(t), map[string]any{"storage_class": c.configured})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, parts := range [][]plugin.PartResult{
+			{{PartNo: 0}}, // the empty object
+			{{PartNo: 0, Size: 5 << 20, ETag: `"e"`}},
+		} {
+			up := &upload{c: cl.(*client), t: token{Bucket: "b", Key: "k", UploadID: "u"}}
+			_, err := up.Commit(ctx, parts)
+			if (err == nil) != c.ok || (err != nil && plugin.ClassOf(err) != plugin.Permanent) {
+				t.Errorf("%q reported %q, %d bytes: %v, want ok %v", c.configured, c.reported, parts[0].Size, err, c.ok)
+			}
+		}
+	}
+}

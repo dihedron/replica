@@ -64,7 +64,8 @@ func (Driver) ConfigSchema() []byte {
     "endpoint": {"type": "string", "pattern": "^https?://", "description": "service URL; empty for AWS"},
     "region": {"type": "string", "minLength": 1},
     "bucket": {"type": "string", "minLength": 3, "description": "the default bucket"},
-    "path_style": {"type": "boolean", "description": "bucket in the path, not the host name"}
+    "path_style": {"type": "boolean", "description": "bucket in the path, not the host name"},
+    "storage_class": {"type": "string", "not": {"enum": ["GLACIER", "DEEP_ARCHIVE"]}, "description": "the class of the copies; empty for the backend's default; archive classes refused (veho-storage-class.md)"}
   },
   "required": ["region", "bucket"],
   "additionalProperties": false
@@ -85,7 +86,14 @@ type config struct {
 	Region    string `json:"region"`
 	Bucket    string `json:"bucket"`
 	PathStyle bool   `json:"path_style"`
+	// StorageClass is sent on every write and checked after every commit
+	// (veho-storage-class.md); empty: the backend's default, unchecked.
+	StorageClass string `json:"storage_class"`
 }
+
+// archive are the classes that cannot be read without a restore, refused
+// in v1 (veho-storage-class.md §1).
+var archive = []string{"GLACIER", "DEEP_ARCHIVE"}
 
 // Open builds a client with its own connections, closed by Close (no state
 // shared across tenants, PLG-6). The SDK does not retry: the core does, by
@@ -95,8 +103,13 @@ func (Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credenti
 		return nil, err
 	}
 	var cfg config
-	if err := json.Unmarshal(raw, &cfg); err != nil || cfg.Region == "" || cfg.Bucket == "" {
-		return nil, plugin.Wrapf(plugin.Permanent, "s3: the configuration needs region and bucket (%v)", err)
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields() // a misspelled key must not be dropped
+	if err := dec.Decode(&cfg); err != nil || cfg.Region == "" || cfg.Bucket == "" {
+		return nil, plugin.Wrapf(plugin.Permanent, "s3: the configuration needs region and bucket, and no other keys than the schema's (%v)", err)
+	}
+	if slices.Contains(archive, cfg.StorageClass) {
+		return nil, plugin.Wrapf(plugin.Permanent, "s3: storage class %s is an archive class, refused", cfg.StorageClass)
 	}
 	if creds["access_key_id"] == "" || creds["secret_access_key"] == "" {
 		return nil, plugin.Wrapf(plugin.Permanent, "s3: the credentials need access_key_id and secret_access_key")
@@ -114,12 +127,13 @@ func (Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credenti
 	if cfg.Endpoint != "" {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
 	}
-	return &client{s3: s3.New(opts), bucket: cfg.Bucket, transport: transport}, nil
+	return &client{s3: s3.New(opts), bucket: cfg.Bucket, class: cfg.StorageClass, transport: transport}, nil
 }
 
 type client struct {
 	s3        *s3.Client
 	bucket    string
+	class     string
 	transport *http.Transport
 }
 
@@ -182,14 +196,32 @@ func classify(ctx context.Context, op string, err error) error {
 }
 
 func (c *client) Stat(ctx context.Context, ref plugin.Ref) (plugin.ObjectInfo, error) {
-	return c.head(ctx, ref, "")
+	info, _, err := c.head(ctx, ref, "")
+	return info, err
 }
 
-// head is Stat, with If-Match when ifVersion is set.
-func (c *client) head(ctx context.Context, ref plugin.Ref, ifVersion string) (plugin.ObjectInfo, error) {
+// committed is the Stat that ends every commit: the object must be in the
+// configured class, a missing header meaning STANDARD (veho-storage-class.md §2.2).
+func (c *client) committed(ctx context.Context, ref plugin.Ref) (plugin.ObjectInfo, error) {
+	info, class, err := c.head(ctx, ref, "")
+	if err != nil || c.class == "" {
+		return info, err
+	}
+	if class == "" {
+		class = string(types.StorageClassStandard)
+	}
+	if class != c.class {
+		return plugin.ObjectInfo{}, plugin.Wrapf(plugin.Permanent, "s3: %s stored as %s, not %s (the object is in place)", ref.Key, class, c.class)
+	}
+	return info, nil
+}
+
+// head is Stat, with If-Match when ifVersion is set, and the object's
+// storage class as reported.
+func (c *client) head(ctx context.Context, ref plugin.Ref, ifVersion string) (plugin.ObjectInfo, string, error) {
 	bucket, key, err := c.where(ref)
 	if err != nil {
-		return plugin.ObjectInfo{}, err
+		return plugin.ObjectInfo{}, "", err
 	}
 	in := &s3.HeadObjectInput{Bucket: &bucket, Key: &key}
 	if ifVersion != "" {
@@ -197,9 +229,9 @@ func (c *client) head(ctx context.Context, ref plugin.Ref, ifVersion string) (pl
 	}
 	out, err := c.s3.HeadObject(ctx, in)
 	if err != nil {
-		return plugin.ObjectInfo{}, classify(ctx, "head "+key, err)
+		return plugin.ObjectInfo{}, "", classify(ctx, "head "+key, err)
 	}
-	return plugin.ObjectInfo{Size: aws.ToInt64(out.ContentLength), Version: aws.ToString(out.ETag), Metadata: out.Metadata}, nil
+	return plugin.ObjectInfo{Size: aws.ToInt64(out.ContentLength), Version: aws.ToString(out.ETag), Metadata: out.Metadata}, string(out.StorageClass), nil
 }
 
 func (c *client) ReadRange(ctx context.Context, ref plugin.Ref, off, length int64, ifVersion string) (io.ReadCloser, error) {
@@ -207,7 +239,7 @@ func (c *client) ReadRange(ctx context.Context, ref plugin.Ref, off, length int6
 		return nil, plugin.Wrapf(plugin.Permanent, "s3: range [%d, +%d)", off, length)
 	}
 	if length == 0 { // no empty Range in HTTP: check that the object is there
-		info, err := c.head(ctx, ref, ifVersion)
+		info, _, err := c.head(ctx, ref, ifVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -270,6 +302,7 @@ func (c *client) Begin(ctx context.Context, ref plugin.Ref, _ plugin.ObjectInfo,
 	if opts.ContentType != "" {
 		in.ContentType = &opts.ContentType
 	}
+	in.StorageClass = types.StorageClass(c.class)
 	out, err := c.s3.CreateMultipartUpload(ctx, in)
 	if err != nil {
 		return nil, classify(ctx, "begin "+key, err)
@@ -390,7 +423,7 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 	}
 	if plugin.ClassOf(err) == plugin.ResumeInvalid {
 		// committed before? then the object carries the parts' ETag
-		info, serr := u.c.Stat(ctx, ref)
+		info, serr := u.c.committed(ctx, ref)
 		if serr == nil && strings.Trim(info.Version, `"`) == multipartETag(parts) {
 			return info, nil
 		}
@@ -399,7 +432,7 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 	if err != nil {
 		return plugin.ObjectInfo{}, err
 	}
-	return u.c.Stat(ctx, ref)
+	return u.c.committed(ctx, ref)
 }
 
 // refused is true when CompleteMultipartUpload was refused because the
@@ -432,7 +465,7 @@ func (u *upload) commitEmpty(ctx context.Context) (plugin.ObjectInfo, error) {
 	ref := plugin.Ref{Container: u.t.Bucket, Key: u.t.Key}
 	_, err := u.c.s3.AbortMultipartUpload(ctx, &s3.AbortMultipartUploadInput{Bucket: &u.t.Bucket, Key: &u.t.Key, UploadId: &u.t.UploadID})
 	if err = classify(ctx, "commit "+u.t.Key, err); plugin.ClassOf(err) == plugin.ResumeInvalid || errors.Is(err, plugin.ErrNotFound) {
-		if info, serr := u.c.Stat(ctx, ref); serr == nil && info.Size == 0 {
+		if info, serr := u.c.committed(ctx, ref); serr == nil && info.Size == 0 {
 			return info, nil
 		}
 		return plugin.ObjectInfo{}, err
@@ -442,11 +475,11 @@ func (u *upload) commitEmpty(ctx context.Context) (plugin.ObjectInfo, error) {
 	}
 	if _, err := u.c.s3.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &u.t.Bucket, Key: &u.t.Key, ContentLength: aws.Int64(0), Body: bytes.NewReader(nil),
-		ContentMD5: aws.String("1B2M2Y8AsgTpgAmY7PhCfg=="),
+		ContentMD5: aws.String("1B2M2Y8AsgTpgAmY7PhCfg=="), StorageClass: types.StorageClass(u.c.class),
 	}); err != nil {
 		return plugin.ObjectInfo{}, classify(ctx, "commit "+u.t.Key, err)
 	}
-	return u.c.Stat(ctx, ref)
+	return u.c.committed(ctx, ref)
 }
 
 // multipartETag is the ETag S3 gives a multipart object: the MD5 of the

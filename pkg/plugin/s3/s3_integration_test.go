@@ -32,3 +32,36 @@ func TestConformance(t *testing.T) {
 		})
 	}
 }
+
+// TestGarageStorageClass records what region A's Garage does with a storage
+// class (SC-T5, veho-storage-class.md): STANDARD must commit; the outcome of
+// STANDARD_IA is logged for the Operator's Guide.
+func TestGarageStorageClass(t *testing.T) {
+	env := func(name string) string { return os.Getenv("VEHO_TEST_S3_A_" + name) }
+	if env("ENDPOINT") == "" {
+		t.Skip("VEHO_TEST_S3_A_ENDPOINT is not set: run with test/lab/lab.sh test")
+	}
+	ctx := t.Context()
+	for _, class := range []string{"STANDARD", "STANDARD_IA"} {
+		cfg, _ := json.Marshal(config{Endpoint: env("ENDPOINT"), Region: env("REGION"), Bucket: "dest-1", PathStyle: true, StorageClass: class})
+		c, err := New().Open(ctx, cfg, plugin.Credentials{"access_key_id": env("ACCESS_KEY"), "secret_access_key": env("SECRET_KEY")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref := plugin.Ref{Key: "storage-class/" + class}
+		up, err := c.Begin(ctx, ref, plugin.ObjectInfo{}, plugin.PutOptions{})
+		var part plugin.PartResult
+		if err == nil {
+			part, err = up.WritePart(ctx, 0, strings.NewReader(strings.Repeat("x", 1024)), 1024)
+		}
+		if err == nil {
+			_, err = up.Commit(ctx, []plugin.PartResult{part})
+		}
+		t.Logf("Garage, storage class %s: %v", class, err)
+		if class == "STANDARD" && err != nil {
+			t.Error(err)
+		}
+		_ = c.Delete(ctx, ref)
+		_ = c.Close()
+	}
+}
