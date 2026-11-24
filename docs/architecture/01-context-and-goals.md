@@ -21,7 +21,7 @@ veho does these copies as a service. A client submits a **job** (copy this objec
 ## Non-goals
 
 - **A storage system.** veho stores no object data; the objects live in the tenants' storage systems.
-- **Synchronisation.** veho copies objects it is asked to copy; it does not watch buckets or mirror them.
+- **Synchronisation.** veho copies objects it is asked to copy; it does not watch buckets or mirror them. It replicates data, not commands: deleting or changing the source later does nothing to the copies, and removing the copies is the client's job. Objects are expected to be VM and container images, from a few hundred megabytes to about 10 GB.
 - **High throughput of small objects.** veho is built for few, large objects (tens of concurrent transfers across the cluster, not thousands per second).
 - **Strong availability under partition.** A region cut off from the other two cannot accept jobs: veho prefers never losing or forking a job to accepting one it might lose.
 
