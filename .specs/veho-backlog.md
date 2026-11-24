@@ -6,7 +6,7 @@ Until 1.0.0, a release does not wait for open items: each one that affects users
 
 | No. | Item | Recorded | Status |
 | :-- | :------------------------------------ | :--------- | :---------------- |
-| 1 | Review of the threat model (`veho-threat-model.md`, written 2026-11-21 as required by AGENTS.md rule 3): its open points are the retention policy, the quota catalog and the audit hash chain (the database roles are settled in `veho-store.md`) | 2026-11-21 | Draft written; waiting for review before the first implementation chunk |
+| 1 | Review of the threat model (`veho-threat-model.md`, written 2026-11-21 as required by AGENTS.md rule 3): its open points are the retention policy, the quota catalog and the audit hash chain (the database roles are settled in `veho-store.md`) | 2026-11-21 | Done 2026-11-24: reviewed; R-07, R-12 and R-13 accepted; the hash chain stays in backlog 32; open: the quota catalog |
 | 2 | Approval of `veho_specification.md` and the topic specifications, and the answers to OI-1 to OI-10 and OI-12 | 2026-11-21 | Draft v0.1.0 waiting for review |
 | 3 | WAN validation of the state store: etcd and Patroni with the real inter-region round-trip time and jitter, 24 hours (AC-18); decides between tuned etcd and the operator-approved failover fallback (`veho-architecture.md` §3.3) | 2026-11-20 | RTT known (30 ms ± 10 ms, OI-12); waiting for the lab; an overnight run (AGENTS.md rule 14) |
 | 4 | Promote the DBOS spike (`test/spikes/dbos`) into the acceptance suite, run on every DBOS version bump (AC-21) | 2026-11-20 | Done 2026-11-21 (C6e): `test/dbos` |
