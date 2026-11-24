@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -20,16 +21,27 @@ import (
 
 // Config is veho.yaml.
 type Config struct {
-	Node         Node         `yaml:"node"`
-	Database     Database     `yaml:"database"`
-	Secrets      Secrets      `yaml:"secrets"`
-	Audit        Audit        `yaml:"audit"`
-	Engine       Engine       `yaml:"engine"`
-	Housekeeping Housekeeping `yaml:"housekeeping"`
-	Plugins      []Plugin     `yaml:"plugins"`
-	Metrics      Metrics      `yaml:"metrics"`
-	API          API          `yaml:"api"`
-	Checks       Checks       `yaml:"checks"`
+	Node          Node          `yaml:"node"`
+	Database      Database      `yaml:"database"`
+	Secrets       Secrets       `yaml:"secrets"`
+	Audit         Audit         `yaml:"audit"`
+	Engine        Engine        `yaml:"engine"`
+	Housekeeping  Housekeeping  `yaml:"housekeeping"`
+	Plugins       []Plugin      `yaml:"plugins"`
+	Metrics       Metrics       `yaml:"metrics"`
+	API           API           `yaml:"api"`
+	Checks        Checks        `yaml:"checks"`
+	Notifications Notifications `yaml:"notifications"`
+}
+
+// Notifications are the webhooks (veho-webhooks.md): off unless enabled.
+// AllowCIDRs open private ranges to deliveries (never the metadata
+// addresses); the retentions are of the outbox, 0 purging at once.
+type Notifications struct {
+	Enabled            bool           `yaml:"enabled"`
+	AllowCIDRs         []string       `yaml:"allow_cidrs"`
+	DeliveredRetention *time.Duration `yaml:"delivered_retention"`
+	AbandonedRetention *time.Duration `yaml:"abandoned_retention"`
 }
 
 // Checks are the severities of the start-up checks (veho-store.md §7):
@@ -236,6 +248,8 @@ func (c *Config) complete() error {
 	}
 	setP(&c.Housekeeping.WorkflowRetention, 168*time.Hour)
 	setP(&c.Housekeeping.JobsRetention, 90*24*time.Hour)
+	setP(&c.Notifications.DeliveredRetention, 24*time.Hour)
+	setP(&c.Notifications.AbandonedRetention, 720*time.Hour)
 	return nil
 }
 
@@ -273,6 +287,13 @@ func (c *Config) validate() error {
 	for name, d := range map[string]time.Duration{"workflow_retention": *h.WorkflowRetention, "jobs_retention": *h.JobsRetention} {
 		check(d == 0 || d >= minRetention, "housekeeping.%s %v: want 0 (keep) or at least %v", name, d, minRetention)
 	}
+	for _, cidr := range c.Notifications.AllowCIDRs {
+		_, err := netip.ParsePrefix(cidr)
+		check(err == nil, "notifications.allow_cidrs %q: want a CIDR such as 10.20.0.0/16", cidr)
+	}
+	n := c.Notifications
+	check(*n.DeliveredRetention == 0 || *n.DeliveredRetention >= time.Minute, "notifications.delivered_retention %v: want 0 or at least 1m", *n.DeliveredRetention)
+	check(*n.AbandonedRetention >= time.Hour, "notifications.abandoned_retention %v: want at least 1h", *n.AbandonedRetention)
 	names := map[string]bool{}
 	for i, p := range c.Plugins {
 		sum, err := hex.DecodeString(p.SHA256)

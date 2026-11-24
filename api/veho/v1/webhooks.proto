@@ -1,0 +1,102 @@
+// Webhooks (.specs/veho-webhooks.md): a tenant's HTTPS URLs that veho calls
+// when one of its jobs reaches a terminal state. Polling stays the primary
+// mechanism; webhooks are off unless the operator enables notifications.
+//
+// Generate with: make proto
+syntax = "proto3";
+
+package veho.v1;
+
+option go_package = "github.com/dihedron/veho/api/veho/v1;vehov1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+import "veho/v1/policies.proto";
+
+// WebhookService manages the tenant's webhooks.
+service WebhookService {
+  // CreateWebhook registers a webhook; the response carries its secret, once.
+  rpc CreateWebhook(CreateWebhookRequest) returns (CreatedWebhook) {
+    option (google.api.http) = {post: "/v1/webhooks" body: "*"};
+  }
+  rpc GetWebhook(WebhookName) returns (Webhook) {
+    option (google.api.http) = {get: "/v1/webhooks/{name}"};
+  }
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse) {
+    option (google.api.http) = {get: "/v1/webhooks"};
+  }
+  // UpdateWebhook changes the events or switches the webhook on or off;
+  // enabling clears the failures that disabled it.
+  rpc UpdateWebhook(UpdateWebhookRequest) returns (Webhook) {
+    option (google.api.http) = {patch: "/v1/webhooks/{name}" body: "*"};
+  }
+  // RotateWebhookSecret gives the webhook a new secret, once; the old one
+  // still signs for 24 hours.
+  rpc RotateWebhookSecret(WebhookName) returns (WebhookSecret) {
+    option (google.api.http) = {post: "/v1/webhooks/{name}:rotate" body: "*"};
+  }
+  rpc DeleteWebhook(WebhookName) returns (Empty) {
+    option (google.api.http) = {delete: "/v1/webhooks/{name}"};
+  }
+  // TestWebhook posts a signed ping now and reports what happened.
+  rpc TestWebhook(WebhookName) returns (WebhookTest) {
+    option (google.api.http) = {post: "/v1/webhooks/{name}:test" body: "*"};
+  }
+}
+
+message Webhook {
+  string name = 1;
+  // https only, no user information.
+  string url = 2;
+  // job.succeeded, job.failed, job.cancelled.
+  repeated string events = 3;
+  bool enabled = 4;
+  // Why veho or the tenant switched it off.
+  string disabled_reason = 5;
+  int32 consecutive_failures = 6;
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp last_success_at = 8;
+  google.protobuf.Timestamp last_failure_at = 9;
+}
+
+message CreateWebhookRequest {
+  string name = 1;
+  string url = 2;
+  repeated string events = 3;
+}
+
+message CreatedWebhook {
+  Webhook webhook = 1;
+  // The secret that signs the deliveries; shown once.
+  string secret = 2;
+}
+
+message WebhookName {
+  string name = 1;
+}
+
+message ListWebhooksRequest {}
+
+message ListWebhooksResponse {
+  repeated Webhook webhooks = 1;
+}
+
+message UpdateWebhookRequest {
+  string name = 1;
+  // Replaces the events when set.
+  repeated string events = 2;
+  // Switches the webhook on or off when set.
+  optional bool enabled = 3;
+}
+
+message WebhookSecret {
+  string secret = 1;
+}
+
+message WebhookTest {
+  bool ok = 1;
+  // The HTTP status the receiver answered, if any.
+  int32 status = 2;
+  // ok, status, forbidden, timeout, connect, tls.
+  string class = 3;
+}

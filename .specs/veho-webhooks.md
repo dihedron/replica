@@ -1,6 +1,6 @@
 # veho: webhooks for job completion (backlog 11)
 
-- **Status:** draft 2026-11-24, waiting for approval (AGENTS.md rule 1)
+- **Status:** approved 2026-11-24; implemented 2026-11-24 except the platform administrator's list and disable (§2, first row), which waits for a cross-tenant administration API (open point 4)
 - **Decides:** OI-8 (`veho_specification.md`): polling and long polling stay the primary mechanism; webhooks are an optional addition, **off by default**, that call only endpoints a tenant registered, under the SSRF rules (SEC-12, SEC-13), signed and retried from an outbox.
 - **Model:** ligo's `internal/notify` (transactional outbox, singleton dispatcher, HMAC signature, at least once), adapted: ligo's webhooks are configured by the operator, veho's are registered by tenants.
 
@@ -87,3 +87,5 @@ Operator's Guide: enabling, `allow_cidrs`, metrics (`veho_webhook_deliveries_tot
 1. Per-destination events (`transfer.succeeded`) and an event for a destination that failed while the job continues.
 2. Whether a tenant may register a webhook to a private network (an operator-listed CIDR is global today; a per-tenant allow list is a later refinement).
 3. Mutual TLS to the receiver.
+4. The platform administrator listing and disabling any tenant's webhook (§2): needs cross-tenant functions and an `AdminService` call; until then the operator disables one with SQL, and `WEBHOOK_DISABLE` is audited only for automatic disabling.
+5. Chaos coverage (AC-W1): the soak with webhooks on, in the lab, as an overnight run (AGENTS.md rule 14).

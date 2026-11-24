@@ -24,6 +24,8 @@ Each node serves Prometheus metrics on `metrics.listen` (default `127.0.0.1:9464
 | `veho_adoptions_total` | none | Workflows of dead nodes this node resumed |
 | `veho_expired_leases` | none | Transfers whose lease had expired at the last housekeeping pass: their owner is fenced, stuck or dead |
 | `veho_heartbeat_age_seconds` | none | Seconds since this node last recorded its heartbeat; above half the lease (30 s) the node stops its own work |
+| `veho_webhook_deliveries_total` | `result` | Webhook deliveries by result: `success`, `failure` (retried later) or `abandoned` (after 12 attempts, or past the pending cap) |
+| `veho_webhook_outbox_pending` | none | Webhook events waiting for delivery, across tenants (the same on every node) |
 | `veho_objects` | `kind`, `state` | Jobs and transfers in the state store, by state, counted at each scrape (the same on every node) |
 | `veho_audit_dropped_total` | none | Audit events this node could not write to the system log |
 
@@ -78,6 +80,8 @@ The actions:
 | `JOB_SUBMIT`, `JOB_CANCEL`, `JOB_RETRY`, `JOB_SETTLED` | A job submitted, cancelled, retried; a job's last transfer ended |
 | `POLICY_CREATE`, `POLICY_DELETE`, `POLICY_GRANTS` | A policy version created; a policy deleted; its grants changed |
 | `ENDPOINT_CREATE`, `ENDPOINT_UPDATE`, `ENDPOINT_DELETE` | An endpoint registered, changed, removed |
+| `WEBHOOK_CREATE`, `WEBHOOK_UPDATE`, `WEBHOOK_ROTATE`, `WEBHOOK_DELETE`, `WEBHOOK_TEST` | A webhook registered, changed, given a new secret, removed; a ping posted |
+| `WEBHOOK_DISABLE`, `WEBHOOK_DELIVERY_ABANDONED` | A webhook switched off after 12 consecutive failed deliveries; an event given up after 12 attempts, or past the cap of 10,000 pending |
 | `SECRET_PUT`, `SECRET_DELETE` | A secret written (a new version) or removed |
 | `TENANT_CREATE`, `TENANT_UPDATE`, `TENANT_SETTINGS` | A tenant created; its state or quotas changed; its own settings changed |
 | `APIKEY_CREATE`, `APIKEY_REVOKE` | An API key issued or revoked |

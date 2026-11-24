@@ -17,6 +17,7 @@ import (
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
+	"github.com/dihedron/veho/internal/webhook"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/semaphore"
@@ -69,8 +70,10 @@ type Engine struct {
 	drivers     map[string]plugin.Driver
 	queues      map[string]dbos.Queue
 	metrics     *metrics
-	executor    string
-	region      string
+	// hooks keeps webhook deliveries off internal addresses (W-1)
+	hooks    *webhook.Guard
+	executor string
+	region   string
 	// dbosPool is DBOS's pool, closed after DBOS (store.DBOSPool)
 	dbosPool *pgxpool.Pool
 	// partMemory is the node's budget of part bytes in memory (NFR-5)
@@ -110,7 +113,12 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 		pool.Close()
 		return nil, fmt.Errorf("engine: %w", err)
 	}
-	e := &Engine{cfg: c, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
+	guard, err := webhook.NewGuard(c.Notifications.AllowCIDRs)
+	if err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("engine: notifications: %w", err)
+	}
+	e := &Engine{cfg: c, hooks: guard, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
 		dbosPool:   pool,
 		partMemory: semaphore.NewWeighted(int64(c.Engine.PartMemoryMiB) << 20),
 		lastOK:     time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}, metrics: newMetrics()}

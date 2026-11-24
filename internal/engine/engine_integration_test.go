@@ -52,6 +52,7 @@ func testConfig(t *testing.T) *config.Config {
 node: {id: test-` + uuid.New().String()[:8] + `, region: lab-a}
 secrets: {unwrap_key: "file:/nonexistent"}
 engine: {heartbeat: 1s, lease_ttl: 4s, part_size_mib: 5, parts_in_flight: 2}
+notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}
 api: {tls: {cert_file: /unused, key_file: /unused}}
 `))
 	if err != nil {

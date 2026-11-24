@@ -23,6 +23,10 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `housekeeping.interval` | `30s` | How often housekeeping runs (on one node at a time) |
 | `housekeeping.workflow_retention` | `168h` | How long DBOS keeps the records of ended workflows; `0s` keeps them, else at least `24h` |
 | `housekeeping.jobs_retention` | `2160h` | How long settled jobs are kept; `0s` keeps them, else at least `24h` |
+| `notifications.enabled` | `false` | Whether tenants may register webhooks and this cluster delivers them (*Operator's Guide*, Webhooks) |
+| `notifications.allow_cidrs` | none | CIDRs a webhook may reach although they are private, such as `10.20.0.0/16`; the cloud metadata addresses are never allowed |
+| `notifications.delivered_retention` | `24h` | How long delivered webhook events are kept; `0s` removes them at the next pass, else at least `1m` |
+| `notifications.abandoned_retention` | `720h` | How long abandoned and undelivered events are kept; at least `1h` |
 | `plugins[].name` | (required) | A process plugin's driver name, unique |
 | `plugins[].path` | (required) | The plugin's executable |
 | `plugins[].sha256` | (required) | The executable's SHA-256: a plugin whose file differs is not started |

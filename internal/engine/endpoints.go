@@ -57,6 +57,9 @@ func (e *Engine) checkEndpoint(ctx context.Context, tx pgx.Tx, ep Endpoint) erro
 		if !ok {
 			return fmt.Errorf("%w: credential_ref %q: want %s<name>", ErrInvalid, ep.CredentialRef, secrets.RefPrefix)
 		}
+		if strings.HasPrefix(name, SecretPrefix) {
+			return fmt.Errorf("%w: credential_ref %q: secrets starting with %s are veho's own", ErrInvalid, ep.CredentialRef, SecretPrefix)
+		}
 		var n int
 		if err := tx.QueryRow(ctx, "select count(*) from veho.secrets where name = $1", name).Scan(&n); err != nil {
 			return err

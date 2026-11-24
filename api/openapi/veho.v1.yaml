@@ -41,6 +41,12 @@ info:
 
 
     JobService accepts, shows, cancels and retries replication jobs.
+
+
+    ## veho.v1.WebhookService
+
+
+    WebhookService manages the tenant's webhooks.
   license:
     name: MIT
     identifier: MIT
@@ -208,6 +214,22 @@ components:
           title: name
       title: CreateTenantRequest
       additionalProperties: false
+    veho.v1.CreateWebhookRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        url:
+          type: string
+          title: url
+        events:
+          type: array
+          items:
+            type: string
+          title: events
+      title: CreateWebhookRequest
+      additionalProperties: false
     veho.v1.CreatedKey:
       type: object
       properties:
@@ -219,6 +241,18 @@ components:
           title: key
           description: 'The key: shown once.'
       title: CreatedKey
+      additionalProperties: false
+    veho.v1.CreatedWebhook:
+      type: object
+      properties:
+        webhook:
+          title: webhook
+          $ref: '#/components/schemas/veho.v1.Webhook'
+        secret:
+          type: string
+          title: secret
+          description: The secret that signs the deliveries; shown once.
+      title: CreatedWebhook
       additionalProperties: false
     veho.v1.Empty:
       type: object
@@ -465,6 +499,16 @@ components:
           title: transfers
       title: ListTransfersResponse
       additionalProperties: false
+    veho.v1.ListWebhooksResponse:
+      type: object
+      properties:
+        webhooks:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Webhook'
+          title: webhooks
+      title: ListWebhooksResponse
+      additionalProperties: false
     veho.v1.ObjectRef:
       type: object
       properties:
@@ -682,6 +726,69 @@ components:
           type: string
           title: message
       title: ValidatePolicyResponse
+      additionalProperties: false
+    veho.v1.Webhook:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        url:
+          type: string
+          title: url
+          description: https only, no user information.
+        events:
+          type: array
+          items:
+            type: string
+          title: events
+          description: job.succeeded, job.failed, job.cancelled.
+        enabled:
+          type: boolean
+          title: enabled
+        disabled_reason:
+          type: string
+          title: disabled_reason
+          description: Why veho or the tenant switched it off.
+        consecutive_failures:
+          type: integer
+          title: consecutive_failures
+          format: int32
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        last_success_at:
+          title: last_success_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        last_failure_at:
+          title: last_failure_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+      title: Webhook
+      additionalProperties: false
+    veho.v1.WebhookSecret:
+      type: object
+      properties:
+        secret:
+          type: string
+          title: secret
+      title: WebhookSecret
+      additionalProperties: false
+    veho.v1.WebhookTest:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          title: ok
+        status:
+          type: integer
+          title: status
+          format: int32
+          description: The HTTP status the receiver answered, if any.
+        class:
+          type: string
+          title: class
+          description: ok, status, forbidden, timeout, connect, tls.
+      title: WebhookTest
       additionalProperties: false
   securitySchemes:
     bearer:
@@ -1618,6 +1725,192 @@ paths:
           $ref: '#/components/responses/Problem'
         "5XX":
           $ref: '#/components/responses/Problem'
+  /v1/webhooks:
+    get:
+      tags:
+        - veho.v1.WebhookService
+      summary: ListWebhooks
+      operationId: veho.v1.WebhookService.ListWebhooks
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListWebhooksResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.WebhookService
+      summary: CreateWebhook
+      description: CreateWebhook registers a webhook; the response carries its secret, once.
+      operationId: veho.v1.WebhookService.CreateWebhook
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.CreateWebhookRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.CreatedWebhook'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/webhooks/{name}:
+    get:
+      tags:
+        - veho.v1.WebhookService
+      summary: GetWebhook
+      operationId: veho.v1.WebhookService.GetWebhook
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Webhook'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags:
+        - veho.v1.WebhookService
+      summary: DeleteWebhook
+      operationId: veho.v1.WebhookService.DeleteWebhook
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    patch:
+      tags:
+        - veho.v1.WebhookService
+      summary: UpdateWebhook
+      description: |-
+        UpdateWebhook changes the events or switches the webhook on or off;
+         enabling clears the failures that disabled it.
+      operationId: veho.v1.WebhookService.UpdateWebhook
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                events:
+                  type: array
+                  items:
+                    type: string
+                  title: events
+                  description: Replaces the events when set.
+                enabled:
+                  type:
+                    - boolean
+                    - "null"
+                  title: enabled
+                  description: Switches the webhook on or off when set.
+              title: UpdateWebhookRequest
+              additionalProperties: false
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Webhook'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/webhooks/{name}:rotate:
+    post:
+      tags:
+        - veho.v1.WebhookService
+      summary: RotateWebhookSecret
+      description: |-
+        RotateWebhookSecret gives the webhook a new secret, once; the old one
+         still signs for 24 hours.
+      operationId: veho.v1.WebhookService.RotateWebhookSecret
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.WebhookSecret'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/webhooks/{name}:test:
+    post:
+      tags:
+        - veho.v1.WebhookService
+      summary: TestWebhook
+      description: TestWebhook posts a signed ping now and reports what happened.
+      operationId: veho.v1.WebhookService.TestWebhook
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.WebhookTest'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
 tags:
   - name: veho.v1.PolicyService
     description: PolicyService manages named policies and who may use them.
@@ -1633,3 +1926,5 @@ tags:
        entitlements and its settings.
   - name: veho.v1.JobService
     description: JobService accepts, shows, cancels and retries replication jobs.
+  - name: veho.v1.WebhookService
+    description: WebhookService manages the tenant's webhooks.
