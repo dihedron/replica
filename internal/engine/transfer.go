@@ -560,59 +560,26 @@ func (e *Engine) pull(ctx context.Context, in TransferInput, a attempt, fence in
 		return err
 	}
 	defer func() { _ = src.Close() }()
-	presigner, ok := src.(plugin.Presigner)
-	if !ok {
-		return plugin.Wrapf(plugin.Permanent, "engine: the source cannot give the URL a pulling destination needs")
-	}
-	var known bool
+	var known string
 	if err := store.InTenant(ctx, e.worker, in.Tenant, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "select source_info ? 'digest' from veho.jobs where id = $1", in.Job).Scan(&known)
+		return tx.QueryRow(ctx, "select coalesce(source_info->>'digest', '') from veho.jobs where id = $1", in.Job).Scan(&known)
 	}); err != nil {
 		return err
 	}
-	srcRef := plugin.Ref{Key: a.SourcePath}
-	if !known {
-		sums, err := e.readSums(ctx, src, srcRef, a, a.Version)
-		if err != nil {
-			return err
-		}
-		d, err := digest(a.PartSize, a.Size, sums)
-		if err != nil {
-			return plugin.Wrap(err, plugin.Integrity)
-		}
-		if err := e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
-			_, err := tx.Exec(ctx, `update veho.jobs set source_info = jsonb_set(source_info, '{digest}', to_jsonb($2::text))
-				where id = $1 and not source_info ? 'digest'`, in.Job, d)
-			return err
-		}); err != nil {
-			return err
-		}
+	// record keeps a digest recorded meanwhile by another destination
+	record := func(d string) (string, error) {
+		var recorded string
+		err := e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `update veho.jobs set source_info = case when source_info ? 'digest' then source_info
+					else jsonb_set(source_info, '{digest}', to_jsonb($2::text)) end
+				where id = $1 returning source_info->>'digest'`, in.Job, d).Scan(&recorded)
+		})
+		return recorded, err
 	}
-	u, err := presigner.PresignRead(ctx, srcRef, a.Version, p.PullTTL())
+	sums, err := pullChecked(ctx, src, up.client, p, a, known, record)
+	e.metrics.bytes.Add(float64(a.Size))
 	if err != nil {
-		return drv(fmt.Errorf("presign the source: %w", err))
-	}
-	ref, err := p.Pull(ctx, u)
-	if err != nil {
-		return drv(fmt.Errorf("pull: %w", err))
-	}
-	sums, err := e.readSums(ctx, up.client, ref, a, "")
-	if err != nil {
-		return fmt.Errorf("read the pulled object back: %w", err)
-	}
-	// compared before Commit: a wrong copy is never published (OS-5)
-	d, err := digest(a.PartSize, a.Size, sums)
-	if err != nil {
-		return plugin.Wrap(err, plugin.Integrity)
-	}
-	var recorded *string
-	if err := store.InTenant(ctx, e.worker, in.Tenant, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, "select source_info->>'digest' from veho.jobs where id = $1", in.Job).Scan(&recorded)
-	}); err != nil {
 		return err
-	}
-	if recorded == nil || *recorded != d {
-		return plugin.Wrapf(plugin.Integrity, "engine: the pulled copy's digest differs from the source's")
 	}
 	return e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
 		for i, pt := range plan(a.Size, a.PartSize) {
@@ -627,8 +594,54 @@ func (e *Engine) pull(ctx context.Context, in TransferInput, a attempt, fence in
 	})
 }
 
+// pullChecked is pull without the database: the job's digest from the
+// source when none is recorded (record stores it and returns the one
+// recorded), the URL, the pull, and the read-back compared with the job's
+// digest before Commit, so a wrong copy is never published (OS-5). It
+// returns the parts' sums of the copy.
+func pullChecked(ctx context.Context, src, dst plugin.Client, p plugin.Puller, a attempt, recorded string, record func(string) (string, error)) ([][]byte, error) {
+	presigner, ok := src.(plugin.Presigner)
+	if !ok {
+		return nil, plugin.Wrapf(plugin.Permanent, "engine: the source cannot give the URL a pulling destination needs")
+	}
+	srcRef := plugin.Ref{Key: a.SourcePath}
+	if recorded == "" {
+		sums, err := readSums(ctx, src, srcRef, a, a.Version)
+		if err != nil {
+			return nil, err
+		}
+		d, err := digest(a.PartSize, a.Size, sums)
+		if err != nil {
+			return nil, plugin.Wrap(err, plugin.Integrity)
+		}
+		if recorded, err = record(d); err != nil {
+			return nil, err
+		}
+	}
+	u, err := presigner.PresignRead(ctx, srcRef, a.Version, p.PullTTL())
+	if err != nil {
+		return nil, drv(fmt.Errorf("presign the source: %w", err))
+	}
+	ref, err := p.Pull(ctx, u)
+	if err != nil {
+		return nil, drv(fmt.Errorf("pull: %w", err))
+	}
+	sums, err := readSums(ctx, dst, ref, a, "")
+	if err != nil {
+		return nil, fmt.Errorf("read the pulled object back: %w", err)
+	}
+	d, err := digest(a.PartSize, a.Size, sums)
+	if err != nil {
+		return nil, plugin.Wrap(err, plugin.Integrity)
+	}
+	if d != recorded {
+		return nil, plugin.Wrapf(plugin.Integrity, "engine: the pulled copy's digest differs from the source's")
+	}
+	return sums, nil
+}
+
 // readSums reads every part of ref by ranges and returns their SHA-256s.
-func (e *Engine) readSums(ctx context.Context, c plugin.Client, ref plugin.Ref, a attempt, version string) ([][]byte, error) {
+func readSums(ctx context.Context, c plugin.Client, ref plugin.Ref, a attempt, version string) ([][]byte, error) {
 	parts := plan(a.Size, a.PartSize)
 	sums := make([][]byte, len(parts))
 	for i, p := range parts {
@@ -646,7 +659,6 @@ func (e *Engine) readSums(ctx context.Context, c plugin.Client, ref plugin.Ref, 
 			return nil, plugin.Wrapf(plugin.Integrity, "part %d: %d bytes read, want %d", p.No, n, p.Length)
 		}
 		sums[i] = h.Sum(nil)
-		e.metrics.bytes.Add(float64(n))
 	}
 	return sums, nil
 }

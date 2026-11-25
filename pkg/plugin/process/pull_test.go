@@ -27,6 +27,9 @@ func (d pullDriver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Cr
 type pullClient struct{ plugin.Client }
 
 func (pullClient) PresignRead(_ context.Context, ref plugin.Ref, version string, ttl time.Duration) (string, error) {
+	if ref.Key == "fail" {
+		return "", plugin.Wrapf(plugin.Permanent, "no URL")
+	}
 	return "https://src.example/" + ref.Key + "?v=" + version + "&ttl=" + ttl.String(), nil
 }
 
@@ -40,6 +43,9 @@ type pullUpload struct{ plugin.Upload }
 func (pullUpload) PullTTL() time.Duration { return 90 * time.Minute }
 
 func (pullUpload) Pull(_ context.Context, url string) (plugin.Ref, error) {
+	if url == "fail" {
+		return plugin.Ref{}, plugin.Wrapf(plugin.Transient, "unreachable")
+	}
 	return plugin.Ref{Key: "pulled from " + url}, nil
 }
 
@@ -90,6 +96,14 @@ func TestPresignAndPull(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if tc.ok { // a driver's error crosses as it is
+				if _, err := c.(plugin.Presigner).PresignRead(ctx, plugin.Ref{Key: "fail"}, "", time.Hour); plugin.ClassOf(err) != plugin.Permanent {
+					t.Fatalf("presign failure: %v", err)
+				}
+				if _, err := up.(plugin.Puller).Pull(ctx, "fail"); plugin.ClassOf(err) != plugin.Transient {
+					t.Fatalf("pull failure: %v", err)
+				}
+			}
 			p := up.(plugin.Puller)
 			ref, err := p.Pull(ctx, "https://x")
 			switch {
@@ -100,5 +114,17 @@ func TestPresignAndPull(t *testing.T) {
 			}
 			_ = up.Abort(ctx)
 		})
+	}
+}
+
+// Unknown handles are refused, as for every call.
+func TestPresignAndPullUnknownHandle(t *testing.T) {
+	s := newServer(pullDriver{file.New()})
+	ctx := context.Background()
+	if _, err := s.PresignRead(ctx, &pb.PresignRequest{Client: "nope"}); err == nil {
+		t.Error("presign with an unknown client")
+	}
+	if _, err := s.Pull(ctx, &pb.PullRequest{Upload: "nope"}); err == nil {
+		t.Error("pull with an unknown upload")
 	}
 }

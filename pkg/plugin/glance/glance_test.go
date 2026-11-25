@@ -363,6 +363,9 @@ func TestWebDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if again, err := p.Pull(ctx, src.URL+"/img"); err != nil || again != ref {
+		t.Fatalf("pull again: %+v, %v", again, err)
+	}
 	if _, err := c.Stat(ctx, plugin.Ref{Key: "img"}); !errors.Is(err, plugin.ErrNotFound) {
 		t.Fatalf("visible before commit: %v", err)
 	}
@@ -382,6 +385,18 @@ func TestWebDownload(t *testing.T) {
 	if _, err := c.Stat(ctx, plugin.Ref{Key: "img"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := p.Pull(ctx, src.URL); plugin.ClassOf(err) != plugin.ResumeInvalid {
+		t.Fatalf("pull after commit: %v", err)
+	}
+	// Glance cannot fetch the URL: the import fails
+	bad, err := c.Begin(ctx, plugin.Ref{Key: "unreachable"}, plugin.ObjectInfo{Size: 1}, plugin.PutOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bad.(plugin.Puller).Pull(ctx, "http://127.0.0.1:1/none"); plugin.ClassOf(err) != plugin.Transient {
+		t.Fatalf("failed import: %v", err)
+	}
+	_ = bad.Abort(ctx)
 	// a put endpoint's upload does not pull
 	put, _ := open(t, f, "").Begin(ctx, plugin.Ref{Key: "other"}, plugin.ObjectInfo{Size: 1}, plugin.PutOptions{})
 	if put.(plugin.Puller).PullTTL() != 0 {
