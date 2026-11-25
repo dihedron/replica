@@ -130,7 +130,23 @@ func (Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credenti
 	if cfg.Endpoint != "" {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
 	}
-	return &client{s3: s3.New(opts), bucket: cfg.Bucket, class: cfg.StorageClass, transport: transport}, nil
+	endpoint := cfg.Endpoint
+	switch {
+	case endpoint != "":
+	case cfg.PathStyle:
+		endpoint = "https://s3." + cfg.Region + ".amazonaws.com"
+	default:
+		endpoint = "https://" + cfg.Bucket + ".s3." + cfg.Region + ".amazonaws.com"
+	}
+	return &client{s3: s3.New(opts), bucket: cfg.Bucket, class: cfg.StorageClass, transport: transport, endpoint: endpoint}, nil
+}
+
+// Flows is the endpoint's: outside the dial guard, as the driver's
+// connections (veho-sources.md §9).
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	f, err := plugin.URLFlow("s3", c.endpoint, "")
+	f.Unguarded = true
+	return []plugin.Flow{f}, err
 }
 
 type client struct {
@@ -138,6 +154,7 @@ type client struct {
 	bucket    string
 	class     string
 	transport *http.Transport
+	endpoint  string // the service's URL
 }
 
 func (c *client) Close() error {

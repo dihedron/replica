@@ -195,6 +195,19 @@ type client struct {
 	conn *ftp.ServerConn // for Stat
 }
 
+// Flows is the control connection (TLS from its start with implicit FTPS;
+// explicit FTPS upgrades after AUTH TLS, which is not probed: TCP only)
+// and the data connections, whose passive ports the server chooses.
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	host, port, _ := net.SplitHostPort(c.addr) // made by JoinHostPort
+	p, _ := strconv.Atoi(port)
+	control := plugin.Flow{Purpose: "ftp control", Host: host, Port: p}
+	if c.mode == "implicit" {
+		control.TLS, control.ServerName = true, host
+	}
+	return []plugin.Flow{control, {Purpose: "ftp data", Host: host, Unprobed: "passive data ports, chosen by the server for each transfer"}}, nil
+}
+
 // dial makes a control connection and logs in.
 func (c *client) dial(ctx context.Context) (*ftp.ServerConn, error) {
 	if err := ctx.Err(); err != nil {

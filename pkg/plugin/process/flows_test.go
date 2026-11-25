@@ -33,6 +33,7 @@ func TestFlows(t *testing.T) {
 	want := []plugin.Flow{
 		{Purpose: "keystone", Host: "keystone.example", Port: 5000, TLS: true, ServerName: "keystone.example", CACert: "PEM"},
 		{Purpose: "sftp", Host: "10.0.0.1", Port: 22, Handshake: "ssh"},
+		{Purpose: "s3", Host: "garage.lab", Port: 3900, Unguarded: true},
 		{Purpose: "ftp data", Host: "ftp.example", Unprobed: "passive ports chosen by the server"},
 	}
 	many := make([]plugin.Flow, plugin.MaxFlows+1)

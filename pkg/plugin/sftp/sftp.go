@@ -184,6 +184,13 @@ type client struct {
 	sc   *pkgsftp.Client
 }
 
+// Flows is the server's, with SSH's handshake.
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	host, port, _ := net.SplitHostPort(c.addr) // made by JoinHostPort
+	p, _ := strconv.Atoi(port)
+	return []plugin.Flow{{Purpose: "sftp", Host: host, Port: p, Handshake: "ssh"}}, nil
+}
+
 // connect makes the connection, once; ctx bounds it.
 func (c *client) connect(ctx context.Context) (*pkgsftp.Client, error) {
 	if err := ctx.Err(); err != nil {

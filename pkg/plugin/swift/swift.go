@@ -173,6 +173,11 @@ type client struct {
 	ready map[string]bool // containers created or checked
 }
 
+// Flows is Keystone's and Swift's.
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	return openstack.Flows(c.cfg.Endpoint, "swift", c.sc)
+}
+
 func (c *client) Close() error {
 	if t, ok := c.sc.HTTPClient.Transport.(*http.Transport); ok {
 		t.CloseIdleConnections()

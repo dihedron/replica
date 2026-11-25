@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -60,6 +62,29 @@ type Flow struct {
 	Handshake  string `json:"handshake,omitempty"`   // "": TCP, or TLS with TLS; "ssh"
 	CACert     string `json:"ca_cert,omitempty"`     // PEM certificates trusted besides the system's, for TLS
 	Unprobed   string `json:"unprobed,omitempty"`
+	// Unguarded: the driver connects without the dial guard (s3,
+	// veho-sources.md §9), so its probes refuse only the metadata
+	// addresses, never reaching further than its transfers.
+	Unguarded bool `json:"unguarded,omitempty"`
+}
+
+// URLFlow is the flow to a URL's host and port: TLS for https, verified
+// for the URL's host with ca besides the system's roots.
+func URLFlow(purpose, raw, ca string) (Flow, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.Scheme != "http" && u.Scheme != "https" {
+		return Flow{}, Wrapf(Permanent, "%s: %q is not an http or https URL", purpose, raw)
+	}
+	f := Flow{Purpose: purpose, Host: u.Hostname(), Port: 80}
+	if u.Scheme == "https" {
+		f.Port, f.TLS, f.ServerName, f.CACert = 443, true, u.Hostname(), ca
+	}
+	if p := u.Port(); p != "" {
+		if f.Port, err = strconv.Atoi(p); err != nil || f.Port < 1 || f.Port > 65535 {
+			return Flow{}, Wrapf(Permanent, "%s: port %q", purpose, p)
+		}
+	}
+	return f, nil
 }
 
 // MaxFlows bounds the flows of one endpoint (NC-3).

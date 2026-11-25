@@ -1300,6 +1300,7 @@ type Flow struct {
 	Handshake     string                 `protobuf:"bytes,6,opt,name=handshake,proto3" json:"handshake,omitempty"`
 	CaCert        string                 `protobuf:"bytes,7,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
 	Unprobed      string                 `protobuf:"bytes,8,opt,name=unprobed,proto3" json:"unprobed,omitempty"`
+	Unguarded     bool                   `protobuf:"varint,9,opt,name=unguarded,proto3" json:"unguarded,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1388,6 +1389,13 @@ func (x *Flow) GetUnprobed() string {
 		return x.Unprobed
 	}
 	return ""
+}
+
+func (x *Flow) GetUnguarded() bool {
+	if x != nil {
+		return x.Unguarded
+	}
+	return false
 }
 
 type FlowList struct {
@@ -1601,7 +1609,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\x05parts\x18\x01 \x03(\v2\x1a.veho.plugin.v1.PartResultR\x05parts\"Y\n" +
 	"\rCommitRequest\x12\x16\n" +
 	"\x06upload\x18\x01 \x01(\tR\x06upload\x120\n" +
-	"\x05parts\x18\x02 \x03(\v2\x1a.veho.plugin.v1.PartResultR\x05parts\"\xce\x01\n" +
+	"\x05parts\x18\x02 \x03(\v2\x1a.veho.plugin.v1.PartResultR\x05parts\"\xec\x01\n" +
 	"\x04Flow\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
@@ -1611,7 +1619,8 @@ const file_plugin_proto_rawDesc = "" +
 	"serverName\x12\x1c\n" +
 	"\thandshake\x18\x06 \x01(\tR\thandshake\x12\x17\n" +
 	"\aca_cert\x18\a \x01(\tR\x06caCert\x12\x1a\n" +
-	"\bunprobed\x18\b \x01(\tR\bunprobed\"6\n" +
+	"\bunprobed\x18\b \x01(\tR\bunprobed\x12\x1c\n" +
+	"\tunguarded\x18\t \x01(\bR\tunguarded\"6\n" +
 	"\bFlowList\x12*\n" +
 	"\x05flows\x18\x01 \x03(\v2\x14.veho.plugin.v1.FlowR\x05flows2\x9d\b\n" +
 	"\x06Driver\x12>\n" +

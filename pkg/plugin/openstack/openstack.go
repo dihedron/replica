@@ -284,6 +284,20 @@ func find(catalog *tokens.ServiceCatalog, eo gophercloud.EndpointOpts) (string, 
 	return "", false
 }
 
+// Flows are a client's: Keystone, then the service's endpoint from the
+// catalog, each with the endpoint's CA (veho-network-checks.md §3).
+func Flows(ep Endpoint, service string, sc *gophercloud.ServiceClient) ([]plugin.Flow, error) {
+	keystone, err := plugin.URLFlow("keystone", ep.AuthURL, ep.CACert)
+	if err != nil {
+		return nil, err
+	}
+	svc, err := plugin.URLFlow(service, sc.Endpoint, ep.CACert)
+	if err != nil {
+		return nil, err
+	}
+	return []plugin.Flow{keystone, svc}, nil
+}
+
 // ProjectID is the project the service client's token is scoped to.
 func ProjectID(sc *gophercloud.ServiceClient) (string, error) {
 	r, ok := sc.GetAuthResult().(tokens.CreateResult)

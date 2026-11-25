@@ -237,7 +237,7 @@ func (s *server) Flows(ctx context.Context, r *pb.Handle) (*pb.FlowList, error) 
 	out := &pb.FlowList{}
 	for _, f := range flows {
 		out.Flows = append(out.Flows, &pb.Flow{Purpose: f.Purpose, Host: f.Host, Port: int32(f.Port), Tls: f.TLS, //nolint:gosec // a port
-			ServerName: f.ServerName, Handshake: f.Handshake, CaCert: f.CACert, Unprobed: f.Unprobed})
+			ServerName: f.ServerName, Handshake: f.Handshake, CaCert: f.CACert, Unprobed: f.Unprobed, Unguarded: f.Unguarded})
 	}
 	return out, nil
 }
