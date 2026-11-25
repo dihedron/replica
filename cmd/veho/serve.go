@@ -156,6 +156,10 @@ func connect(ctx context.Context, cfg *config.Config) (map[string]*pgxpool.Pool,
 // standard library (veho-plugin-distribution.md §1).
 var builtins = map[string]process.Factory{"file": file.Factory}
 
+// pluginsRootOwned requires plugin files to be root's (PD-1); tests turn it
+// off to start plugins they build.
+var pluginsRootOwned = true
+
 // loadDrivers returns the drivers the configuration lists: built-in ones,
 // plugins installed with their signed manifests, and plugins pinned by path
 // and SHA-256 (veho-plugin-distribution.md §2, §3); stop kills the plugins.
@@ -180,13 +184,13 @@ func loadDrivers(cfg *config.Config) (map[string]plugin.Driver, func(), error) {
 			drivers[d.Name] = drv
 			continue
 		}
-		opts := process.Options{Path: d.Path, RequireRootOwned: true}
+		opts := process.Options{Path: d.Path, RequireRootOwned: pluginsRootOwned}
 		if d.Path == "" {
 			keys, err := packaging.PluginKeys()
 			if err != nil {
 				return nil, stop, fmt.Errorf("serve: %w", err)
 			}
-			if opts, err = process.Installed(process.Dir, d.Name, metadata.Version, keys, true); err != nil {
+			if opts, err = process.Installed(process.Dir, d.Name, metadata.Version, keys, pluginsRootOwned); err != nil {
 				return nil, stop, fmt.Errorf("serve: %w", err)
 			}
 		} else {
