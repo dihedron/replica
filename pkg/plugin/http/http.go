@@ -7,6 +7,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -60,18 +61,12 @@ func (Driver) Capabilities() plugin.Capabilities {
 	return plugin.Capabilities{Source: true, RangeRead: true}
 }
 
-func (Driver) ConfigSchema() []byte {
-	return []byte(`{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "base_url": {"type": "string", "pattern": "^https?://", "description": "the URL the objects' paths are relative to"},
-    "headers": {"type": "object", "additionalProperties": {"type": "string"}, "description": "extra request headers"}
-  },
-  "required": ["base_url"],
-  "additionalProperties": false
-}`)
-}
+// schema is the endpoint configuration's JSON Schema (PLG-10).
+//
+//go:embed schema.json
+var schema []byte
+
+func (Driver) ConfigSchema() []byte { return schema }
 
 // ParseRef parses an http(s) URL: the key is its path, without the leading
 // slash; it is relative to the endpoint's base_url.

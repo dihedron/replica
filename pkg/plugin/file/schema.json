@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "root": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "absolute directory holding the objects"
+    }
+  },
+  "required": [
+    "root"
+  ],
+  "additionalProperties": false
+}

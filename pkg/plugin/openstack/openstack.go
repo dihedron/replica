@@ -9,6 +9,8 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,11 +50,34 @@ type Endpoint struct {
 	CACert    string `json:"ca_cert"`
 }
 
-// SchemaProperties are Endpoint's fields in a driver's ConfigSchema.
-const SchemaProperties = `"auth_url": {"type": "string", "pattern": "^https?://", "description": "Keystone v3"},
-    "region": {"type": "string"},
-    "interface": {"enum": ["public", "internal", "admin"], "default": "public"},
-    "ca_cert": {"type": "string", "description": "PEM certificates trusted besides the system's"}`
+// endpoint are Endpoint's fields as JSON Schema properties.
+//
+//go:embed endpoint.json
+var endpoint []byte
+
+// Schema is a driver's ConfigSchema: its own schema, with Endpoint's
+// properties added to its "properties" and auth_url to its "required".
+func Schema(own []byte) ([]byte, error) {
+	var s map[string]any
+	var props map[string]any
+	if err := json.Unmarshal(own, &s); err != nil {
+		return nil, fmt.Errorf("schema: %w", err)
+	}
+	if err := json.Unmarshal(endpoint, &props); err != nil {
+		return nil, fmt.Errorf("endpoint schema: %w", err)
+	}
+	mine, _ := s["properties"].(map[string]any)
+	if mine == nil {
+		mine = map[string]any{}
+	}
+	for k, v := range props {
+		mine[k] = v
+	}
+	s["properties"] = mine
+	req, _ := s["required"].([]any)
+	s["required"] = append(req, "auth_url")
+	return json.MarshalIndent(s, "", "  ")
+}
 
 // Service is an OpenStack service in the catalog.
 type Service struct {

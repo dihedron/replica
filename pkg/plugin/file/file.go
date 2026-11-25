@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -99,15 +100,12 @@ func (Driver) Capabilities() plugin.Capabilities {
 	}
 }
 
-func (Driver) ConfigSchema() []byte {
-	return []byte(`{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {"root": {"type": "string", "pattern": "^/", "description": "absolute directory holding the objects"}},
-  "required": ["root"],
-  "additionalProperties": false
-}`)
-}
+// schema is the endpoint configuration's JSON Schema (PLG-10).
+//
+//go:embed schema.json
+var schema []byte
+
+func (Driver) ConfigSchema() []byte { return schema }
 
 // ParseRef parses file:///key (the key is relative to the endpoint's root).
 func (Driver) ParseRef(url string) (plugin.Ref, error) {

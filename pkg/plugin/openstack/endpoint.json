@@ -1,0 +1,18 @@
+{
+  "auth_url": {
+    "type": "string",
+    "pattern": "^https?://",
+    "description": "Keystone v3"
+  },
+  "region": {
+    "type": "string"
+  },
+  "interface": {
+    "enum": ["public", "internal", "admin"],
+    "default": "public"
+  },
+  "ca_cert": {
+    "type": "string",
+    "description": "PEM certificates trusted besides the system's"
+  }
+}

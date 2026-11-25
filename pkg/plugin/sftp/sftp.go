@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -70,20 +71,12 @@ func (Driver) Capabilities() plugin.Capabilities {
 	return plugin.Capabilities{Source: true, Sink: true, RangeRead: true, ResumableUpload: true, MaxParts: maxParts, MaxPartSize: 5 << 30}
 }
 
-func (Driver) ConfigSchema() []byte {
-	return []byte(`{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "host": {"type": "string", "minLength": 1},
-    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 22},
-    "root": {"type": "string", "pattern": "^/", "description": "the directory holding the objects"},
-    "host_key": {"type": "string", "description": "the server's public key, as in known_hosts: ssh-ed25519 AAAA..."}
-  },
-  "required": ["host", "root", "host_key"],
-  "additionalProperties": false
-}`)
-}
+// schema is the endpoint configuration's JSON Schema (PLG-10).
+//
+//go:embed schema.json
+var schema []byte
+
+func (Driver) ConfigSchema() []byte { return schema }
 
 // ParseRef parses sftp:// and scp:// URLs; the key is the path without the
 // leading slash, relative to the endpoint's root.

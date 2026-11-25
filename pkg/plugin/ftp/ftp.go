@@ -8,6 +8,7 @@ package ftp
 import (
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -65,20 +66,12 @@ func (Driver) Capabilities() plugin.Capabilities {
 	return plugin.Capabilities{Source: true, RangeRead: true}
 }
 
-func (Driver) ConfigSchema() []byte {
-	return []byte(`{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "host": {"type": "string", "minLength": 1},
-    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "description": "default 21, 990 with tls: implicit"},
-    "root": {"type": "string", "pattern": "^/", "description": "the directory holding the objects"},
-    "tls": {"enum": ["explicit", "implicit", "none"], "default": "explicit"}
-  },
-  "required": ["host", "root"],
-  "additionalProperties": false
-}`)
-}
+// schema is the endpoint configuration's JSON Schema (PLG-10).
+//
+//go:embed schema.json
+var schema []byte
+
+func (Driver) ConfigSchema() []byte { return schema }
 
 // ParseRef parses ftp:// and ftps:// URLs; the key is the path without the
 // leading slash, relative to the endpoint's root.

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "host": {
+      "type": "string",
+      "minLength": 1
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "description": "default 21, 990 with tls: implicit"
+    },
+    "root": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "the directory holding the objects"
+    },
+    "tls": {
+      "enum": [
+        "explicit",
+        "implicit",
+        "none"
+      ],
+      "default": "explicit"
+    }
+  },
+  "required": [
+    "host",
+    "root"
+  ],
+  "additionalProperties": false
+}

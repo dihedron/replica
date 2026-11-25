@@ -317,3 +317,28 @@ func TestClassify(t *testing.T) {
 		t.Error("StatusOf")
 	}
 }
+
+func TestSchema(t *testing.T) {
+	b, err := Schema([]byte(`{"type": "object", "properties": {"container": {"type": "string"}}, "required": ["container"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Properties map[string]any `json:"properties"`
+		Required   []string       `json:"required"`
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"container", "auth_url", "region", "interface", "ca_cert"} {
+		if s.Properties[k] == nil {
+			t.Errorf("no %s", k)
+		}
+	}
+	if strings.Join(s.Required, ",") != "container,auth_url" {
+		t.Errorf("required %v", s.Required)
+	}
+	if _, err := Schema([]byte("not json")); err == nil {
+		t.Error("bad schema accepted")
+	}
+}
