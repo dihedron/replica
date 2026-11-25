@@ -25,8 +25,11 @@ devstack_up() {
 	state="$(vm_ssh "systemctl show -p ActiveState --value $DEVSTACK_UNIT" 2>/dev/null || true)"
 	case "$state" in
 	active | activating) info "stack.sh is already running" ;;
-	failed) die "a previous stack.sh failed (lab.sh logs); start over with lab.sh down && lab.sh up" ;;
-	*)
+	failed | *)
+		if [[ "$state" == failed ]]; then
+			info "a previous stack.sh failed: unstacking, then stacking again"
+			vm_ssh "sudo systemctl reset-failed $DEVSTACK_UNIT; cd $DEVSTACK_DIR && sudo -u stack HOME=/opt/stack ./unstack.sh >/dev/null 2>&1 || true"
+		fi
 		info "installing DevStack $branch"
 		vm_ssh "bash -s -- $(printf '%q ' "$branch" "$DEVSTACK_DIR")" <<'SCRIPT'
 set -euo pipefail
@@ -78,9 +81,47 @@ GLANCE_DEFAULT_BACKEND=fast
 
 [[post-config|\$GLANCE_API_CONF]]
 [import_filtering_opts]
-allowed_ports =
+allowed_ports = []
+CONF
+	# DevStack makes the file stores only without Swift: the lab has both
+	glance_stores_conf
+}
+
+# glance_stores_conf: the two file stores, which DevStack leaves out when
+# Swift is enabled.
+glance_stores_conf() {
+	cat <<'CONF'
+[DEFAULT]
+enabled_backends = fast:file,cheap:file
+[glance_store]
+default_backend = fast
+[fast]
+filesystem_store_datadir = /opt/stack/data/glance/fast/
+[cheap]
+filesystem_store_datadir = /opt/stack/data/glance/cheap/
 CONF
 }
+
+# glance_stores_live: the same, on a running DevStack stacked without it.
+glance_stores_live() {
+	vm_ssh "sudo grep -q '^enabled_backends' /etc/glance/glance-api.conf" && return
+	info "configuring Glance's file stores fast and cheap"
+	local script
+	script="$(cat <<'SCRIPT'
+set -euo pipefail
+source "$1/inc/ini-config"
+section=""
+while IFS= read -r line; do
+	if [[ "$line" =~ ^\[(.*)\]$ ]]; then section="${BASH_REMATCH[1]}"; continue; fi
+	iniset -sudo /etc/glance/glance-api.conf "$section" "${line%% = *}" "${line#* = }"
+done
+install -d -o stack -g stack /opt/stack/data/glance/fast /opt/stack/data/glance/cheap
+systemctl restart devstack@g-api
+SCRIPT
+)"
+	glance_stores_conf | vm_ssh "sudo bash -c $(printf '%q' "$script") lab $DEVSTACK_DIR"
+}
+
 
 # devstack_wait: waits for stack.sh, reporting its progress.
 devstack_wait() {
@@ -125,6 +166,7 @@ ca_file() { echo "$LAB_STATE_DIR/ca.pem"; }
 # devstack_configure: the tests' project, user (member) and application
 # credential, and DevStack's CA on the lab host.
 devstack_configure() {
+	glance_stores_live
 	vm_ssh "sudo cat $DEVSTACK_CA" >"$(ca_file)"
 	devstack_openstack project show "$TEST_PROJECT" >/dev/null 2>&1 ||
 		devstack_openstack project create --domain Default --description "veho tests" "$TEST_PROJECT" >/dev/null

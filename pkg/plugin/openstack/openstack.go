@@ -284,6 +284,19 @@ func find(catalog *tokens.ServiceCatalog, eo gophercloud.EndpointOpts) (string, 
 	return "", false
 }
 
+// ProjectID is the project the service client's token is scoped to.
+func ProjectID(sc *gophercloud.ServiceClient) (string, error) {
+	r, ok := sc.GetAuthResult().(tokens.CreateResult)
+	if !ok {
+		return "", plugin.Wrapf(plugin.Permanent, "keystone: no project in the token")
+	}
+	p, err := r.ExtractProject()
+	if err != nil || p == nil || p.ID == "" {
+		return "", plugin.Wrapf(plugin.Permanent, "keystone: the token is not scoped to a project")
+	}
+	return p.ID, nil
+}
+
 // ResponseError is the service's answer in err, if any: gophercloud returns
 // it by value, or by pointer after a re-authentication.
 func ResponseError(err error) (gophercloud.ErrUnexpectedResponseCode, bool) {

@@ -6,3 +6,4 @@
 ^/repo/test/lab/\.state/
 ^/repo/test/lab/\.evidence/
 ^/repo/_test/\.env$
+^/repo/test/devstack/\.state/

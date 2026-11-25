@@ -264,9 +264,35 @@ func (c *client) Stat(ctx context.Context, ref plugin.Ref) (plugin.ObjectInfo, e
 	_ = resp.Body.Close()
 	size, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
 	if err != nil || size < 0 {
-		return plugin.ObjectInfo{}, plugin.Wrapf(plugin.Permanent, "swift: %s: no size", name)
+		// a proxy in front of Swift may drop a HEAD's Content-Length: 0
+		if size, err = c.listedSize(ctx, container, name); err != nil {
+			return plugin.ObjectInfo{}, err
+		}
 	}
 	return info(resp.Header, size), nil
+}
+
+// listedSize is the object's size in its container's listing.
+func (c *client) listedSize(ctx context.Context, container, name string) (int64, error) {
+	q := url.Values{"format": {"json"}, "prefix": {name}, "limit": {"1"}}
+	resp, err := c.do(ctx, http.MethodGet, c.sc.ServiceURL(url.PathEscape(container))+"?"+q.Encode(), nil, nil, http.StatusOK, http.StatusNoContent)
+	if err != nil {
+		return 0, classify(ctx, "list "+name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var page []struct {
+		Name  string `json:"name"`
+		Bytes int64  `json:"bytes"`
+	}
+	if resp.StatusCode == http.StatusOK {
+		if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+			return 0, plugin.Wrap(fmt.Errorf("swift: list %s: %w", name, err), plugin.Transient)
+		}
+	}
+	if len(page) == 0 || page[0].Name != name {
+		return 0, plugin.Wrapf(plugin.Permanent, "swift: %s: no size", name)
+	}
+	return page[0].Bytes, nil
 }
 
 func (c *client) ReadRange(ctx context.Context, ref plugin.Ref, off, length int64, ifVersion string) (io.ReadCloser, error) {

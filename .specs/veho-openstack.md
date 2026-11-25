@@ -2,7 +2,7 @@
 
 This file specifies the `glance` and `swift` drivers (backlog 21 and 34, OI-6) and the lab that tests them against DevStack. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`.
 
-Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1).
+Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1). Steps 1 to 3 implemented the same day (§10 records what the implementation changed); `web-download` (step 4) next.
 
 ## 1. Decisions (2026-11-25)
 
@@ -154,3 +154,13 @@ A lab of its own, **self-contained in this repository** (`test/devstack/`), so i
 3. Swift, then Glance with `put` and `glance-direct`.
 4. `web-download`: `Presigner` in `s3` and `http`, `Pull` and the read-back in the engine.
 5. The end-to-end tests, the docs, the packages.
+
+## 10. Changes from the implementation (2026-11-25)
+
+- **Image IDs are random, not derived from the upload.** `Begin` does not know the transfer, and Glance never reuses a deleted image's ID, so a derived ID would make every new attempt fail. A `Begin` retried after a lost answer leaves a hidden, queued image (garbage, never visible); a new attempt's `Resume` deletes the token's image, unless it is already published under the name with the token's `veho_upload`, which is then the committed object.
+- **A destination name may not be a UUID**, so a key is an ID or a name, never both. `ReadRange` and `Stat` take either: a name is the project's one visible active image of that name (`owner` filtered).
+- **The data request** has the size announced at `Begin` as its `Content-Length` (chunked when none was announced); a part written again with the same bytes (its SHA-256) is harmless, with other bytes `ResumeInvalid`.
+- **Replacement:** the engine checks `overwrite` before `Begin` (`fail`, `skip`), so `Commit` deletes the project's other active images of the name after publishing the new one.
+- **Swift:** `max_segments` is a driver setting (capabilities are the driver's, not the endpoint's); an upload has a marker object (`<name>/<upload id>/upload` among the segments) that `Begin` writes and `Commit` and `Abort` remove, so a write into an aborted or committed upload is `ResumeInvalid`; overwriting an SLO deletes the old one's segments; a `HEAD` whose `Content-Length` a proxy dropped (Apache drops `0`) takes the size from the container listing.
+- **The lab:** DevStack configures Glance's file stores only without Swift, so the lab adds `fast` and `cheap` itself (`lib/devstack.sh`, `glance_stores_conf`); Glance's `allowed_ports` must be `[]`.
+- **Verified on DevStack stable/2026.2:** the authentication with both kinds of credentials, the conformance suite on Swift (both credentials) and on Glance (`put`, and `glance-direct` to the store `cheap`).

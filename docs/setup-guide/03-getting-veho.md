@@ -14,7 +14,7 @@ sha256sum --check --ignore-missing checksums.txt
 
 The `.rpm` packages carry their own signature (`rpm --checksig`, after `rpm --import signing-key.asc`); the `.deb` packages carry a `debsig` origin signature, which `debsig-verify` checks with a policy for the key (the project's README gives the commands).
 
-Install the package on every node, with the package of each storage driver the node needs other than `file` and `http`: `veho-plugin-s3` for S3, `veho-plugin-sftp` for SFTP and SCP, `veho-plugin-ftp` for FTP. A plugin package installs its binary under `/usr/libexec/veho/plugins/`, with a manifest signed with the release's key, which the `veho` package installs as `/etc/veho/plugin-keys/veho.pub`; the release's plugins run only with veho of the same release, so install and upgrade them together.
+Install the package on every node, with the package of each storage driver the node needs other than `file` and `http`: `veho-plugin-s3` for S3, `veho-plugin-sftp` for SFTP and SCP, `veho-plugin-ftp` for FTP, `veho-plugin-glance` and `veho-plugin-swift` for OpenStack's image and object services. A plugin package installs its binary under `/usr/libexec/veho/plugins/`, with a manifest signed with the release's key, which the `veho` package installs as `/etc/veho/plugin-keys/veho.pub`; the release's plugins run only with veho of the same release, so install and upgrade them together.
 
 ```bash
 sudo apt install ./veho_<version>_linux_amd64.deb ./veho-plugin-s3_<version>_linux_amd64.deb      # Ubuntu

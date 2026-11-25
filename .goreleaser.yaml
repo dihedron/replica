@@ -82,6 +82,21 @@ builds:
         - cmd: go run ./tools/plugin-manifest sign -name s3 -version {{ .Version }} -out build/plugins/{{ .Os }}_{{ .Arch }} {{ if .IsSnapshot }}-allow-unsigned{{ end }} {{ .Path }}
           output: true
 
+  - id: veho-plugin-glance
+    binary: veho-plugin-glance
+    main: ./cmd/veho-plugin-glance
+    goos: [linux]
+    goarch: [amd64, arm64]
+    goamd64: [v1]
+    tags: [osusergo, netgo, static_build]
+    flags: [-trimpath]
+    ldflags: *ldflags
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      post:
+        - cmd: go run ./tools/plugin-manifest sign -name glance -version {{ .Version }} -out build/plugins/{{ .Os }}_{{ .Arch }} {{ if .IsSnapshot }}-allow-unsigned{{ end }} {{ .Path }}
+          output: true
+
   - id: veho-plugin-swift
     binary: veho-plugin-swift
     main: ./cmd/veho-plugin-swift
@@ -138,6 +153,18 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
     files:
       - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-s3.manifest*"
+        strip_parent: true
+
+  - id: veho-plugin-glance
+    ids: [veho-plugin-glance]
+    formats: [tar.gz]
+    name_template: >-
+      veho-plugin-glance_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    files:
+      - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-glance.manifest*"
         strip_parent: true
 
   - id: veho-plugin-swift
@@ -312,6 +339,40 @@ nfpms:
         file_info: {mode: 0644}
       - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-s3.manifest.sig"
         dst: /usr/libexec/veho/plugins/veho-plugin-s3.manifest.sig
+        file_info: {mode: 0644}
+
+  - id: veho-plugin-glance
+    package_name: veho-plugin-glance
+    ids: [veho-plugin-glance]
+    description: |
+      veho's OpenStack Glance storage driver, as a process plugin: images as a
+      source and a destination (put and glance-direct).
+    homepage: "https://github.com/dihedron/veho"
+    maintainer: "Andrea Funtò <dihedron.dev@gmail.com>"
+    vendor: "Andrea Funtò"
+    license: "MIT"
+    formats: [rpm, deb]
+    epoch: "1"
+    release: "1"
+    section: default
+    priority: "optional"
+    bindir: /usr/libexec/veho/plugins
+    # nfpm does not template dependencies: veho itself refuses a plugin of
+    # another release at start (its manifest's version, PD-2)
+    dependencies: [veho]
+    rpm:
+      signature:
+        key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
+    deb:
+      signature:
+        key_file: '{{ if index .Env "GPG_KEY_FILE" }}{{ .Env.GPG_KEY_FILE }}{{ end }}'
+        type: origin
+    contents:
+      - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-glance.manifest"
+        dst: /usr/libexec/veho/plugins/veho-plugin-glance.manifest
+        file_info: {mode: 0644}
+      - src: "build/plugins/{{ .Os }}_{{ .Arch }}/veho-plugin-glance.manifest.sig"
+        dst: /usr/libexec/veho/plugins/veho-plugin-glance.manifest.sig
         file_info: {mode: 0644}
 
   - id: veho-plugin-swift
