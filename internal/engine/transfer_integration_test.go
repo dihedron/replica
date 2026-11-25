@@ -136,22 +136,30 @@ func (f fixture) fileEndpoint(t *testing.T, name, driver, loc string) string {
 // policy; it launches the engine on the first call.
 func (f fixture) submit(t *testing.T, srcDir string, size int, pol string) job {
 	t.Helper()
-	ctx := context.Background()
 	name := "obj-" + uuid.New().String()[:8]
 	data := make([]byte, size)
 	_, _ = rand.Read(data)
 	if err := os.WriteFile(filepath.Join(srcDir, name), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	pol = strings.ReplaceAll(pol, "OBJ", name)
-	id, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "source", SourcePath: name, Policy: []byte(pol)})
+	j := f.submitFrom(t, "source", name, strings.ReplaceAll(pol, "OBJ", name))
+	j.src = filepath.Join(srcDir, name)
+	return j
+}
+
+// submitFrom submits a job of the policy from the endpoint's path, as
+// submit does, without writing a source.
+func (f fixture) submitFrom(t *testing.T, endpoint, path, pol string) job {
+	t.Helper()
+	ctx := context.Background()
+	id, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: endpoint, SourcePath: path, Policy: []byte(pol)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := dbos.CancelWorkflow(f.e.dbos, JobWorkflowID(id)); err != nil {
 		t.Fatal(err)
 	}
-	j := job{f: f, id: id, src: filepath.Join(srcDir, name), transfers: map[string]uuid.UUID{}}
+	j := job{f: f, id: id, transfers: map[string]uuid.UUID{}}
 	if err := store.InTenant(ctx, f.api, f.tenant, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx, "select e.name, t.id from veho.transfers t join veho.endpoints e on e.id = t.destination_endpoint_id where t.job_id = $1", id)
 		if err != nil {

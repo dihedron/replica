@@ -2,7 +2,7 @@
 
 This file specifies the `nexus` driver: Sonatype Nexus Repository 3 as a source and a destination. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`. It follows the `http` driver (`veho-sources.md`) and the Glance `put` method (`veho-openstack.md` §3.2), whose patterns it reuses.
 
-Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1). Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 next.
+Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1). Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
 
 ## 1. Decisions (2026-11-25)
 
