@@ -1,0 +1,91 @@
+# AppArmor profile of veho (.specs/veho-packaging.md): the node reads its
+# configuration, the CA roots and its plugins, talks to the network and
+# the system log, and starts its plugins under veho-plugin, which cannot
+# read veho's secrets (PK-1). The file driver's roots are the operator's:
+# list them in /etc/apparmor.d/local/veho, e.g.
+#   /srv/replicas/ r,
+#   /srv/replicas/** rwk,
+abi <abi/3.0>,
+
+include <tunables/global>
+
+profile veho /usr/bin/veho flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/ssl_certs>
+
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  network unix stream,
+  network unix dgram,
+  network netlink raw,
+
+  /usr/bin/veho mr,
+
+  # the configuration, the TLS files, veho.env, the plugin keys
+  /etc/veho/ r,
+  /etc/veho/** r,
+  /usr/share/veho/** r,
+  # the unwrap key as a systemd credential
+  /run/credentials/veho.service/ r,
+  /run/credentials/veho.service/* r,
+
+  # the plugins: read (go-plugin checks their SHA-256), started confined
+  /usr/libexec/veho/plugins/ r,
+  /usr/libexec/veho/plugins/*.manifest r,
+  /usr/libexec/veho/plugins/*.manifest.sig r,
+  /usr/libexec/veho/plugins/veho-plugin-* rPx -> veho-plugin,
+
+  # the audit to the system log
+  /dev/log w,
+  /run/systemd/journal/socket w,
+  /run/systemd/journal/syslog w,
+
+  # the Go runtime
+  @{PROC}/@{pid}/ r,
+  owner @{PROC}/@{pid}/** r,
+  @{PROC}/sys/net/core/somaxconn r,
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+  /sys/fs/cgroup/** r,
+
+  # go-plugin's sockets (PrivateTmp: the service's own /tmp)
+  /tmp/ r,
+  owner /tmp/plugin* rw,
+
+  include if exists <local/veho>
+}
+
+# veho's plugins: the network and the CA roots, their own binary and the
+# sockets of go-plugin; never veho's configuration, environment file,
+# unwrap key or TLS key (PK-1). A third-party plugin that needs more (a
+# local directory) gets it from /etc/apparmor.d/local/veho-plugin.
+profile veho-plugin flags=(attach_disconnected) {
+  include <abstractions/base>
+  include <abstractions/nameservice>
+  include <abstractions/ssl_certs>
+
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  network unix stream,
+  network netlink raw,
+
+  /usr/libexec/veho/plugins/veho-plugin-* mr,
+
+  @{PROC}/@{pid}/ r,
+  owner @{PROC}/@{pid}/** r,
+  @{PROC}/sys/net/core/somaxconn r,
+  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+  /sys/fs/cgroup/** r,
+
+  /tmp/ r,
+  owner /tmp/plugin* rw,
+
+  deny /etc/veho/** rwklx,
+  deny /run/credentials/** rwklx,
+
+  include if exists <local/veho-plugin>
+}

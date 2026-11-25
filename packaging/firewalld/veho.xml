@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- veho's API (.specs/veho-packaging.md): gRPC and REST over TLS 1.3.
+     Open it with firewall-cmd, adding the service "veho" permanently. -->
+<service>
+  <short>veho</short>
+  <description>veho's API: gRPC and REST on one TLS port (api.listen, 8443 by default). The metrics listener (127.0.0.1:9464) is local by default and needs no rule.</description>
+  <port protocol="tcp" port="8443"/>
+</service>

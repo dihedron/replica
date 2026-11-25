@@ -171,6 +171,10 @@ nodes_deploy() {
 		inner_exec "$name" update-ca-certificates >/dev/null 2>&1
 		node_yaml "$name" "$s3sum"
 		inner_push "$REPO_DIR/packaging/veho.service" "$name" /usr/lib/systemd/system/veho.service 0644
+		# the AppArmor profiles, enforced, as the deb's postinstall loads them
+		# (.specs/veho-packaging.md, PK-T3)
+		inner_push "$REPO_DIR/packaging/apparmor/veho" "$name" /etc/apparmor.d/veho 0644
+		inner_exec "$name" apparmor_parser -r -W /etc/apparmor.d/veho
 		node_unblock "$name"
 		inner_exec "$name" systemctl daemon-reload
 		inner_exec "$name" systemctl enable --now veho >/dev/null 2>&1 || true

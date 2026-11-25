@@ -2,7 +2,7 @@
 
 ## From a release
 
-Releases are published on GitHub, at <https://github.com/dihedron/veho/releases>, with `.deb`, `.rpm` and `.apk` packages, archives and SBOMs, and these documents. No release has been published yet; when one is, verify it before you install it.
+Releases are published on GitHub, at <https://github.com/dihedron/veho/releases>, with `.deb`, `.rpm` and `.apk` packages, archives and SBOMs, and these documents. Verify a release before you install it.
 
 Every release is signed with the project's packaging key, `packaging/signing-key.asc` in the repository, fingerprint `FB7DE97BAAFAA2A676CEE59A1B34E6A2A14CD06A`. Take the key from the repository, not from the release you are verifying.
 
@@ -21,6 +21,12 @@ sudo apt install ./veho_<version>_linux_amd64.deb ./veho-plugin-s3_<version>_lin
 sudo dnf install ./veho_<version>_linux_amd64.rpm ./veho-plugin-s3_<version>_linux_amd64.rpm      # Rocky Linux, AlmaLinux
 ```
 
+### Confinement and the firewall
+
+The packages depend on `ca-certificates` (TLS to the state store and the storage systems). On Ubuntu and Debian the `.deb` installs two **AppArmor** profiles, `/etc/apparmor.d/veho`, and loads them in enforce mode when AppArmor is enabled (the package recommends `apparmor`): `veho` confines the node to its configuration, the CA roots, its plugins, the network and the system log; `veho-plugin` confines every plugin, which can then read neither `/etc/veho` (the environment file, the TLS key) nor the unwrap key. `aa-status` lists them. A `file` endpoint's root must be added to the profile (*Operator's Guide*, drivers). On Rocky Linux and AlmaLinux the SELinux policy is not shipped yet: the node runs under systemd's confinement alone.
+
+Both packages install a **firewalld** service, `veho`, for the API port (8443/tcp), and open nothing: `firewall-cmd --permanent --add-service=veho && firewall-cmd --reload` on a node whose API is reached from other hosts. The metrics listener is local by default.
+
 ## From the source
 
 Until the first release, build from a clone of the repository, with Go (the version in `go.mod`) and GoReleaser:
@@ -31,7 +37,7 @@ cd veho
 make compile        # dist/veho_linux_amd64_v1/veho
 ```
 
-Then copy the binary to `/usr/bin/veho` on every node, and install `packaging/veho.service` as `/usr/lib/systemd/system/veho.service`; run `packaging/postinstall.sh` once on each node to create the user and `/etc/veho`.
+Then copy the binary to `/usr/bin/veho` on every node, and install `packaging/veho.service` as `/usr/lib/systemd/system/veho.service`; where AppArmor runs, install `packaging/apparmor/veho` as `/etc/apparmor.d/veho`; run `packaging/postinstall.sh` once on each node to create the user and `/etc/veho` and to load the profiles.
 
 Check the binary:
 
