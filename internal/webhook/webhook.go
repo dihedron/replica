@@ -17,12 +17,12 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/dihedron/veho/internal/netguard"
 )
 
 // Header names of a delivery (§3.3).
@@ -53,7 +53,7 @@ var (
 	// ErrStale is a signature older (or newer) than the tolerance.
 	ErrStale = errors.New("webhook: stale timestamp")
 	// ErrForbidden is a target the guard refuses (W-1).
-	ErrForbidden = errors.New("webhook: the target address is not allowed")
+	ErrForbidden = netguard.ErrForbidden
 )
 
 func mac(secret []byte, t int64, body []byte) string {
@@ -145,78 +145,22 @@ func ValidateURL(raw string) error {
 	return nil
 }
 
-// Guard decides which addresses a webhook may reach (W-1).
+// Guard decides which addresses a webhook may reach (W-1), with the dial
+// guard of internal/netguard.
 type Guard struct {
-	allow []netip.Prefix
+	ng *netguard.Guard
 	// tlsConfig is for tests, which trust their own server
 	tlsConfig *tls.Config
 }
 
-// never are the addresses no configuration opens: the metadata services.
-var never = []netip.Prefix{
-	netip.MustParsePrefix("169.254.169.254/32"), netip.MustParsePrefix("169.254.170.2/32"),
-	netip.MustParsePrefix("fd00:ec2::254/128"), netip.MustParsePrefix("100.100.100.200/32"),
-}
-
-// special are ranges that are not public: refused unless the operator lists
-// them.
-var special = func() []netip.Prefix {
-	var out []netip.Prefix
-	for _, s := range []string{"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24",
-		"192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/3",
-		"::/128", "::1/128", "64:ff9b::/96", "100::/64", "2001:db8::/32", "fc00::/7", "fe80::/10", "ff00::/8"} {
-		out = append(out, netip.MustParsePrefix(s))
-	}
-	return out
-}()
-
 // NewGuard is a guard that also allows the operator's CIDRs
 // (notifications.allow_cidrs).
 func NewGuard(allow []string) (*Guard, error) {
-	g := &Guard{}
-	for _, s := range allow {
-		p, err := netip.ParsePrefix(s)
-		if err != nil {
-			return nil, fmt.Errorf("allow_cidrs %q: %w", s, err)
-		}
-		g.allow = append(g.allow, p.Masked())
-	}
-	return g, nil
-}
-
-func within(ps []netip.Prefix, a netip.Addr) bool {
-	for _, p := range ps {
-		if p.Contains(a) {
-			return true
-		}
-	}
-	return false
-}
-
-// Allowed reports whether a may be dialled.
-func (g *Guard) Allowed(a netip.Addr) bool {
-	a = a.Unmap()
-	if !a.IsValid() || within(never, a) {
-		return false
-	}
-	if within(g.allow, a) {
-		return true
-	}
-	return !within(special, a) && !a.IsLoopback() && !a.IsPrivate() && !a.IsLinkLocalUnicast() && !a.IsMulticast() && !a.IsUnspecified()
-}
-
-// control runs after the name is resolved and before the connection: the
-// address actually dialled is the one checked, which closes DNS rebinding.
-func (g *Guard) control(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
+	ng, err := netguard.New(allow)
 	if err != nil {
-		return ErrForbidden
+		return nil, err
 	}
-	a, err := netip.ParseAddr(host)
-	if err != nil || !g.Allowed(a) {
-		return ErrForbidden
-	}
-	return nil
+	return &Guard{ng: ng}, nil
 }
 
 // WithTLS sets the TLS configuration of the deliveries; for tests, which
@@ -229,7 +173,7 @@ func (g *Guard) WithTLS(c *tls.Config) *Guard {
 // Client is an HTTP client for deliveries: TLS 1.2 or later, no proxy, no
 // redirect, no connection kept, the guard on every dial.
 func (g *Guard) Client(timeout time.Duration) *http.Client {
-	d := &net.Dialer{Timeout: timeout, Control: g.control}
+	d := g.ng.Dialer(timeout)
 	cfg := g.tlsConfig
 	if cfg == nil {
 		cfg = &tls.Config{MinVersion: tls.VersionTLS12}

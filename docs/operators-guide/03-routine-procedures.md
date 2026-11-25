@@ -86,6 +86,22 @@ drivers:
 
 Plugin files, key files and their directories must be root's and writable only by root.
 
+### Sources and their settings
+
+| Kind | Driver | Endpoint configuration | Credentials |
+| :--- | :--- | :--- | :--- |
+| HTTP, HTTPS | `http` (built in, source only) | `{"base_url": "https://images.example/pub/"}` | `bearer_token`, or `username` and `password`; only over HTTPS |
+| SFTP, SCP | `sftp` (source and destination) | `{"host": "files.example", "root": "/srv/images", "host_key": "ssh-ed25519 AAAA..."}` | `username` and `private_key` (with `passphrase`) or `password` |
+| FTP, FTPS | `ftp` (source only) | `{"host": "ftp.example", "root": "/pub/images", "tls": "explicit"}` | `username` and `password`, or none for anonymous FTP |
+| A directory | `file` | `{"root": "/mnt/images/tenant-a"}` | none |
+
+- **The dial guard.** veho never connects a source to a loopback, private, link-local or CGNAT address, nor to the cloud metadata service, whatever the endpoint's host resolves to. For storage on a private network, list its ranges in the driver's settings: `drivers: [{name: sftp, settings: {allow_cidrs: [10.20.0.0/16]}}]`. A tenant cannot change them.
+- **HTTP.** The server must answer range requests (`Accept-Ranges: bytes`) and give a strong `ETag` or a `Last-Modified`; otherwise the job fails with a message that says so. Redirects are not followed.
+- **SFTP.** `host_key` is required: take it from a trusted copy of the server's key (`ssh-keyscan` over a network you trust, then compare its fingerprint). An `scp://` source is an `sftp` endpoint. Symbolic links under the root are not followed.
+- **FTP.** FTPS (`explicit`, or `implicit` on port 990) by default. `tls: none` is refused unless the driver's `plaintext` setting allows it, because the password crosses the network in clear.
+- **Directories.** A `file` endpoint's root must be under one of the driver's `roots`, and every node that may run a transfer must mount the same directory at the same path: `drivers: [{name: file, settings: {roots: [/mnt/images]}}]`.
+- **Changes during a copy.** SFTP and FTP give a modification time to the second: a source rewritten within the same second with the same size is not detected, and the copies could mix two versions. Prefer HTTP with a strong `ETag`, or S3, for sources that change in place.
+
 A publisher signs its plugins with `plugin-manifest` from veho's sources: `go run ./tools/plugin-manifest genkey acme.key` writes the private key and prints the public one; `PLUGIN_SIGNING_KEY="$(cat acme.key)" go run ./tools/plugin-manifest sign -name acme -version 2.1.0 -veho '[0.5.0,0.6.0)' veho-plugin-acme` writes the manifest and its signature next to the binary. The range is in interval notation: `[` and `]` include the bound, `(` and `)` exclude it, an empty bound is unbounded (`[0.5.0,)`). Its parser is `github.com/dihedron/veho/pkg/semver`, for publishers' own tools.
 
 ## Storage classes

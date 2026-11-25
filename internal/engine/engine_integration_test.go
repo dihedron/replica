@@ -104,7 +104,10 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	f.secrets = secrets.NewStore(ring, f.api, f.worker, f.audit)
-	drivers := map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}
+	drivers := map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky,
+		"sinkonly": capsDriver{file.New(), "sinkonly", plugin.Capabilities{Sink: true}},
+		"srconly":  capsDriver{file.New(), "srconly", plugin.Capabilities{Source: true, RangeRead: true}},
+		"norange":  capsDriver{file.New(), "norange", plugin.Capabilities{Source: true, Sink: true}}}
 	if f.e, err = New(ctx, Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
 		Version: "test", Audit: f.audit, Secrets: f.secrets, Drivers: drivers}); err != nil {
 		t.Fatal(err)
@@ -123,8 +126,9 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	if err := store.InTenant(ctx, f.api, f.tenant, func(tx pgx.Tx) error {
-		for name, loc := range map[string]string{"src": "lab-a", "d1": "lab-a", "d2": "lab-b"} {
-			if _, err := tx.Exec(ctx, "insert into veho.endpoints (tenant_id, name, location_id, driver) values ($1, $2, $3, 'file')", f.tenant, name, loc); err != nil {
+		for name, ep := range map[string][2]string{"src": {"lab-a", "file"}, "d1": {"lab-a", "file"}, "d2": {"lab-b", "file"},
+			"sinkonly": {"lab-a", "sinkonly"}, "srconly": {"lab-b", "srconly"}, "norange": {"lab-b", "norange"}, "gone": {"lab-b", "gone"}} {
+			if _, err := tx.Exec(ctx, "insert into veho.endpoints (tenant_id, name, location_id, driver) values ($1, $2, $3, $4)", f.tenant, name, ep[0], ep[1]); err != nil {
 				return err
 			}
 		}
@@ -198,6 +202,40 @@ func TestSubmit(t *testing.T) {
 	}); err != nil || n != 0 || f.workflows(t) != before {
 		t.Errorf("after a rollback: %d jobs, %d workflows (was %d), %v", n, f.workflows(t), before, err)
 	}
+}
+
+// capsDriver is a driver with other capabilities, for SRC-T1.
+type capsDriver struct {
+	plugin.Driver
+	name string
+	caps plugin.Capabilities
+}
+
+func (d capsDriver) Name() string                      { return d.name }
+func (d capsDriver) Capabilities() plugin.Capabilities { return d.caps }
+
+// SRC-T1: a source without Source and RangeRead, a destination without
+// Sink, and an endpoint of a driver this node does not have are refused
+// with 422 invalid_endpoint at submission (veho-sources.md §2, decision 1).
+func TestSubmitCapabilities(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	one := func(dest string) []byte {
+		return []byte(`{"destinations": [{"endpoint": "` + dest + `", "path": "x"}]}`)
+	}
+	for _, c := range []struct{ src, dest string }{
+		{"sinkonly", "d1"}, {"norange", "d1"}, {"gone", "d1"}, {"src", "srconly"}, {"src", "gone"},
+	} {
+		_, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: c.src, SourcePath: "a", Policy: one(c.dest)})
+		if pe, ok := errors.AsType[*policy.Error](err); !ok || pe.Code != policy.CodeInvalidEndpoint {
+			t.Errorf("%s to %s: %v, want invalid_endpoint", c.src, c.dest, err)
+		}
+	}
+	job, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "srconly", SourcePath: "a", Policy: one("sinkonly")})
+	if err != nil {
+		t.Fatalf("a source-only source to a sink-only destination: %v", err)
+	}
+	f.cancel(t, job)
 }
 
 func TestSubmitRefused(t *testing.T) {

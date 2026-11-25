@@ -17,6 +17,7 @@ import (
 	"github.com/dihedron/veho/internal/policy"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/internal/topology"
+	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -178,6 +179,9 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 			}
 			return err
 		}
+		if err := e.checkCapabilities(r.SourceEndpoint, src, p.Destinations, &eps); err != nil {
+			return err
+		}
 		// shortcut: the count is not serialised with concurrent submissions,
 		// so a burst can pass the quota by a few jobs; lock per tenant if
 		// that ever matters
@@ -256,6 +260,40 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 	return job, created, nil
 }
 
+// checkCapabilities refuses a source whose driver cannot be a source that
+// reads ranges, and a destination whose driver cannot be a sink, on this
+// node (veho-sources.md §2, decision 1).
+func (e *Engine) checkCapabilities(srcName string, src endpoint, dests []policy.Destination, eps *endpoints) error {
+	refuse := func(name, driver, why string) error {
+		return &policy.Error{Code: policy.CodeInvalidEndpoint, Message: fmt.Sprintf("endpoint %q (driver %s): %s", name, driver, why)}
+	}
+	caps := func(name string, ep endpoint) (plugin.Capabilities, error) {
+		d, ok := e.drivers[ep.driver]
+		if !ok {
+			return plugin.Capabilities{}, refuse(name, ep.driver, "no such driver on this node")
+		}
+		return d.Capabilities(), nil
+	}
+	c, err := caps(srcName, src)
+	if err != nil {
+		return err
+	}
+	if !c.Source || !c.RangeRead {
+		return refuse(srcName, src.driver, "the driver cannot be a source (it must read ranges)")
+	}
+	for _, d := range dests {
+		ep, _ := eps.get(d.Endpoint) // Validate found it
+		c, err := caps(d.Endpoint, ep)
+		if err != nil {
+			return err
+		}
+		if !c.Sink {
+			return refuse(d.Endpoint, ep.driver, "the driver cannot be a destination")
+		}
+	}
+	return nil
+}
+
 func cmpOr(v, def int) int {
 	if v > 0 {
 		return v
@@ -263,9 +301,10 @@ func cmpOr(v, def int) int {
 	return def
 }
 
-// endpoint is an endpoint of the tenant, with its position.
+// endpoint is an endpoint of the tenant, with its position and driver.
 type endpoint struct {
 	id       uuid.UUID
+	driver   string
 	position topology.Position
 }
 
@@ -287,10 +326,10 @@ func (s *endpoints) get(name string) (endpoint, bool) {
 		return derefOr(ep), ep != nil
 	}
 	var (
-		id  uuid.UUID
-		loc string
+		id          uuid.UUID
+		loc, driver string
 	)
-	err := s.tx.QueryRow(s.ctx, "select id, location_id from veho.endpoints where name = $1", name).Scan(&id, &loc)
+	err := s.tx.QueryRow(s.ctx, "select id, location_id, driver from veho.endpoints where name = $1", name).Scan(&id, &loc, &driver)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) && s.err == nil {
 			s.err = err
@@ -304,7 +343,7 @@ func (s *endpoints) get(name string) (endpoint, bool) {
 		s.cache[name] = nil
 		return endpoint{}, false
 	}
-	s.cache[name] = &endpoint{id: id, position: pos}
+	s.cache[name] = &endpoint{id: id, driver: driver, position: pos}
 	return *s.cache[name], true
 }
 

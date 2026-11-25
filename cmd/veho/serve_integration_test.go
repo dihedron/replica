@@ -62,7 +62,7 @@ database:
   dbos: {dsn_env: VEHO_TEST_DBOS_DATABASE_URL}
 secrets: {unwrap_key: "file:`+key+`"}
 audit: {sink: stderr}
-drivers: [{name: file}]
+drivers: [{name: file, settings: {roots: ["`+filepath.Clean(os.TempDir())+`"]}}]
 metrics: {listen: "127.0.0.1:19464"}
 api: {listen: "127.0.0.1:18443", tls: {cert_file: "`+crt+`", key_file: "`+keyFile+`"}}
 `), 0o600); err != nil {

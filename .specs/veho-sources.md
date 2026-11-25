@@ -2,7 +2,7 @@
 
 This file specifies the new kinds of source of backlog item 34: where the object to replicate can live, besides S3. It is part of `veho_specification.md`.
 
-Status: approved, 2026-11-24.
+Status: approved, 2026-11-24; implemented 2026-11-25 (the lab tests SRC-T5 and SRC-T8 to run).
 
 ## 1. Model
 
@@ -15,7 +15,7 @@ A source is not a new kind of plugin. It is an endpoint of the tenant, of any dr
 
 ## 2. Decisions
 
-1. **Submission checks the source's capabilities** (fixes a gap found 2026-11-24). A job whose source endpoint's driver lacks `Source` or `RangeRead`, or a destination whose driver lacks `Sink`, is refused with `422` `invalid_endpoint`, instead of failing during the copy.
+1. **Submission checks the source's capabilities** (fixes a gap found 2026-11-24). A job whose source endpoint's driver lacks `Source` or `RangeRead`, or a destination whose driver lacks `Sink`, is refused with `400` `invalid_endpoint` (as the other codes of a refused policy, `veho-api-server.md`), instead of failing during the copy.
 2. *Proposed:* **Stream-only sources are refused in v1.** A source must range-read and give a version (SRC-1, SRC-2); a server that cannot (an HTTP server without `Accept-Ranges: bytes`, or without `ETag` and `Last-Modified`) fails `Stat` with a `Permanent` error that says why. Without them a copy could not resume after a crash and could mix two versions; with images of 5 to 10 GB (OI-4) a copy that always restarts from zero is not acceptable.
 3. *Proposed:* **The first kinds**, in this order: `http` (HTTP and HTTPS), `sftp` (which also serves the `scp` case, §3.3), `ftp` (FTPS by default), and the `file` driver made fit for production as a directory or NFS mount. `http` and `file` use only the standard library and are built into `veho`; `sftp` and `ftp` are plugins, `veho-plugin-sftp` and `veho-plugin-ftp` (`veho-plugin-distribution.md`, decision 1). Swift and Glance come together, with the OpenStack client (`gophercloud`), when backlog 21 is unblocked; Azure Blob and GCS when someone needs them (each adds a large SDK).
 4. *Proposed:* **Source-only, except `sftp` and `file`.** `http` and `ftp` are source-only (`Sink: false`); `sftp` and `file` are both, because a staged upload and an atomic rename work there as in the `file` driver.
@@ -112,7 +112,7 @@ New residual risk:
 
 | ID | Test | Kind |
 | :--- | :--- | :--- |
-| SRC-T1 | Submission refuses a source without `Source`/`RangeRead` and a destination without `Sink` with `422` | integration |
+| SRC-T1 | Submission refuses a source without `Source`/`RangeRead`, a destination without `Sink`, and a driver not on the node, with `400` `invalid_endpoint` | integration |
 | SRC-T2 | `netguard`: the address table (refused, allowed, metadata never), DNS rebinding through a resolver that changes its answer | unit |
 | SRC-T3 | `http`: version from a strong ETag, from Last-Modified; weak ETag alone, no `Accept-Ranges`, `200` instead of `206`, a wrong `Content-Range`, a redirect: each refused; `412` and a changed validator are `SourceChanged`; credentials not sent to another host | unit, `httptest` |
 | SRC-T4 | `sftp`: host key mismatch refused; confinement; `SourceChanged` when the file changes; the sink path (staging, rename, resume) | unit, in-process SSH server (`golang.org/x/crypto/ssh` and `pkg/sftp`'s server) |

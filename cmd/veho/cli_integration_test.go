@@ -64,7 +64,7 @@ database:
   dbos: {dsn_env: VEHO_TEST_DBOS_DATABASE_URL}
 secrets: {unwrap_key: "file:`+key+`"}
 audit: {sink: stderr}
-drivers: [{name: file}]
+drivers: [{name: file, settings: {roots: ["`+filepath.Clean(os.TempDir())+`"]}}]
 engine: {part_size_mib: 5}
 metrics: {listen: "off"}
 notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}
@@ -157,6 +157,13 @@ func TestCLI(t *testing.T) {
 					endpointFlags: endpointFlags{Location: "lab-a", ConfigFile: write(name+".json", `{"root": "`+root+`"}`)}}
 				ep.Args.Name = name
 				c.must(ep)
+			}
+			// SRC-T6: a root outside the file driver's roots is refused
+			outside := &EndpointCreateCommand{apiOptions: c.opts("json"), Driver: "file",
+				endpointFlags: endpointFlags{Location: "lab-a", ConfigFile: write("outside.json", `{"root": "/etc"}`)}}
+			outside.Args.Name = "outside-" + s
+			if err := c.run(outside); err == nil {
+				t.Error("a file endpoint outside the roots was created")
 			}
 			test := &EndpointTestCommand{apiOptions: c.opts("text")}
 			test.Args.Name = "d1-" + s

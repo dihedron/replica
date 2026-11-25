@@ -19,6 +19,7 @@ The gRPC API answers errors with a status and an `ErrorInfo` detail (domain `veh
 | `duplicate_destination` | `INVALID_ARGUMENT` | 400 | no | Two destinations with the same endpoint and path |
 | `destination_is_source` | `INVALID_ARGUMENT` | 400 | no | A destination is the source object itself |
 | `unsatisfiable_policy` | `INVALID_ARGUMENT` | 400 | no | The spread asks for more distinct locations than the destinations span, or than `min_copies` |
+| `invalid_endpoint` | `INVALID_ARGUMENT` | 400 | no | The source's driver cannot be a source that reads ranges, a destination's driver cannot be a destination (`http` and `ftp` are sources only), or the driver is not on this node |
 | `not_found` | `NOT_FOUND` | 404 | no | No such object in the caller's tenant (another tenant's objects look the same) |
 | `already_exists` | `ALREADY_EXISTS` | 409 | no | A tenant, endpoint or entitlement with that name exists |
 | `idempotency_key_reuse` | `ALREADY_EXISTS` | 409 | no | The idempotency key was used for a different request |

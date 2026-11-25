@@ -39,11 +39,17 @@ func (e *Engine) checkEndpoint(ctx context.Context, tx pgx.Tx, ep Endpoint) erro
 	if !validEndpointName.MatchString(ep.Name) {
 		return fmt.Errorf("%w: endpoint name %q: want %s", ErrInvalid, ep.Name, validEndpointName)
 	}
-	if _, ok := e.drivers[ep.Driver]; !ok {
+	d, ok := e.drivers[ep.Driver]
+	if !ok {
 		return fmt.Errorf("%w: no driver %q on this node", ErrInvalid, ep.Driver)
 	}
 	if len(bytes.TrimSpace(ep.Config)) == 0 || bytes.TrimSpace(ep.Config)[0] != '{' {
 		return fmt.Errorf("%w: the configuration must be a JSON object", ErrInvalid)
+	}
+	if cc, ok := d.(plugin.ConfigChecker); ok {
+		if err := cc.CheckConfig(ep.Config); err != nil {
+			return fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
 	}
 	topo, err := LoadTopology(ctx, tx)
 	if err != nil {

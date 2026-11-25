@@ -61,6 +61,7 @@ func TestLoadDrivers(t *testing.T) {
 		err     string   // part of the error, when it fails
 	}{
 		{"built in", []config.Driver{{Name: "file"}}, []string{"file"}, ""},
+		{"built in, http", []config.Driver{{Name: "http", Settings: map[string]any{"allow_cidrs": []any{"10.0.0.0/8"}}}}, []string{"http"}, ""},
 		{"built in, unknown setting", []config.Driver{{Name: "file", Settings: map[string]any{"nope": 1}}}, nil, "unknown field"},
 		{"pinned", []config.Driver{{Name: "file", Path: bin, SHA256: pinned}}, []string{"file"}, ""},
 		{"pinned, unknown setting", []config.Driver{{Name: "file", Path: bin, SHA256: pinned, Settings: map[string]any{"nope": 1}}}, nil, "settings refused"},

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -72,34 +71,9 @@ func TestValidateURL(t *testing.T) {
 	}
 }
 
-// WH-T2: addresses that are never dialled, unless an operator lists them.
-func TestAllowed(t *testing.T) {
-	g, err := NewGuard(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, a := range []string{"127.0.0.1", "::1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "fd00::1", "fe80::1",
-		"0.0.0.0", "::", "224.0.0.1", "ff02::1", "100.64.0.1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "169.254.170.2", "fd00:ec2::254", "198.18.0.1", "192.0.0.1"} {
-		if g.Allowed(netip.MustParseAddr(a)) {
-			t.Errorf("%s allowed", a)
-		}
-	}
-	for _, a := range []string{"8.8.8.8", "93.184.216.34", "2606:2800:220:1::1"} {
-		if !g.Allowed(netip.MustParseAddr(a)) {
-			t.Errorf("%s refused", a)
-		}
-	}
-	// an operator-listed CIDR opens a private range, not the metadata address
-	g, err = NewGuard([]string{"10.20.0.0/16", "169.254.169.254/32"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !g.Allowed(netip.MustParseAddr("10.20.1.1")) || g.Allowed(netip.MustParseAddr("10.21.1.1")) {
-		t.Error("the listed CIDR is not honoured exactly")
-	}
-	if g.Allowed(netip.MustParseAddr("169.254.169.254")) {
-		t.Error("the metadata address can never be allowed")
-	}
+// WH-T2: the addresses the guard refuses are internal/netguard's
+// (TestAllowed there); a bad CIDR is refused here too.
+func TestNewGuard(t *testing.T) {
 	if _, err := NewGuard([]string{"nonsense"}); err == nil {
 		t.Error("a bad CIDR was accepted")
 	}

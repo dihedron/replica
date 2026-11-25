@@ -114,7 +114,7 @@ R-07 narrows: only `file` and `http`, which use the standard library alone, shar
 | PD-T1 | Manifest: a valid one loads; a wrong signature, an unknown key, another name, a `veho` version outside the range, a malformed range, a different binary (SHA-256), a group- or world-writable file or directory, a key file or key directory not root's: each refused with its step | unit |
 | PD-T8 | `pkg/semver`: parsing and precedence of versions (pre-releases, build metadata); ranges with each bracket, unbounded sides, a single version; malformed ranges refused; a fuzz test of `ParseRange` | unit, fuzz |
 | PD-T9 | Configuration: `key` on a built-in driver or with `path` refused; a bad key name refused; a driver loads with its publisher's key and not with another's | unit |
-| PD-T2 | Configuration: `drivers` names unique; `path` without `sha256` refused; an unlisted driver has no endpoints (`422` at `endpoint create`) | unit, integration |
+| PD-T2 | Configuration: `drivers` names unique; `path` without `sha256` refused; an unlisted driver has no endpoints (`400` `invalid_request` at `endpoint create`) | unit, integration |
 | PD-T3 | Settings: a plugin gets its settings; a plugin that refuses them stops `Load` with its message; a restarted plugin gets the same | unit, with `cmd/veho-plugin-file` |
 | PD-T4 | `veho`'s dependency graph has no `github.com/aws/` module | unit (`go list -deps`) |
 | PD-T5 | `tools/plugin-manifest` signs, and `Load` verifies, with a test key | unit |
