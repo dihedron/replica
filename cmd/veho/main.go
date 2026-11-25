@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 
@@ -53,13 +54,6 @@ func main() {
 // completionScript completes veho's commands and options in bash, and in zsh
 // through bashcompinit: go-flags answers when GO_FLAGS_COMPLETION is set, so
 // the completions always match the binary.
-const completionScript = `# veho completion: source it, e.g. source <(veho completion bash)
-if [ -n "$ZSH_VERSION" ]; then autoload -U +X bashcompinit && bashcompinit; fi
-_veho() {
-	local args=("${COMP_WORDS[@]:1:$COMP_CWORD}")
-	local IFS=$'\n'
-	COMPREPLY=($(GO_FLAGS_COMPLETION=1 "${COMP_WORDS[0]}" "${args[@]}"))
-	return 0
-}
-complete -F _veho veho
-`
+//
+//go:embed completion.bash
+var completionScript string

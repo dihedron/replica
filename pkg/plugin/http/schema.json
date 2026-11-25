@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "pattern": "^https?://",
+      "description": "the URL the objects' paths are relative to"
+    },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "extra request headers"
+    }
+  },
+  "required": [
+    "base_url"
+  ],
+  "additionalProperties": false
+}

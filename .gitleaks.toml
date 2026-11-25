@@ -10,4 +10,4 @@ useDefault = true
 
 [allowlist]
 description = "git-ignored build output, lab state and local test settings"
-paths = ['''(^|/)dist/''', '''(^|/)build/''', '''(^|/)test/lab/\.state/''', '''(^|/)test/lab/\.evidence/''', '''(^|/)_test/\.env$''']
+paths = ['''(^|/)dist/''', '''(^|/)build/''', '''(^|/)test/lab/\.state/''', '''(^|/)test/lab/\.evidence/''', '''(^|/)test/devstack/\.state/''', '''(^|/)_test/\.env$''']

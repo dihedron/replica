@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/md5" //nolint:gosec // Content-MD5 and multipart ETags are MD5 by protocol, not for security
 	"crypto/sha256"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -66,21 +67,12 @@ func (Driver) Capabilities() plugin.Capabilities {
 	}
 }
 
-func (Driver) ConfigSchema() []byte {
-	return []byte(`{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "endpoint": {"type": "string", "pattern": "^https?://", "description": "service URL; empty for AWS"},
-    "region": {"type": "string", "minLength": 1},
-    "bucket": {"type": "string", "minLength": 3, "description": "the default bucket"},
-    "path_style": {"type": "boolean", "description": "bucket in the path, not the host name"},
-    "storage_class": {"type": "string", "not": {"enum": ["GLACIER", "DEEP_ARCHIVE"]}, "description": "the class of the copies; empty for the backend's default; archive classes refused (veho-storage-class.md)"}
-  },
-  "required": ["region", "bucket"],
-  "additionalProperties": false
-}`)
-}
+// schema is the endpoint configuration's JSON Schema (PLG-10).
+//
+//go:embed schema.json
+var schema []byte
+
+func (Driver) ConfigSchema() []byte { return schema }
 
 // ParseRef parses s3://bucket/key.
 func (Driver) ParseRef(raw string) (plugin.Ref, error) {

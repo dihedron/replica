@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "upload": {
+      "enum": ["put", "glance-direct", "web-download"],
+      "default": "put",
+      "description": "how a destination image's data reaches Glance"
+    },
+    "disk_format": {
+      "type": "string",
+      "description": "required for a destination: qcow2, raw, ..."
+    },
+    "container_format": {
+      "type": "string",
+      "description": "required for a destination: bare, ovf, ..."
+    },
+    "visibility": {
+      "enum": ["private", "shared", "community", "public"],
+      "default": "private"
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "properties set on a destination image"
+    },
+    "stores": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "glance-direct only: the stores to import to; [\"*\"] for all"
+    },
+    "web_download_url_ttl": {
+      "type": "string",
+      "default": "1h",
+      "description": "web-download only: the lifetime of the URL Glance reads the source from"
+    }
+  },
+  "additionalProperties": false
+}

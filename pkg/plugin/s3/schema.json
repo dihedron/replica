@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "endpoint": {
+      "type": "string",
+      "pattern": "^https?://",
+      "description": "service URL; empty for AWS"
+    },
+    "region": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bucket": {
+      "type": "string",
+      "minLength": 3,
+      "description": "the default bucket"
+    },
+    "path_style": {
+      "type": "boolean",
+      "description": "bucket in the path, not the host name"
+    },
+    "storage_class": {
+      "type": "string",
+      "not": {
+        "enum": [
+          "GLACIER",
+          "DEEP_ARCHIVE"
+        ]
+      },
+      "description": "the class of the copies; empty for the backend's default; archive classes refused (veho-storage-class.md)"
+    }
+  },
+  "required": [
+    "region",
+    "bucket"
+  ],
+  "additionalProperties": false
+}

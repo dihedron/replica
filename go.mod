@@ -10,6 +10,8 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/dbos-inc/dbos-transact-golang v1.9.0
 	github.com/go-jose/go-jose/v4 v4.1.9
+	github.com/google/uuid v1.6.0
+	github.com/gophercloud/gophercloud/v2 v2.16.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.34.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
@@ -42,7 +44,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/yamux v0.1.2 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
