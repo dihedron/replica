@@ -393,4 +393,9 @@ func TestPresignRead(t *testing.T) {
 	if _, err := s.open(t).(plugin.Presigner).PresignRead(ctx, plugin.Ref{Key: "img"}, "", time.Hour); plugin.ClassOf(err) != plugin.Permanent {
 		t.Fatalf("with credentials: %v", err)
 	}
+	done, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := c.(plugin.Presigner).PresignRead(done, plugin.Ref{Key: "img"}, "", time.Hour); err == nil {
+		t.Fatal("presign with a cancelled context")
+	}
 }

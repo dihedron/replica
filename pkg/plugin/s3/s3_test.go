@@ -288,3 +288,11 @@ func TestPresignRead(t *testing.T) {
 		}
 	}
 }
+
+func TestPresignReadEmptyKey(t *testing.T) {
+	cfg, _ := json.Marshal(config{Endpoint: "https://s3.example", Region: "r", Bucket: "b"})
+	c, _ := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	if _, err := c.(plugin.Presigner).PresignRead(context.Background(), plugin.Ref{}, "", time.Hour); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("empty key: %v", err)
+	}
+}

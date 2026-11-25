@@ -566,30 +566,24 @@ func (e *Engine) pull(ctx context.Context, in TransferInput, a attempt, fence in
 	}); err != nil {
 		return err
 	}
-	// record keeps a digest recorded meanwhile by another destination
-	record := func(d string) (string, error) {
-		var recorded string
-		err := e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
+	// the digest is recorded unless another destination recorded one meanwhile
+	sums, err := pullChecked(ctx, src, up.client, p, a, known, func(d string) (recorded string, err error) {
+		return recorded, e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
 			return tx.QueryRow(ctx, `update veho.jobs set source_info = case when source_info ? 'digest' then source_info
-					else jsonb_set(source_info, '{digest}', to_jsonb($2::text)) end
-				where id = $1 returning source_info->>'digest'`, in.Job, d).Scan(&recorded)
+				else jsonb_set(source_info, '{digest}', to_jsonb($2::text)) end where id = $1 returning source_info->>'digest'`, in.Job, d).Scan(&recorded)
 		})
-		return recorded, err
-	}
-	sums, err := pullChecked(ctx, src, up.client, p, a, known, record)
-	e.metrics.bytes.Add(float64(a.Size))
+	})
 	if err != nil {
 		return err
 	}
+	e.metrics.bytes.Add(float64(a.Size))
+	// the parts as plan cuts them: part i at i * part size
 	return e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
-		for i, pt := range plan(a.Size, a.PartSize) {
-			if _, err := tx.Exec(ctx, `insert into veho.parts (tenant_id, transfer_id, part_no, "offset", length, sha256)
-				values (veho.current_tenant(), $1, $2, $3, $4, $5) on conflict (transfer_id, part_no) do nothing`,
-				in.Transfer, pt.No, pt.Offset, pt.Length, sums[i]); err != nil {
-				return err
-			}
-		}
-		_, err := tx.Exec(ctx, "update veho.transfers set bytes_done = $2 where id = $1", in.Transfer, a.Size)
+		_, err := tx.Exec(ctx, `with p as (insert into veho.parts (tenant_id, transfer_id, part_no, "offset", length, sha256)
+				select veho.current_tenant(), $1, ord - 1, $3 * (ord - 1), least($3, $2 - $3 * (ord - 1)), s
+				from unnest($4::bytea[]) with ordinality as p(s, ord)
+				on conflict (transfer_id, part_no) do nothing)
+			update veho.transfers set bytes_done = $2 where id = $1`, in.Transfer, a.Size, a.PartSize, sums)
 		return err
 	})
 }
