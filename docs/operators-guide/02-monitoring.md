@@ -23,6 +23,7 @@ Each node serves Prometheus metrics on `metrics.listen` (default `127.0.0.1:9464
 | `veho_transfer_attempts_total` | `class` | Failed transfer attempts on this node, by error class (`Transient`, `Permanent`, `Integrity`, `SourceChanged`, `ResumeInvalid`, `Unknown`) |
 | `veho_adoptions_total` | none | Workflows of dead nodes this node resumed |
 | `veho_expired_leases` | none | Transfers whose lease had expired at the last housekeeping pass: their owner is fenced, stuck or dead |
+| `veho_endpoints_unreachable` | none | Endpoints whose latest complete network check has a flow some node cannot reach, at the last housekeeping pass: a firewall rule missing in a region |
 | `veho_heartbeat_age_seconds` | none | Seconds since this node last recorded its heartbeat; above half the lease (30 s) the node stops its own work |
 | `veho_webhook_deliveries_total` | `result` | Webhook deliveries by result: `success`, `failure` (retried later) or `abandoned` (after 12 attempts, or past the pending cap) |
 | `veho_webhook_outbox_pending` | none | Webhook events waiting for delivery, across tenants (the same on every node) |
@@ -39,6 +40,7 @@ The Go runtime's and the process's own metrics are not exported.
 | :------------------------ | :-------------------------------------------------- | :-------------------------------------------- |
 | Node fenced | `veho_heartbeat_age_seconds > 30` for 2 minutes | The node cannot write to the state store: it has stopped its own work |
 | Leases expiring | `veho_expired_leases > 0` for 5 minutes | A node holds transfers it does not advance |
+| Endpoints unreachable | `veho_endpoints_unreachable > 0` | Some node cannot reach an endpoint's storage system: `veho endpoint list`, then `veho endpoint check NAME --wait` names the node and the flow |
 | Permanent failures | `increase(veho_transfer_attempts_total{class="Permanent"}[15m]) > 0` | A destination refuses: credentials, bucket, permissions |
 | Integrity failures | `increase(veho_transfer_attempts_total{class="Integrity"}[1h]) > 0` | Bytes changed on the way and were rewritten: a network or storage problem |
 | Old jobs | `veho_objects{kind="job",state="RUNNING"}` not falling for hours | Jobs stuck behind a destination or a quota |
@@ -80,7 +82,7 @@ The actions:
 | `JOB_SUBMIT`, `JOB_CANCEL`, `JOB_RETRY`, `JOB_SETTLED` | A job submitted, cancelled, retried; a job's last transfer ended |
 | `POLICY_CREATE`, `POLICY_DELETE`, `POLICY_GRANTS` | A policy version created; a policy deleted; its grants changed |
 | `ENDPOINT_CREATE`, `ENDPOINT_UPDATE`, `ENDPOINT_DELETE` | An endpoint registered, changed, removed |
-| `ENDPOINT_CHECKED` | A network check of an endpoint started: its id and the counts of its flows and nodes, never the addresses |
+| `ENDPOINT_CHECKED` | A network check of an endpoint started: its id, the counts of its flows and nodes (never the addresses), and its `trigger`: `request`, `change` (after a create or an update) or `periodic` |
 | `WEBHOOK_CREATE`, `WEBHOOK_UPDATE`, `WEBHOOK_ROTATE`, `WEBHOOK_DELETE`, `WEBHOOK_TEST` | A webhook registered, changed, given a new secret, removed; a ping posted |
 | `WEBHOOK_DISABLE`, `WEBHOOK_DELIVERY_ABANDONED` | A webhook switched off after 12 consecutive failed deliveries; an event given up after 12 attempts, or past the cap of 10,000 pending |
 | `SECRET_PUT`, `SECRET_DELETE` | A secret written (a new version) or removed |
