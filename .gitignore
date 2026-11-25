@@ -8,6 +8,9 @@
 *.so
 *.dylib
 dist/
+# go build ./cmd/... in the root
+/veho
+/veho-plugin-*
 
 # Test binary, built with `go test -c`
 *.test
