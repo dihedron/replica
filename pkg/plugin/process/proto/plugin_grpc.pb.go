@@ -27,19 +27,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Driver_Describe_FullMethodName  = "/veho.plugin.v1.Driver/Describe"
-	Driver_ParseRef_FullMethodName  = "/veho.plugin.v1.Driver/ParseRef"
-	Driver_Open_FullMethodName      = "/veho.plugin.v1.Driver/Open"
-	Driver_Close_FullMethodName     = "/veho.plugin.v1.Driver/Close"
-	Driver_Stat_FullMethodName      = "/veho.plugin.v1.Driver/Stat"
-	Driver_ReadRange_FullMethodName = "/veho.plugin.v1.Driver/ReadRange"
-	Driver_Delete_FullMethodName    = "/veho.plugin.v1.Driver/Delete"
-	Driver_Begin_FullMethodName     = "/veho.plugin.v1.Driver/Begin"
-	Driver_Resume_FullMethodName    = "/veho.plugin.v1.Driver/Resume"
-	Driver_WritePart_FullMethodName = "/veho.plugin.v1.Driver/WritePart"
-	Driver_ListParts_FullMethodName = "/veho.plugin.v1.Driver/ListParts"
-	Driver_Commit_FullMethodName    = "/veho.plugin.v1.Driver/Commit"
-	Driver_Abort_FullMethodName     = "/veho.plugin.v1.Driver/Abort"
+	Driver_Describe_FullMethodName    = "/veho.plugin.v1.Driver/Describe"
+	Driver_ParseRef_FullMethodName    = "/veho.plugin.v1.Driver/ParseRef"
+	Driver_Open_FullMethodName        = "/veho.plugin.v1.Driver/Open"
+	Driver_Close_FullMethodName       = "/veho.plugin.v1.Driver/Close"
+	Driver_Stat_FullMethodName        = "/veho.plugin.v1.Driver/Stat"
+	Driver_ReadRange_FullMethodName   = "/veho.plugin.v1.Driver/ReadRange"
+	Driver_Delete_FullMethodName      = "/veho.plugin.v1.Driver/Delete"
+	Driver_Begin_FullMethodName       = "/veho.plugin.v1.Driver/Begin"
+	Driver_Resume_FullMethodName      = "/veho.plugin.v1.Driver/Resume"
+	Driver_WritePart_FullMethodName   = "/veho.plugin.v1.Driver/WritePart"
+	Driver_ListParts_FullMethodName   = "/veho.plugin.v1.Driver/ListParts"
+	Driver_Commit_FullMethodName      = "/veho.plugin.v1.Driver/Commit"
+	Driver_Abort_FullMethodName       = "/veho.plugin.v1.Driver/Abort"
+	Driver_PresignRead_FullMethodName = "/veho.plugin.v1.Driver/PresignRead"
+	Driver_Pull_FullMethodName        = "/veho.plugin.v1.Driver/Pull"
 )
 
 // DriverClient is the client API for Driver service.
@@ -60,6 +62,10 @@ type DriverClient interface {
 	ListParts(ctx context.Context, in *Handle, opts ...grpc.CallOption) (*PartList, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*ObjectInfo, error)
 	Abort(ctx context.Context, in *Handle, opts ...grpc.CallOption) (*Empty, error)
+	// web-download (veho-openstack.md §3.2): optional, Unimplemented when the
+	// driver does not offer it.
+	PresignRead(ctx context.Context, in *PresignRequest, opts ...grpc.CallOption) (*PresignedURL, error)
+	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*Ref, error)
 }
 
 type driverClient struct {
@@ -212,6 +218,26 @@ func (c *driverClient) Abort(ctx context.Context, in *Handle, opts ...grpc.CallO
 	return out, nil
 }
 
+func (c *driverClient) PresignRead(ctx context.Context, in *PresignRequest, opts ...grpc.CallOption) (*PresignedURL, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PresignedURL)
+	err := c.cc.Invoke(ctx, Driver_PresignRead_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *driverClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*Ref, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Ref)
+	err := c.cc.Invoke(ctx, Driver_Pull_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DriverServer is the server API for Driver service.
 // All implementations must embed UnimplementedDriverServer
 // for forward compatibility.
@@ -230,6 +256,10 @@ type DriverServer interface {
 	ListParts(context.Context, *Handle) (*PartList, error)
 	Commit(context.Context, *CommitRequest) (*ObjectInfo, error)
 	Abort(context.Context, *Handle) (*Empty, error)
+	// web-download (veho-openstack.md §3.2): optional, Unimplemented when the
+	// driver does not offer it.
+	PresignRead(context.Context, *PresignRequest) (*PresignedURL, error)
+	Pull(context.Context, *PullRequest) (*Ref, error)
 	mustEmbedUnimplementedDriverServer()
 }
 
@@ -278,6 +308,12 @@ func (UnimplementedDriverServer) Commit(context.Context, *CommitRequest) (*Objec
 }
 func (UnimplementedDriverServer) Abort(context.Context, *Handle) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Abort not implemented")
+}
+func (UnimplementedDriverServer) PresignRead(context.Context, *PresignRequest) (*PresignedURL, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PresignRead not implemented")
+}
+func (UnimplementedDriverServer) Pull(context.Context, *PullRequest) (*Ref, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Pull not implemented")
 }
 func (UnimplementedDriverServer) mustEmbedUnimplementedDriverServer() {}
 func (UnimplementedDriverServer) testEmbeddedByValue()                {}
@@ -516,6 +552,42 @@ func _Driver_Abort_Handler(srv interface{}, ctx context.Context, dec func(interf
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Driver_PresignRead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PresignRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DriverServer).PresignRead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Driver_PresignRead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DriverServer).PresignRead(ctx, req.(*PresignRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Driver_Pull_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PullRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DriverServer).Pull(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Driver_Pull_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DriverServer).Pull(ctx, req.(*PullRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Driver_ServiceDesc is the grpc.ServiceDesc for Driver service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -566,6 +638,14 @@ var Driver_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Abort",
 			Handler:    _Driver_Abort_Handler,
+		},
+		{
+			MethodName: "PresignRead",
+			Handler:    _Driver_PresignRead_Handler,
+		},
+		{
+			MethodName: "Pull",
+			Handler:    _Driver_Pull_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

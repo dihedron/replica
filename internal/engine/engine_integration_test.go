@@ -44,6 +44,7 @@ type fixture struct {
 	audit       *audit.Recorder
 	secrets     *secrets.Store
 	flaky       *flaky
+	puller      *puller
 }
 
 func testConfig(t *testing.T) *config.Config {
@@ -74,7 +75,7 @@ func setup(t *testing.T) fixture {
 	if _, err := migrate.Apply(ctx, conn, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	f := fixture{migrator: conn, audit: &audit.Recorder{}, flaky: &flaky{Driver: file.New()}}
+	f := fixture{migrator: conn, audit: &audit.Recorder{}, flaky: &flaky{Driver: file.New()}, puller: &puller{Driver: file.New(), pulled: map[string][]byte{}}}
 	for env, p := range map[string]**pgxpool.Pool{"VEHO_TEST_API_DATABASE_URL": &f.api, "VEHO_TEST_WORKER_DATABASE_URL": &f.worker} {
 		if *p, err = store.Open(ctx, dsn(t, env), store.Options{Name: "test/engine"}); err != nil {
 			t.Fatal(err)
@@ -104,7 +105,7 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	f.secrets = secrets.NewStore(ring, f.api, f.worker, f.audit)
-	drivers := map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky,
+	drivers := map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky, "presign": presigner{file.New()}, "puller": f.puller,
 		"sinkonly": capsDriver{file.New(), "sinkonly", plugin.Capabilities{Sink: true}},
 		"srconly":  capsDriver{file.New(), "srconly", plugin.Capabilities{Source: true, RangeRead: true}},
 		"norange":  capsDriver{file.New(), "norange", plugin.Capabilities{Source: true, Sink: true}}}

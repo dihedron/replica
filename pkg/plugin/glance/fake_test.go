@@ -198,10 +198,24 @@ func (f *fakeGlance) image(w http.ResponseWriter, r *http.Request, id string, im
 		var body struct {
 			Method struct {
 				Name string `json:"name"`
+				URI  string `json:"uri"`
 			} `json:"method"`
 			Stores []string `json:"stores"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body.Method.Name == "web-download" {
+			f.mu.Unlock()
+			resp, err := http.Get(body.Method.URI) //nolint:noctx // the fake's own fetch
+			f.mu.Lock()
+			if err != nil {
+				im["os_glance_failed_import"] = "fast"
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+			b, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			f.staged[id] = b
+		}
 		for _, s := range body.Stores {
 			if !strings.Contains(strings.Join(f.stores, ","), s) {
 				w.WriteHeader(http.StatusConflict)

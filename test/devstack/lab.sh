@@ -181,6 +181,7 @@ export VEHO_DEVSTACK_AUTH_URL=$(env_get .openstack.auth_url)
 export VEHO_DEVSTACK_REGION=$(env_get .openstack.region)
 export VEHO_DEVSTACK_CA_FILE=$(ca_file)
 export VEHO_DEVSTACK_ALLOW_CIDR=$LAB_SUBNET
+export VEHO_DEVSTACK_HOST_IP=$(lab_ip 1)
 export VEHO_DEVSTACK_APP_CRED_ID=$(env_get .openstack.app_cred_id)
 export VEHO_DEVSTACK_APP_CRED_SECRET_FILE=$LAB_STATE_DIR/app-cred-secret
 export VEHO_DEVSTACK_USERNAME=$(env_get .openstack.user)

@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -268,6 +269,25 @@ func (c *client) ReadRange(ctx context.Context, ref plugin.Ref, off, length int6
 		return nil, plugin.Wrapf(plugin.Permanent, "s3: range [%d, +%d) of %s: %d bytes", off, length, key, n)
 	}
 	return out.Body, nil
+}
+
+// PresignRead is a presigned GET of the object for ttl, for a destination
+// that pulls it. It carries no condition (the destination would not send
+// it): the engine reads the copy back and compares it with the source
+// (veho-openstack.md §3.2).
+func (c *client) PresignRead(ctx context.Context, ref plugin.Ref, _ string, ttl time.Duration) (string, error) {
+	bucket, key, err := c.where(ref)
+	if err != nil {
+		return "", err
+	}
+	if ttl <= 0 || ttl > 7*24*time.Hour { // SigV4's limit
+		return "", plugin.Wrapf(plugin.Permanent, "s3: a presigned URL lives from 1 s to 7 days, not %s", ttl)
+	}
+	out, err := s3.NewPresignClient(c.s3).PresignGetObject(ctx, &s3.GetObjectInput{Bucket: &bucket, Key: &key}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", classify(ctx, "presign "+key, err)
+	}
+	return out.URL, nil
 }
 
 func (c *client) Delete(ctx context.Context, ref plugin.Ref) error {

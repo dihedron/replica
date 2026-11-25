@@ -184,6 +184,20 @@ func (c *client) Close() error {
 	return nil
 }
 
+// PresignRead is the object's URL, for a destination that pulls it: only
+// when the endpoint sends no credentials or headers, which the destination
+// would not send. The version is not in the URL: the engine reads the copy
+// back and compares it with the source (veho-openstack.md §3.2).
+func (c *client) PresignRead(ctx context.Context, ref plugin.Ref, _ string, _ time.Duration) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if len(c.header) > 0 {
+		return "", plugin.Wrapf(plugin.Permanent, "http: an endpoint with credentials or headers cannot give a URL to another service")
+	}
+	return locate(c.base, ref.Key)
+}
+
 // checkKey refuses a key that is not a clean relative path of non-empty
 // segments (SRC-W4); dot segments, a backslash and control characters
 // are refused, every other byte is escaped as part of the path.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/dihedron/veho/pkg/plugin"
 	pb "github.com/dihedron/veho/pkg/plugin/process/proto"
@@ -128,7 +129,7 @@ func (c *remoteClient) Begin(ctx context.Context, ref plugin.Ref, info plugin.Ob
 	if err != nil {
 		return nil, fromStatus(ctx, err, md)
 	}
-	return &remoteUpload{rpc: c.rpc, id: h.GetId(), token: h.GetToken()}, nil
+	return &remoteUpload{rpc: c.rpc, id: h.GetId(), token: h.GetToken(), pullTTL: time.Duration(h.GetPullTtlSeconds()) * time.Second}, nil
 }
 
 func (c *remoteClient) Resume(ctx context.Context, ref plugin.Ref, token []byte) (plugin.Upload, error) {
@@ -137,13 +138,35 @@ func (c *remoteClient) Resume(ctx context.Context, ref plugin.Ref, token []byte)
 	if err != nil {
 		return nil, fromStatus(ctx, err, md)
 	}
-	return &remoteUpload{rpc: c.rpc, id: h.GetId(), token: h.GetToken()}, nil
+	return &remoteUpload{rpc: c.rpc, id: h.GetId(), token: h.GetToken(), pullTTL: time.Duration(h.GetPullTtlSeconds()) * time.Second}, nil
 }
 
 type remoteUpload struct {
-	rpc   pb.DriverClient
-	id    string
-	token []byte
+	rpc     pb.DriverClient
+	id      string
+	token   []byte
+	pullTTL time.Duration
+}
+
+// PresignRead asks the plugin; a driver without it answers Permanent.
+func (c *remoteClient) PresignRead(ctx context.Context, ref plugin.Ref, version string, ttl time.Duration) (string, error) {
+	var md metadata.MD
+	u, err := c.rpc.PresignRead(ctx, &pb.PresignRequest{Client: c.id, Ref: toRef(ref), Version: version, TtlSeconds: int64(ttl / time.Second)}, trailerOf(&md))
+	if err != nil {
+		return "", fromStatus(ctx, err, md)
+	}
+	return u.GetUrl(), nil
+}
+
+func (u *remoteUpload) PullTTL() time.Duration { return u.pullTTL }
+
+func (u *remoteUpload) Pull(ctx context.Context, url string) (plugin.Ref, error) {
+	var md metadata.MD
+	r, err := u.rpc.Pull(ctx, &pb.PullRequest{Upload: u.id, Url: url}, trailerOf(&md))
+	if err != nil {
+		return plugin.Ref{}, fromStatus(ctx, err, md)
+	}
+	return fromRef(r), nil
 }
 
 func (u *remoteUpload) Token() []byte { return u.token }

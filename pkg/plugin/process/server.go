@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/dihedron/veho/pkg/plugin"
 	pb "github.com/dihedron/veho/pkg/plugin/process/proto"
@@ -196,7 +197,43 @@ func (s *server) keep(client string, up plugin.Upload) *pb.UploadHandle {
 	s.mu.Lock()
 	s.uploads[id] = upload{client: client, up: up}
 	s.mu.Unlock()
-	return &pb.UploadHandle{Id: id, Token: up.Token()}
+	h := &pb.UploadHandle{Id: id, Token: up.Token()}
+	if p, ok := up.(plugin.Puller); ok {
+		h.PullTtlSeconds = int64(p.PullTTL() / time.Second)
+	}
+	return h
+}
+
+func (s *server) PresignRead(ctx context.Context, r *pb.PresignRequest) (*pb.PresignedURL, error) {
+	c, err := s.client(r.GetClient())
+	if err != nil {
+		return nil, err
+	}
+	p, ok := c.(plugin.Presigner)
+	if !ok {
+		return nil, unary(ctx, plugin.Wrapf(plugin.Permanent, "%s: a source of this driver cannot give a URL", s.d.Name()))
+	}
+	u, err := p.PresignRead(ctx, fromRef(r.GetRef()), r.GetVersion(), time.Duration(r.GetTtlSeconds())*time.Second)
+	if err != nil {
+		return nil, unary(ctx, err)
+	}
+	return &pb.PresignedURL{Url: u}, nil
+}
+
+func (s *server) Pull(ctx context.Context, r *pb.PullRequest) (*pb.Ref, error) {
+	up, err := s.upload(r.GetUpload())
+	if err != nil {
+		return nil, err
+	}
+	p, ok := up.(plugin.Puller)
+	if !ok || p.PullTTL() <= 0 {
+		return nil, unary(ctx, plugin.Wrapf(plugin.Permanent, "%s: this upload does not pull", s.d.Name()))
+	}
+	ref, err := p.Pull(ctx, r.GetUrl())
+	if err != nil {
+		return nil, unary(ctx, err)
+	}
+	return toRef(ref), nil
 }
 
 func (s *server) Begin(ctx context.Context, r *pb.BeginRequest) (*pb.UploadHandle, error) {

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 )
 
 // Driver is the factory of one kind of storage, registered once.
@@ -35,6 +36,27 @@ type Driver interface {
 // drivers only: the plugin protocol does not carry it yet.
 type ConfigChecker interface {
 	CheckConfig(cfg Config) error
+}
+
+// Presigner is a source that can give a URL to read an object without
+// credentials, for a time: an S3 presigned GET, an HTTP URL that needs none.
+// It is for a destination that pulls (Puller); the URL is a credential for
+// its lifetime, so it goes only to that destination, never to a log
+// (veho-openstack.md §3.2). An endpoint that cannot is a Permanent error.
+type Presigner interface {
+	PresignRead(ctx context.Context, ref Ref, version string, ttl time.Duration) (string, error)
+}
+
+// Puller is an upload whose destination fetches the object itself from a
+// URL (Glance's web-download): the engine gives it the source's presigned
+// URL in place of the parts, then reads the object back to check it.
+type Puller interface {
+	// PullTTL is the lifetime the URL needs; zero: this upload takes parts.
+	PullTTL() time.Duration
+	// Pull makes the destination fetch url and waits for it; the object is
+	// still invisible, and the returned reference reads it back before
+	// Commit.
+	Pull(ctx context.Context, url string) (Ref, error)
 }
 
 // Capabilities are what a driver can do; the core adapts to them (PLG-9).

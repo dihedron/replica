@@ -131,14 +131,19 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	switch cfg.Upload {
 	case "":
 		cfg.Upload = "put"
-	case "put", "glance-direct":
-	case "web-download":
-		return nil, plugin.Wrapf(plugin.Permanent, "glance: upload web-download is not available yet")
+	case "put", "glance-direct", "web-download":
 	default:
 		return nil, plugin.Wrapf(plugin.Permanent, "glance: upload: want put, glance-direct or web-download")
 	}
 	if len(cfg.Stores) > 0 && cfg.Upload != "glance-direct" {
 		return nil, plugin.Wrapf(plugin.Permanent, "glance: stores need upload glance-direct")
+	}
+	ttl := time.Hour
+	if cfg.WebDownloadURLTTL != "" {
+		var err error
+		if ttl, err = time.ParseDuration(cfg.WebDownloadURLTTL); err != nil || ttl < time.Minute || ttl > 7*24*time.Hour {
+			return nil, plugin.Wrapf(plugin.Permanent, "glance: web_download_url_ttl: want a duration from 1m to 168h")
+		}
 	}
 	if cfg.Visibility == "" {
 		cfg.Visibility = "private"
@@ -159,7 +164,7 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	if err != nil {
 		return nil, fmt.Errorf("glance: %w", err)
 	}
-	return &client{sc: sc, cfg: cfg, project: project, poll: d.poll}, nil
+	return &client{sc: sc, cfg: cfg, project: project, poll: d.poll, ttl: ttl}, nil
 }
 
 type client struct {
@@ -167,6 +172,7 @@ type client struct {
 	cfg     config
 	project string
 	poll    time.Duration
+	ttl     time.Duration // of web-download's URL
 
 	once    sync.Once
 	minor   int // Glance's most recent v2 minor version
