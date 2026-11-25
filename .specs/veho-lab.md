@@ -37,7 +37,7 @@ host (LXD 5.21+, KVM)
 | `s3-a`, `s3-b`, `s3-c` | Garage, one node, its own cluster | 512 MiB | S3 API 9001, 9002, 9003 |
 | `veho-R1`, `veho-R2` (L3) | veho, two per region | 1.5 GiB | API 8441 to 8446 (`veho-lab-l3.md` §2) |
 
-Sizes: lab VM 8 vCPU, 20 GiB, 40 GiB disk by default (L1 and L2 use about 5 GiB of memory; the veho nodes of L3 add up to 9 GiB, which the VM's page cache gives up; the optional Nexus node 3 GiB). `lab.sh stop` then `start` applies a new size.
+Sizes: lab VM 8 vCPU, 20 GiB, 80 GiB disk by default (at 40 GiB the daytime suite filled it) (L1 and L2 use about 5 GiB of memory; the veho nodes of L3 add up to 9 GiB, which the VM's page cache gives up; the optional Nexus node 3 GiB). `lab.sh stop` then `start` applies a new size (a disk only grows).
 
 ## 3. The WAN
 
