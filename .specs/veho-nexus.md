@@ -2,7 +2,7 @@
 
 This file specifies the `nexus` driver: Sonatype Nexus Repository 3 as a source and a destination. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`. It follows the `http` driver (`veho-sources.md`) and the Glance `put` method (`veho-openstack.md` §3.2), whose patterns it reuses.
 
-Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1); §2.2 and §2.3 (the `maven2`, `npm` and `pypi` formats), NX-6 to NX-11, R-19 and NX-T6 to NX-T8 approved the same day, with the index's digests checked (§2.2) and `npm_dist_tag` defaulting to `latest`. Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
+Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1); §2.2 and §2.3 (the `maven2`, `npm` and `pypi` formats), NX-6 to NX-11, R-19 and NX-T6 to NX-T8 approved the same day, with the index's digests checked (§2.2) and `npm_dist_tag` defaulting to `latest`. Implemented the same day, with NX-T6 to NX-T8 passing on the fake and in the lab; §10 records what the lab changed. Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
 
 ## 1. Decisions (2026-11-25)
 
@@ -58,7 +58,7 @@ Every format is two functions in the driver: **resolve**, a key to the content U
 
 **`maven2`**
 
-- Key: a path in the Maven layout, `<group as directories>/<artifact>/<version>/<artifact>-<version>[-<classifier>].<extension>`, or the coordinates `<group>:<artifact>:<version>[:<classifier>]@<extension>`, mapped to that path. Group, artifact, version and classifier: `[A-Za-z0-9._-]+`, not starting with `.`; the extension `[A-Za-z0-9.]+`. A path that does not parse back to its coordinates is refused.
+- Key: a path in the Maven layout, `<group as directories>/<artifact>/<version>/<artifact>-<version>[-<classifier>].<extension>`, or the coordinates `<group>:<artifact>:<version>[:<classifier>]@<extension>`, mapped to that path. Group, artifact and version: `[A-Za-z0-9._-]+`, not starting with `.`; the classifier `[A-Za-z0-9_-]+` (a `.` in it would read as the extension's); the extension `[A-Za-z0-9]+` segments joined by `.`. A path that does not parse back to its coordinates is refused.
 - Source: resolve is the path.
 - Destination: `PUT` of the path, streamed, as `raw`. Keys of `maven-metadata.xml` and of checksum files (`.md5`, `.sha1`, `.sha256`, `.sha512`, `.asc` is allowed) are refused as a destination: Nexus generates them (NX-8). A version ending in `-SNAPSHOT` into a release repository, or the reverse, is refused by Nexus (`400`): `Permanent`, naming the version policy. A POM is its own job (`@pom`).
 
@@ -119,11 +119,11 @@ New residual risks:
 
 ## 6. Lab
 
-A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD container `nexus` from Sonatype's Unix archive (with its bundled Java), a `raw` hosted repository with redeploy allowed and one with it refused, a test user with a user token, and Nexus's own TLS through a reverse proxy with the lab's CA. `lab.sh nexus up|down` builds and removes it, so the rest of the lab does not need its memory (about 3 GiB). With the formats (§2.2): Nexus's own `maven-releases` (redeploy refused) and `maven-snapshots`, and the hosted repositories `veho-npm` and `veho-pypi` (redeploy allowed); the role `veho-writer` gains `nx-repository-view-maven2-*-*`, `nx-repository-view-npm-*-*` and `nx-repository-view-pypi-*-*`, whose `delete` action covers deleting an npm component.
+A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD container `nexus` from Sonatype's Unix archive (with its bundled Java), a `raw` hosted repository with redeploy allowed and one with it refused, a test user with a user token, and Nexus's own TLS through a reverse proxy with the lab's CA. `lab.sh nexus up|down` builds and removes it, so the rest of the lab does not need its memory (about 3 GiB). With the formats (§2.2): Nexus's own `maven-releases` (redeploy refused) and `maven-snapshots`, and the hosted repositories `veho-maven` (release, redeploy allowed), `veho-npm` and `veho-pypi` (one deploy, §10); the role `veho-writer` gains `nx-repository-view-maven2-*-*`, `nx-repository-view-npm-*-*` and `nx-repository-view-pypi-*-*`, whose `delete` action covers deleting an npm component.
 
 ### 6.1 Order of the formats
 
-`raw` (with no `format`, the content path) first; then `maven2`, `npm` and `pypi`, each on demand and with a revision of this table: its key syntax, the lab repository and its tests (NX-T6 for Maven, NX-T7 for npm, NX-T8 for PyPI), and the threat rows its upload adds (a publish document parsed by Nexus, a multipart form).
+`raw` (with no `format`, the content path) first; then `maven2`, `npm` and `pypi`, each on demand and with a revision of this table: its key syntax, the lab repository and its tests (NX-T6 for Maven, NX-T7 for npm, NX-T8 for PyPI), and the threat rows its upload adds (a publish document parsed by Nexus, a multipart form). All three were done together on 2026-11-25 (§2.2).
 
 ## 7. Tests (written first)
 
@@ -140,8 +140,20 @@ A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD c
 
 ## 8. Documentation
 
-The Setup Guide (package, settings), the Operator's Guide (endpoints, credentials, write policy, R-18), the Architecture and Design Guide (the drivers table, the threat rows), `veho-threat-model.md` (NX-1 to NX-5, R-18).
+The Setup Guide (package, settings), the Operator's Guide (endpoints, credentials, write policy, R-18), the Architecture and Design Guide (the drivers table, the threat rows), `veho-threat-model.md` (NX-1 to NX-11, R-18, R-19).
 
 ## 9. Order of work
 
 After the OpenStack drivers' step 1 (the shared pieces of `pkg/plugin/http` it reuses: `locate`, the range checks): the driver with NX-T1 to NX-T3, then the lab node and NX-T4 and NX-T5.
+
+## 10. Changes from the implementation (2026-11-25)
+
+What the lab's Nexus 3.98.1 showed, and the driver now does:
+
+- **npm tarballs are served without ranges** (`200` to a `Range`), with a plain SHA-1 `ETag` (`"<hex>"`, not `"{SHA1{<hex>}}"`). For `format: npm` only, a range is read from the start of the answer and the bytes before it skipped, its `ETag` still checked (NX-4); bounded by the package's size.
+- **A PyPI file cannot be deleted by its content path** (`404`): `Delete` removes the file and its PEP 658 metadata (`<file>.metadata`, which Nexus creates) as assets, through `GET /service/rest/v1/search/assets` and `DELETE /service/rest/v1/assets/<id>`.
+- **Nexus's search lists a new component or asset only after a moment**: an npm or PyPI `Delete` first resolves the key (absent: done), then waits for the search to list it, up to one minute, then fails `Transient`, so the engine retries.
+- **Deleting an npm tarball by its path leaves the version in the packument**: the component delete of §2.2 stays.
+- **Maven classifiers** may not contain `.`, which would read as the extension's (found by the fuzz test).
+- The lab adds `veho-maven` (release, redeploy allowed), for the conformance suite's replaced objects; `veho-npm` and `veho-pypi` allow one deploy. The role `veho-writer` also needs `nx-search-read` for the deletes.
+- The conformance suite gained `Target.Key`, which maps its keys to a driver's syntax (`maven2`'s coordinates).

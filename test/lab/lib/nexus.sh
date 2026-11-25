@@ -109,16 +109,22 @@ nexus_configure() {
 		nexus_api POST system/eula --data "$(jq -c '.accepted = true' <<<"$eula")" >/dev/null
 	fi
 	nexus_api PUT security/anonymous --data '{"enabled": true, "userId": "anonymous", "realmName": "NexusAuthorizingRealm"}' >/dev/null
-	local repo policy
-	for repo in veho-raw:allow veho-raw-once:allow_once; do
-		policy="${repo#*:}" repo="${repo%%:*}"
+	# name:format:write policy; maven2 also with its version policy
+	local spec repo format policy
+	for spec in veho-raw:raw:allow veho-raw-once:raw:allow_once veho-maven:maven2:allow veho-npm:npm:allow_once veho-pypi:pypi:allow_once; do
+		IFS=: read -r repo format policy <<<"$spec"
 		nexus_api GET "repositories/$repo" >/dev/null 2>&1 && continue
-		nexus_api POST repositories/raw/hosted --data "$(jq -cn --arg n "$repo" --arg p "$policy" \
-			'{name: $n, online: true, storage: {blobStoreName: "default", strictContentTypeValidation: false, writePolicy: $p}}')" >/dev/null
-		info "repository $repo (write policy $policy)"
+		nexus_api POST "repositories/${format/maven2/maven}/hosted" --data "$(jq -cn --arg n "$repo" --arg p "$policy" --arg f "$format" \
+			'{name: $n, online: true, storage: {blobStoreName: "default", strictContentTypeValidation: false, writePolicy: $p}}
+			 + if $f == "maven2" then {maven: {versionPolicy: "RELEASE", layoutPolicy: "STRICT", contentDisposition: "ATTACHMENT"}} else {} end')" >/dev/null
+		info "repository $repo ($format, write policy $policy)"
 	done
-	nexus_api GET security/roles/veho-writer >/dev/null 2>&1 ||
-		nexus_api POST security/roles --data '{"id": "veho-writer", "name": "veho-writer", "description": "veho lab: raw repositories", "privileges": ["nx-repository-view-raw-*-*"], "roles": []}' >/dev/null
+	local role='{"id": "veho-writer", "name": "veho-writer", "description": "veho lab: raw, maven2, npm and pypi repositories", "privileges": ["nx-repository-view-raw-*-*", "nx-repository-view-maven2-*-*", "nx-repository-view-npm-*-*", "nx-repository-view-pypi-*-*", "nx-search-read"], "roles": []}'
+	if nexus_api GET security/roles/veho-writer >/dev/null 2>&1; then
+		nexus_api PUT security/roles/veho-writer --data "$role" >/dev/null
+	else
+		nexus_api POST security/roles --data "$role" >/dev/null
+	fi
 	if [[ "$(nexus_api GET 'security/users?userId=veho' | jq 'length')" == 0 ]]; then
 		nexus_api POST security/users --data "$(jq -cn --arg p "$(password nexus-veho)" \
 			'{userId: "veho", firstName: "veho", lastName: "lab", emailAddress: "veho@lab.invalid", password: $p, status: "active", roles: ["veho-writer"]}')" >/dev/null

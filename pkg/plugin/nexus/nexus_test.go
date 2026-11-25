@@ -33,16 +33,20 @@ type fakeNexus struct {
 	assets   map[string][]byte
 	ranges   bool
 	corrupt  bool
+	npm      npmRepo
+	pypi     pypiRepo
+	lag      int // searches that list nothing yet
 }
 
 func newFake(t *testing.T) *fakeNexus {
 	t.Helper()
-	f := &fakeNexus{ranges: true, assets: map[string][]byte{}, noDeploy: map[string]bool{"once": true},
+	f := &fakeNexus{ranges: true, assets: map[string][]byte{}, noDeploy: map[string]bool{"once": true}, npm: npmRepo{packuments: map[string]map[string]any{}},
 		repos: map[string]repository{
-			"files":    {Name: "files", Format: "raw", Type: "hosted"},
-			"once":     {Name: "once", Format: "raw", Type: "hosted"},
-			"releases": {Name: "releases", Format: "maven2", Type: "hosted"},
-			"central":  {Name: "central", Format: "maven2", Type: "proxy"},
+			"files":     {Name: "files", Format: "raw", Type: "hosted"},
+			"once":      {Name: "once", Format: "raw", Type: "hosted"},
+			"releases":  {Name: "releases", Format: "maven2", Type: "hosted"},
+			"central":   {Name: "central", Format: "maven2", Type: "proxy"},
+			"snapshots": {Name: "snapshots", Format: "maven2", Type: "hosted"},
 		}}
 	f.srv = httptest.NewTLSServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
@@ -71,6 +75,9 @@ func (f *fakeNexus) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(repo)
 		return
 	}
+	if f.serveNPM(w, r, authed) || f.servePyPI(w, r, authed) {
+		return
+	}
 	path, ok := strings.CutPrefix(r.URL.Path, "/repository/")
 	repoName, _, _ := strings.Cut(path, "/")
 	if _, known := f.repos[repoName]; !ok || !known {
@@ -81,6 +88,10 @@ func (f *fakeNexus) serve(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		if !authed {
 			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if f.repos[repoName].Format == "maven2" && strings.Contains(path, "-SNAPSHOT/") != (repoName == "snapshots") {
+			http.Error(w, "Repository version policy: RELEASE does not allow version: 1.0-SNAPSHOT", http.StatusBadRequest)
 			return
 		}
 		if _, there := f.assets[path]; there && f.noDeploy[repoName] {
@@ -112,7 +123,12 @@ func (f *fakeNexus) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("ETag", etag(b))
-		if rng := r.Header.Get("Range"); rng != "" && f.ranges && r.Method == http.MethodGet {
+		npmTarball := repoName == "npm"
+		if npmTarball { // as Nexus: no ranges, a plain SHA-1 ETag
+			sum := sha1.Sum(b) //nolint:gosec // Nexus's ETag
+			w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)
+		}
+		if rng := r.Header.Get("Range"); rng != "" && f.ranges && !npmTarball && r.Method == http.MethodGet {
 			var a, z int64
 			if _, err := fmt.Sscanf(rng, "bytes=%d-%d", &a, &z); err != nil || a >= int64(len(b)) {
 				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
@@ -187,9 +203,10 @@ func TestOpen(t *testing.T) {
 		"raw":                  {"files", `, "format": "raw"`, good, true},
 		"anonymous":            {"central", "", nil, true},
 		"raw on maven":         {"releases", `, "format": "raw"`, good, false},
-		"maven not yet":        {"releases", `, "format": "maven2"`, good, false},
-		"npm not yet":          {"files", `, "format": "npm"`, good, false},
-		"pypi not yet":         {"files", `, "format": "pypi"`, good, false},
+		"maven2":               {"releases", `, "format": "maven2"`, good, true},
+		"dist tag without npm": {"files", `, "npm_dist_tag": "next"`, good, false},
+		"npm on raw":           {"files", `, "format": "npm"`, good, false},
+		"pypi on raw":          {"files", `, "format": "pypi"`, good, false},
 		"unknown format":       {"files", `, "format": "docker"`, good, false},
 		"no repository":        {"nope", `, "format": "raw"`, good, false},
 		"bad repository":       {"a/b", "", good, false},
@@ -209,7 +226,7 @@ func TestOpen(t *testing.T) {
 	if _, err := plain.Open(ctx, plugin.Config(`{"url": "http://nexus.example/nexus", "repository": "files"}`), good); err != nil {
 		t.Errorf("http with plaintext: %v", err)
 	}
-	for _, s := range []string{`{"nope": 1}`, `{"allow_cidrs": ["x"]}`} {
+	for _, s := range []string{`{"nope": 1}`, `{"allow_cidrs": ["x"]}`, `{"max_npm_size": -1}`} {
 		if _, err := Factory(json.RawMessage(s)); err == nil {
 			t.Errorf("settings %s accepted", s)
 		}
