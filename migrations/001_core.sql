@@ -759,3 +759,33 @@ AS $$
 $$;
 REVOKE ALL ON FUNCTION veho.pending_endpoint_checks(text, interval) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.pending_endpoint_checks(text, interval) TO veho_worker;
+
+-- The endpoints due for a periodic network check (veho-network-checks.md
+-- §11), across tenants: identifiers only; never checked first, then the
+-- oldest check.
+CREATE FUNCTION veho.due_endpoint_checks(p_interval interval, p_limit int) RETURNS TABLE (tenant_id uuid, endpoint_name text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT e.tenant_id, e.name FROM veho.endpoints e
+	LEFT JOIN LATERAL (SELECT max(c.created_at) AS last FROM veho.endpoint_checks c WHERE c.endpoint_id = e.id) l ON true
+	WHERE l.last IS NULL OR l.last < now() - p_interval
+	ORDER BY l.last NULLS FIRST, e.created_at
+	LIMIT p_limit
+$$;
+
+-- The endpoints whose latest complete check has a flow unreachable from
+-- some node, across tenants, for the metric (no tenant is named).
+CREATE FUNCTION veho.unreachable_endpoints() RETURNS bigint
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT count(*) FROM veho.endpoints e
+	CROSS JOIN LATERAL (
+		SELECT c.id FROM veho.endpoint_checks c
+		WHERE c.endpoint_id = e.id
+		  AND (SELECT count(*) FROM veho.endpoint_check_results r WHERE r.check_id = c.id) >= cardinality(c.nodes)
+		ORDER BY c.created_at DESC LIMIT 1) last
+	WHERE EXISTS (SELECT 1 FROM veho.endpoint_check_results r, jsonb_array_elements(r.results) x
+	              WHERE r.check_id = last.id AND x->>'status' = 'unreachable')
+$$;
+REVOKE ALL ON FUNCTION veho.due_endpoint_checks(interval, int), veho.unreachable_endpoints() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.due_endpoint_checks(interval, int), veho.unreachable_endpoints() TO veho_worker;

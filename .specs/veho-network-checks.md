@@ -123,11 +123,11 @@ Periodic checks (a background check of every endpoint: backlog item 41); checks 
 - **Data model** as §4, with `pending_endpoint_checks(node, window)` the one function that crosses tenants (identifiers only).
 - Tests: NC-T1 (`pkg/plugin/*/flows_test.go`, `pkg/plugin/process/flows_test.go`), NC-T2 and NC-T6's fuzz (`internal/flowcheck`), NC-T3 (`internal/engine/checks_integration_test.go`), NC-T4 (`TestCLI`, and `cmd/veho/parser_test.go`, which parses every command's options: `--timeout` of `endpoint check` had clashed with the API options' own), NC-T5 (`test/acceptance/checks_test.go`, `lab.sh acceptance -run TestNetworkChecks`: passing on the six nodes, an `nft` rule on veho-c1 making region a's Garage unreachable from it alone). `endpoint check`'s wait bound is `--within`.
 
-## 11. Periodic checks (backlog 41, proposed 2026-11-25)
+## 11. Periodic checks (backlog 41, approved 2026-11-25)
 
 A firewall rule can change after an endpoint is created: periodic checks find it before a transfer fails.
 
-| # | Question | Proposal |
+| # | Question | Decision |
 | :--- | :--- | :--- |
 | P1 | When | A housekeeping task (one node at a time, HK-1) starts a check of every endpoint whose last check is older than `network_checks.interval` (default `24h`; `0` turns it off; less than `1h` is refused), the oldest first, at most `network_checks.per_pass` (default 20) per housekeeping pass (every 30 s): the load is spread and bounded however many endpoints there are (NC-3). |
 | P2 | How | The same check as `veho endpoint check` (§2): the flows found with the credentials by the node that runs the task, every executor answering at its heartbeat, one in flight per endpoint, the last ten kept. Endpoints across tenants come from one function that crosses tenants and returns identifiers only (`due_endpoint_checks(interval, limit)`). |
@@ -137,3 +137,5 @@ A firewall rule can change after an endpoint is created: periodic checks find it
 Threat model: **NC-7** the periodic task decrypts each endpoint's credentials once per interval to find its flows: the same use as a transfer's, audited, bounded by P1; an operator who does not want it sets the interval to `0`.
 
 Tests: **NC-T7** (integration) the task starts checks for the endpoints due, oldest first, at most `per_pass`, none for an endpoint checked within the interval, none with the interval `0`; a check that failed to find its flows is not retried before the interval; **NC-T8** (unit) the settings' bounds; the gauge from complete checks only.
+
+Implemented 2026-11-25: the housekeeping task `checks` (`periodicChecks`), the functions `due_endpoint_checks` and `unreachable_endpoints` (identifiers and a count only), the audit's `trigger` (`request`, `change`, `periodic`); a pass stops starting checks when it has run one housekeeping interval, so it ends before its lock; the task runs last in the pass, after the repairs (adoption, deadlines, zombies, leases), which ran in random order before and could be delayed by it (the lab's TestDeadline showed it). NC-T7 and NC-T8 pass (`internal/engine/periodic_integration_test.go`, `internal/config`).

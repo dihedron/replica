@@ -66,6 +66,12 @@ func (c EndpointCheck) Unreachable() int {
 // in flight (NC-3): the flows are found here, with the credentials, and
 // every executor alive answers at its heartbeat.
 func (e *Engine) CheckEndpoint(ctx context.Context, tenant uuid.UUID, name string) (EndpointCheck, error) {
+	return e.startCheck(ctx, tenant, name, "request")
+}
+
+// startCheck is CheckEndpoint, with what started it for the audit:
+// request, change or periodic.
+func (e *Engine) startCheck(ctx context.Context, tenant uuid.UUID, name, trigger string) (EndpointCheck, error) {
 	var id uuid.UUID
 	err := store.InTenant(ctx, e.api, tenant, func(tx pgx.Tx) error {
 		var endpoint uuid.UUID
@@ -108,7 +114,7 @@ func (e *Engine) CheckEndpoint(ctx context.Context, tenant uuid.UUID, name strin
 		// counts, not addresses (NC-5)
 		e.audit.Emit(ctx, audit.Event{Action: "ENDPOINT_CHECKED", Outcome: audit.Success, TenantID: tenant.String(),
 			ResourceType: "endpoint", ResourceName: name,
-			Details: map[string]string{"check": id.String(), "flows": fmt.Sprint(len(c.Flows)), "nodes": fmt.Sprint(len(c.Nodes))}})
+			Details: map[string]string{"check": id.String(), "flows": fmt.Sprint(len(c.Flows)), "nodes": fmt.Sprint(len(c.Nodes)), "trigger": trigger}})
 	}
 	return c, err
 }
@@ -119,10 +125,48 @@ func (e *Engine) checkLater(tenant uuid.UUID, name string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		if _, err := e.CheckEndpoint(ctx, tenant, name); err != nil {
+		if _, err := e.startCheck(ctx, tenant, name, "change"); err != nil {
 			slog.WarnContext(ctx, "the check of a new endpoint", "tenant_id", tenant, "endpoint", name, "error", err)
 		}
 	}()
+}
+
+// periodicChecks checks the endpoints due (§11): at most per_pass, the
+// oldest first, within one housekeeping interval so that the pass ends
+// before its lock does; then the gauge of the unreachable endpoints.
+func (e *Engine) periodicChecks(ctx context.Context) error {
+	nc := e.cfg.NetworkChecks
+	if nc.Interval != nil && *nc.Interval > 0 {
+		rows, err := e.worker.Query(ctx, "select tenant_id, endpoint_name from veho.due_endpoint_checks($1::interval, $2)",
+			nc.Interval.String(), nc.PerPass)
+		if err != nil {
+			return err
+		}
+		type due struct {
+			Tenant uuid.UUID
+			Name   string
+		}
+		ds, err := pgx.CollectRows(rows, pgx.RowToStructByPos[due])
+		if err != nil {
+			return err
+		}
+		pass, cancel := context.WithTimeout(ctx, e.cfg.Housekeeping.Interval)
+		defer cancel()
+		for _, d := range ds {
+			if pass.Err() != nil {
+				break // the rest at the next pass
+			}
+			if _, err := e.startCheck(pass, d.Tenant, d.Name, "periodic"); err != nil {
+				slog.WarnContext(ctx, "periodic check", "tenant_id", d.Tenant, "endpoint", d.Name, "error", err)
+			}
+		}
+	}
+	var n int64
+	if err := e.worker.QueryRow(ctx, "select veho.unreachable_endpoints()").Scan(&n); err != nil {
+		return err
+	}
+	e.metrics.unreachable.Set(float64(n))
+	return nil
 }
 
 // flows are the endpoint's, from its driver, at most plugin.MaxFlows.
