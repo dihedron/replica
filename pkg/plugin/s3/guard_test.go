@@ -33,19 +33,22 @@ func TestGuard(t *testing.T) {
 	creds := plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"}
 	ctx := context.Background()
 
-	c, err := New().Open(ctx, cfg, creds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.Stat(ctx, plugin.Ref{Key: "k"}); plugin.ClassOf(err) != plugin.Permanent || hits.Load() != 0 {
-		t.Fatalf("loopback without allow_cidrs: %v, %d requests", err, hits.Load())
+	for _, d := range []Driver{New(), {}} { // the zero Driver is guarded too
+		c, err := d.Open(ctx, cfg, creds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.Stat(ctx, plugin.Ref{Key: "k"}); plugin.ClassOf(err) != plugin.Permanent || hits.Load() != 0 {
+			t.Fatalf("loopback without allow_cidrs: %v, %d requests", err, hits.Load())
+		}
 	}
 
 	d, err := Factory(json.RawMessage(`{"allow_cidrs": ["127.0.0.0/8"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c, err = d.Open(ctx, cfg, creds); err != nil {
+	c, err := d.Open(ctx, cfg, creds)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Stat(ctx, plugin.Ref{Key: "k"}); err != nil || hits.Load() != 1 {
