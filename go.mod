@@ -10,6 +10,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/dbos-inc/dbos-transact-golang v1.9.0
 	github.com/go-jose/go-jose/v4 v4.1.9
+	github.com/gophercloud/gophercloud/v2 v2.16.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.34.0
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.8.0
