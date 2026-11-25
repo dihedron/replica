@@ -54,9 +54,12 @@ func TestMain(m *testing.M) {
 func load(t testing.TB, name string) *Process {
 	t.Helper()
 	// the file plugin's endpoints are the tests' temporary directories
-	settings, _ := json.Marshal(map[string]any{"roots": []string{filepath.Clean(os.TempDir())}})
-	if name != "file" {
-		settings = nil
+	var settings []byte
+	switch name {
+	case "file":
+		settings, _ = json.Marshal(map[string]any{"roots": []string{filepath.Clean(os.TempDir())}})
+	case "s3": // the lab's Garage, on its private network
+		settings, _ = json.Marshal(map[string]any{"allow_cidrs": []string{"10.0.0.0/8"}})
 	}
 	p, err := Load(Options{Path: binaries[name].path, SHA256: binaries[name].sum, Settings: settings})
 	if err != nil {
