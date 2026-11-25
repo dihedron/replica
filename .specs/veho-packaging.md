@@ -2,7 +2,7 @@
 
 This file specifies the first half of backlog item 27: the confinement of `veho serve` and its plugins by the distribution's mandatory access control, and the packages' dependencies. It is part of `veho_specification.md`; it extends the threat model's T-19 and T-24 (the node's confinement, today systemd's alone: `packaging/veho.service`).
 
-Status: proposed, 2026-11-25; awaiting approval.
+Status: approved, 2026-11-25, with the split of §1 (27b is backlog item 42); implemented the same day (§6).
 
 ## 1. Scope
 
@@ -12,9 +12,9 @@ Status: proposed, 2026-11-25; awaiting approval.
 | The packages' **dependencies**: `ca-certificates` (TLS to the state store, Keystone, S3), `Recommends: apparmor` | Systemd units and settings for Patroni, etcd and chrony in the Setup Guide; the OpenStack placement rules; the versions of PostgreSQL, Patroni, etcd and systemd on Rocky/Alma |
 | A **firewalld** service definition (`veho`: the API port, 8443/tcp), in both packages, harmless where firewalld is absent | |
 
-## 2. Decisions (proposed)
+## 2. Decisions (approved 2026-11-25)
 
-| # | Question | Proposal |
+| # | Question | Decision |
 | :--- | :--- | :--- |
 | 1 | Two profiles | `veho` for `/usr/bin/veho` and `veho-plugin` for every binary under `/usr/libexec/veho/plugins/`, entered by a `Px` transition: a plugin cannot read veho's configuration, its environment file, the unwrap key or the TLS key, only its own binary, its manifest, the system's CA roots and the network. |
 | 2 | What `veho` may do | Read `/etc/veho/**` (the TLS key and `veho.env` included), `/etc/ssl/**`, `/usr/share/veho/**`, the plugins' binaries and manifests; read the systemd credentials (`/run/credentials/veho.service/*`); the network (`inet`, `inet6`, `unix`); write the system log (`/dev/log`); its own `/proc` entries. Nothing else under `/home`, `/root`, `/var` or `/tmp` (with `PrivateTmp`). |
@@ -42,3 +42,11 @@ Status: proposed, 2026-11-25; awaiting approval.
 ## 5. Documentation
 
 The Setup Guide (the profiles, their mode, firewalld), the Operator's Guide (the `file` driver's roots in `local/veho`, reading a denial, complain mode), the Architecture and Design Guide (the confinement, PK-1 to PK-3), `veho-threat-model.md` (T-19, T-24).
+
+## 6. Changes from the implementation (2026-11-25)
+
+- **The profiles' file is one**, `/etc/apparmor.d/veho`, holding both profiles; `veho-plugin` has no attachment of its own and is entered only from `veho` (`rPx`: veho also reads the plugins, whose SHA-256 go-plugin checks). Both allow go-plugin's sockets (`owner /tmp/plugin*`, the service's private `/tmp`).
+- **A preremove script** unloads the profiles when the package is removed (not at an upgrade, whose postinstall reloads them).
+- **PK-T4 probes the plugins' profile only**: a copy of `cat` placed among the plugins and run under `veho-plugin` reads the CA roots and is denied `/etc/veho/veho.env`, `veho.yaml` and the unwrap key. `veho` may execute nothing but itself, so its "writes nothing" is checked on the profile's text (PK-T1: no write rule but go-plugin's sockets and the system log).
+- **The lab** loads the profile on the six nodes at `nodes deploy`, as the postinstall does; the acceptance suite (AC-1, AC-2, AC-13, the network checks) passes with both enforced (PK-T3).
+- No `rpm` tool on the build host: the `.rpm`'s contents rest on PK-T2's check of `.goreleaser.yaml`; the `.deb` of a snapshot build was inspected (`Depends: ca-certificates`, `Recommends: apparmor`, the profile as a conffile, the firewalld service, `postinst`, `prerm`).
