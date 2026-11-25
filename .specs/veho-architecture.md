@@ -157,7 +157,7 @@ cluster (separate schemas), so job creation and workflow enqueue can occur in
 | `workflows` | `ReplicateJob`, `Transfer` workflows (veho-job-lifecycle.md) |
 | `reconciler` | Periodic scan; adopts orphaned work, enforces deadlines, expires leases (veho-job-lifecycle.md §6) |
 | `plugin` | Registry and contracts for storage drivers (veho-plugins.md) |
-| `driver/*` | Built-in plugins: `s3`, `glance`, `file` (testing), `http` (read-only source) |
+| `driver/*` | Built-in drivers (standard library only): `file`, `http` (read-only source); plugin binaries of the release: `s3`, `sftp`, `ftp`, later `glance` (`veho-plugin-distribution.md`) |
 | `tenant` | Tenant resolution, quota accounting, secret resolution (veho-tenancy.md) |
 | `obs` | slog, Prometheus, OpenTelemetry |
 

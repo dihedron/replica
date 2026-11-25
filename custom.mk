@@ -29,6 +29,8 @@ snapshot: signing-check lint go-snapshot ## build a snapshot version for the sup
 .PHONY: release
 release: signing-check lint ## build a release version (requires a valid tag and the packaging key), documents included
 	@test -n "$(GPG_FINGERPRINT)" || { echo "a release must be signed: set GPG_FINGERPRINT and GPG_KEY_FILE" >&2; exit 1; }
+	@test -n "$$PLUGIN_SIGNING_KEY" || { echo "a release must sign its plugins' manifests: set PLUGIN_SIGNING_KEY" >&2; exit 1; }
+	@pub="$$(go run ./tools/plugin-manifest pubkey)" && grep -qxF "$$pub" packaging/plugin-signing.pub || { echo "PLUGIN_SIGNING_KEY is not a key of packaging/plugin-signing.pub" >&2; exit 1; }
 	@DOCS_VERSION="$$(git describe --tags --exact-match)" docs/build.sh
 	@$(MAKE) --no-print-directory go-release
 

@@ -14,11 +14,11 @@ sha256sum --check --ignore-missing checksums.txt
 
 The `.rpm` packages carry their own signature (`rpm --checksig`, after `rpm --import signing-key.asc`); the `.deb` packages carry a `debsig` origin signature, which `debsig-verify` checks with a policy for the key (the project's README gives the commands).
 
-Install the package on every node:
+Install the package on every node, with the package of each storage driver the node needs other than `file`: `veho-plugin-s3` for S3. A plugin package installs its binary under `/usr/libexec/veho/plugins/`, with a manifest signed by the release; veho starts only plugins of its own release, so install and upgrade them together.
 
 ```bash
-sudo apt install ./veho_<version>_linux_amd64.deb      # Ubuntu
-sudo dnf install ./veho_<version>_linux_amd64.rpm      # Rocky Linux, AlmaLinux
+sudo apt install ./veho_<version>_linux_amd64.deb ./veho-plugin-s3_<version>_linux_amd64.deb      # Ubuntu
+sudo dnf install ./veho_<version>_linux_amd64.rpm ./veho-plugin-s3_<version>_linux_amd64.rpm      # Rocky Linux, AlmaLinux
 ```
 
 ## From the source

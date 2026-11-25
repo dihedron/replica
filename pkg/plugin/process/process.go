@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -67,7 +68,13 @@ type Options struct {
 	RequireRootOwned bool
 	// Logger receives the plugin's log (PLG-19); default slog.Default().
 	Logger *slog.Logger
+	// Settings are the driver's settings, a JSON object, passed to the
+	// plugin in SettingsEnv (veho-plugin-distribution.md §4); default {}.
+	Settings []byte
 }
+
+// SettingsEnv is the environment variable that carries a plugin's settings.
+const SettingsEnv = "VEHO_PLUGIN_SETTINGS"
 
 // Process is a running plugin, restarted on the next Open after it died
 // (PLG-18).
@@ -85,6 +92,9 @@ func Load(opts Options) (*Process, error) {
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
+	}
+	if len(opts.Settings) == 0 {
+		opts.Settings = []byte("{}")
 	}
 	if opts.RequireRootOwned {
 		for _, p := range []string{opts.Path, filepath.Dir(opts.Path)} {
@@ -121,10 +131,14 @@ func (p *Process) start() error {
 		Output: slogWriter{p.opts.Logger},
 		Level:  hclog.Info,
 	})
+	cmd := exec.Command(p.opts.Path) //nolint:gosec // the path is configuration, and its checksum is checked
+	cmd.Env = []string{SettingsEnv + "=" + string(p.opts.Settings)}
+	stderr := &tail{}
 	client := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  Handshake,
 		Plugins:          goplugin.PluginSet{pluginName: &grpcPlugin{}},
-		Cmd:              exec.Command(p.opts.Path), //nolint:gosec // the path is configuration, and its checksum is checked
+		Cmd:              cmd,
+		Stderr:           stderr,
 		SecureConfig:     &goplugin.SecureConfig{Checksum: p.opts.SHA256, Hash: sha256.New()},
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		AutoMTLS:         true,
@@ -134,6 +148,9 @@ func (p *Process) start() error {
 	conn, err := client.Client()
 	if err != nil {
 		client.Kill()
+		if msg := stderr.String(); msg != "" {
+			return fmt.Errorf("plugin: start %s: %w: %s", p.opts.Path, err, msg)
+		}
 		return fmt.Errorf("plugin: start %s: %w", p.opts.Path, err)
 	}
 	raw, err := conn.Dispense(pluginName)
@@ -205,4 +222,27 @@ func (w slogWriter) Write(b []byte) (int, error) {
 		}
 	}
 	return len(b), nil
+}
+
+// tail keeps the last bytes a plugin wrote to its standard error, to report
+// why it did not start.
+type tail struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (t *tail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > 4096 {
+		t.buf = t.buf[len(t.buf)-4096:]
+	}
+	return len(p), nil
+}
+
+func (t *tail) String() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.TrimSpace(string(t.buf))
 }

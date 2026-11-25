@@ -255,3 +255,15 @@ func TestStorageClassChecked(t *testing.T) {
 		}
 	}
 }
+
+// TestFactory: the driver has no settings yet, so any key is refused
+// (veho-plugin-distribution.md §4).
+func TestFactory(t *testing.T) {
+	d, err := Factory(json.RawMessage("{}"))
+	if err != nil || d.Name() != "s3" {
+		t.Fatalf("factory: %v %v", d, err)
+	}
+	if _, err := Factory(json.RawMessage(`{"nope": 1}`)); err == nil {
+		t.Error("an unknown setting was accepted")
+	}
+}

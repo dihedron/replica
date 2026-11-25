@@ -20,5 +20,5 @@ func main() {
 		metadata.Print(os.Stdout)
 		return
 	}
-	process.Serve(s3.New())
+	process.Serve(s3.Factory)
 }

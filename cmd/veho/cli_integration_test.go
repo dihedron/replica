@@ -64,6 +64,7 @@ database:
   dbos: {dsn_env: VEHO_TEST_DBOS_DATABASE_URL}
 secrets: {unwrap_key: "file:`+key+`"}
 audit: {sink: stderr}
+drivers: [{name: file}]
 engine: {part_size_mib: 5}
 metrics: {listen: "off"}
 notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}

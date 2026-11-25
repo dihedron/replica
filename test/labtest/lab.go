@@ -463,7 +463,10 @@ func (tn *Tenant) PutSeed(x, path string, size int64, seed string) string {
 	t.Helper()
 	c := s3Client(t, x, "source")
 	defer func() { _ = c.Close() }()
-	ctx := context.Background()
+	// a stalled upload fails this test, not the whole run (found by the
+	// acceptance run of 2026-11-24: one UploadPart hung for 81 minutes)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute+time.Duration(size>>20)*time.Second)
+	defer cancel()
 	ref := plugin.Ref{Key: tn.Prefix + path}
 	up, err := c.Begin(ctx, ref, plugin.ObjectInfo{Size: size}, plugin.PutOptions{})
 	if err != nil {

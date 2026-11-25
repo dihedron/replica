@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ type Config struct {
 	Audit         Audit         `yaml:"audit"`
 	Engine        Engine        `yaml:"engine"`
 	Housekeeping  Housekeeping  `yaml:"housekeeping"`
-	Plugins       []Plugin      `yaml:"plugins"`
+	Drivers       []Driver      `yaml:"drivers"`
 	Metrics       Metrics       `yaml:"metrics"`
 	API           API           `yaml:"api"`
 	Checks        Checks        `yaml:"checks"`
@@ -148,11 +149,17 @@ type Housekeeping struct {
 	JobsRetention     *time.Duration `yaml:"jobs_retention"`
 }
 
-// Plugin is a process plugin (pkg/plugin/process).
-type Plugin struct {
-	Name   string `yaml:"name"`
-	Path   string `yaml:"path"`
-	SHA256 string `yaml:"sha256"`
+// validDriverName is a driver's name, also the suffix of its plugin binary.
+var validDriverName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// Driver enables a storage driver (veho-plugin-distribution.md §2): a
+// built-in one, a plugin installed from its package (no Path), or a plugin
+// pinned by Path and SHA256. A driver not listed is not available.
+type Driver struct {
+	Name     string         `yaml:"name"`
+	Path     string         `yaml:"path"`
+	SHA256   string         `yaml:"sha256"`
+	Settings map[string]any `yaml:"settings"`
 }
 
 // Metrics is the Prometheus listener; empty turns it off.
@@ -295,12 +302,14 @@ func (c *Config) validate() error {
 	check(*n.DeliveredRetention == 0 || *n.DeliveredRetention >= time.Minute, "notifications.delivered_retention %v: want 0 or at least 1m", *n.DeliveredRetention)
 	check(*n.AbandonedRetention >= time.Hour, "notifications.abandoned_retention %v: want at least 1h", *n.AbandonedRetention)
 	names := map[string]bool{}
-	for i, p := range c.Plugins {
-		sum, err := hex.DecodeString(p.SHA256)
-		check(p.Name != "" && !names[p.Name], "plugins[%d]: a name is required, once", i)
-		check(p.Path != "", "plugins[%d]: path is required", i)
-		check(err == nil && len(sum) == sha256.Size, "plugins[%d]: sha256 must be 64 hexadecimal digits", i)
-		names[p.Name] = true
+	for i, d := range c.Drivers {
+		check(validDriverName.MatchString(d.Name) && !names[d.Name], "drivers[%d]: a name (%s) is required, once", i, validDriverName)
+		check((d.Path == "") == (d.SHA256 == ""), "drivers[%d]: path and sha256 go together", i)
+		if d.SHA256 != "" {
+			sum, err := hex.DecodeString(d.SHA256)
+			check(err == nil && len(sum) == sha256.Size, "drivers[%d]: sha256 must be 64 hexadecimal digits", i)
+		}
+		names[d.Name] = true
 	}
 	_, _, err := net.SplitHostPort(c.API.Listen)
 	check(err == nil, "api.listen %q: want host:port", c.API.Listen)
