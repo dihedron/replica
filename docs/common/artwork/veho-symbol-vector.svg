@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 180" width="220" height="180">
+  <!-- A variant of veho-symbol.svg (2026-11-25), to compare: the two arms
+       are vectors of different lengths (the left one 0.67 times, the right
+       one 1.1 times the original), and the straight dashed arrow from the
+       left region to the right one closes their triangle, as in a vector
+       sum. Colours, widths and arrowheads as in veho-symbol.svg.
+       The veho symbol: veho is Latin for "I carry". A parcel, the object,
+       sits at the base of a V whose two arms carry it, arrows, to two
+       regions, rings with a centre that read as destinations; the dashed
+       arc between them is the WAN, over which a copy goes on. Redrawn
+       2026-11-25 from docs/common/artwork/proposal.jpg: flat, on a
+       transparent background, for light and dark pages alike. Colours
+       from ligo's palette, so that the projects look related. -->
+  <defs>
+    <linearGradient id="arm-cyan" gradientUnits="userSpaceOnUse" x1="101" y1="124" x2="80.1" y2="96.1">
+      <stop offset="0%" stop-color="#0369A1"/>
+      <stop offset="100%" stop-color="#06C8E0"/>
+    </linearGradient>
+    <linearGradient id="arm-indigo" gradientUnits="userSpaceOnUse" x1="119" y1="124" x2="167.0" y2="60.0">
+      <stop offset="0%" stop-color="#3730A3"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+    <marker id="wan-head" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#64748B"/>
+    </marker>
+  </defs>
+  <!-- the WAN between the two regions, a copy going on: the third side of the triangle -->
+  <path d="M 81.4 61.4 L 158.9 39.8" fill="none" stroke="#64748B" stroke-width="5" stroke-linecap="round"
+        stroke-dasharray="7 7" marker-end="url(#wan-head)"/>
+  <!-- the two arms of the V, each ending in an arrow at its region -->
+  <path d="M 101.0 124.0 L 80.1 96.1" fill="none" stroke="url(#arm-cyan)" stroke-width="13" stroke-linecap="round"/>
+  <path d="M 72.0 85.3 L 89.0 91.3 L 73.0 103.3 Z" fill="#06C8E0"/>
+  <path d="M 119.0 124.0 L 167.0 60.0" fill="none" stroke="url(#arm-indigo)" stroke-width="13" stroke-linecap="round"/>
+  <path d="M 175.1 49.2 L 174.1 67.2 L 158.1 55.2 Z" fill="#818CF8"/>
+  <!-- the regions: rings with a centre, so that they read as places -->
+  <circle cx="58.8" cy="67.7" r="15" fill="none" stroke="#06C8E0" stroke-width="7"/>
+  <circle cx="58.8" cy="67.7" r="5" fill="#06C8E0"/>
+  <circle cx="188.3" cy="31.6" r="15" fill="none" stroke="#818CF8" stroke-width="7"/>
+  <circle cx="188.3" cy="31.6" r="5" fill="#818CF8"/>
+  <!-- the parcel: a cube seen from above a corner -->
+  <g transform="translate(110 140)">
+    <path d="M 0 -26 L 23 -13 L 0 0 L -23 -13 Z" fill="#FDE047"/>
+    <path d="M -23 -13 L 0 0 L 0 27 L -23 14 Z" fill="url(#gold)"/>
+    <path d="M 23 -13 L 0 0 L 0 27 L 23 14 Z" fill="#B45309"/>
+  </g>
+</svg>
