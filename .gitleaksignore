@@ -1,0 +1,2 @@
+# test/lab/lib/nexus.sh before 7a6d29c: the password came from $(password nexus-admin), no literal secret
+01379aa018cf303aa6879099d60ae12a62fed734:test/lab/lib/nexus.sh:curl-auth-user:17
