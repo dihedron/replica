@@ -22,13 +22,7 @@
     },
     "storage_class": {
       "type": "string",
-      "not": {
-        "enum": [
-          "GLACIER",
-          "DEEP_ARCHIVE"
-        ]
-      },
-      "description": "the class of the copies; empty for the backend's default; archive classes refused (veho-storage-class.md)"
+      "description": "the class of the copies; empty for the backend's default; the archive classes GLACIER and DEEP_ARCHIVE are refused by the driver, with its reason (veho-storage-class.md)"
     }
   },
   "required": [

@@ -196,6 +196,11 @@ func TestCLI(t *testing.T) {
 			if out := c.must(checkJSON); field(t, out, "endpoint") != "d1-"+s || field(t, out, "id") == "" {
 				t.Errorf("endpoint check, json: %s", out)
 			}
+			// CV-T6 through the CLI: the valid endpoints are not listed
+			invalid := &EndpointListCommand{apiOptions: c.opts("text"), Invalid: true}
+			if out := c.must(invalid); !strings.Contains(out, "PROBLEM") || strings.Contains(out, "d1-"+s) {
+				t.Errorf("endpoint list --invalid: %s", out)
+			}
 			show := &EndpointShowCommand{apiOptions: c.opts("text")}
 			show.Args.Name = "d1-" + s
 			if out := c.must(show); !strings.Contains(out, "last_check: ") {

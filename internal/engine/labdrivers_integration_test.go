@@ -5,6 +5,7 @@ package engine
 import (
 	"encoding/json"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/dihedron/veho/pkg/plugin"
@@ -33,6 +34,7 @@ func labS3(t *testing.T) plugin.Driver {
 func labDrivers(t *testing.T, drivers map[string]plugin.Driver) {
 	t.Helper()
 	add := func(name string, factory func(json.RawMessage) (plugin.Driver, error), allow ...string) {
+		allow = slices.DeleteFunc(allow, func(s string) bool { return s == "" })
 		settings, _ := json.Marshal(map[string][]string{"allow_cidrs": allow})
 		d, err := factory(settings)
 		if err != nil {
@@ -40,15 +42,15 @@ func labDrivers(t *testing.T, drivers map[string]plugin.Driver) {
 		}
 		drivers[name] = d
 	}
-	if allow := os.Getenv("VEHO_TEST_NEXUS_ALLOW"); allow != "" {
-		add("nexus", nexus.Factory, allow)
-	}
+	// always there, for the checks of their configurations; the labs open
+	// their networks
+	add("nexus", nexus.Factory, os.Getenv("VEHO_TEST_NEXUS_ALLOW"))
+	add("glance", glance.Factory, os.Getenv("VEHO_DEVSTACK_ALLOW_CIDR"))
+	add("swift", swift.Factory, os.Getenv("VEHO_DEVSTACK_ALLOW_CIDR"))
 	// http on the loopback (testConfig's drivers), and DevStack's network
 	// for web-download's source
 	add("http", http.Factory, "127.0.0.0/8")
 	if allow := os.Getenv("VEHO_DEVSTACK_ALLOW_CIDR"); allow != "" {
-		add("glance", glance.Factory, allow)
-		add("swift", swift.Factory, allow)
 		add("http", http.Factory, "127.0.0.0/8", allow)
 	}
 }

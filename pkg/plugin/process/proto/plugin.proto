@@ -15,6 +15,9 @@ service Driver {
   rpc Describe(Empty) returns (Description);
   rpc ParseRef(ParseRefRequest) returns (Ref);
   rpc Open(OpenRequest) returns (Handle);
+  // CheckConfig checks an endpoint's configuration without credentials or
+  // network (PLG-10); Empty when the driver has no checks of its own.
+  rpc CheckConfig(ConfigRequest) returns (Empty);
   rpc Close(Handle) returns (Empty);
 
   rpc Stat(StatRequest) returns (ObjectInfo);
@@ -40,6 +43,10 @@ service Driver {
 }
 
 message Empty {}
+
+message ConfigRequest {
+  bytes config = 1;
+}
 
 message Capabilities {
   bool source = 1;

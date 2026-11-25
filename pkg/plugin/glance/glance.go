@@ -120,29 +120,29 @@ var reserved = map[string]bool{
 	"protected": true, "locations": true, "direct_url": true, "veho_upload": true,
 }
 
-// Open authenticates to Keystone and finds Glance in the catalog.
-func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+// parse checks a configuration without credentials or network.
+func (d Driver) parse(raw plugin.Config) (config, time.Duration, error) {
 	var cfg config
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "glance: configuration: %v", err)
+		return config{}, 0, plugin.Wrapf(plugin.Permanent, "glance: configuration: %v", err)
 	}
 	switch cfg.Upload {
 	case "":
 		cfg.Upload = "put"
 	case "put", "glance-direct", "web-download":
 	default:
-		return nil, plugin.Wrapf(plugin.Permanent, "glance: upload: want put, glance-direct or web-download")
+		return config{}, 0, plugin.Wrapf(plugin.Permanent, "glance: upload: want put, glance-direct or web-download")
 	}
 	if len(cfg.Stores) > 0 && cfg.Upload != "glance-direct" {
-		return nil, plugin.Wrapf(plugin.Permanent, "glance: stores need upload glance-direct")
+		return config{}, 0, plugin.Wrapf(plugin.Permanent, "glance: stores need upload glance-direct")
 	}
 	ttl := time.Hour
 	if cfg.WebDownloadURLTTL != "" {
 		var err error
 		if ttl, err = time.ParseDuration(cfg.WebDownloadURLTTL); err != nil || ttl < time.Minute || ttl > 7*24*time.Hour {
-			return nil, plugin.Wrapf(plugin.Permanent, "glance: web_download_url_ttl: want a duration from 1m to 168h")
+			return config{}, 0, plugin.Wrapf(plugin.Permanent, "glance: web_download_url_ttl: want a duration from 1m to 168h")
 		}
 	}
 	if cfg.Visibility == "" {
@@ -150,11 +150,26 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	}
 	for k := range cfg.Properties {
 		if reserved[k] || k == "" || strings.HasPrefix(k, "os_glance") {
-			return nil, plugin.Wrapf(plugin.Permanent, "glance: property %q is not allowed", k)
+			return config{}, 0, plugin.Wrapf(plugin.Permanent, "glance: property %q is not allowed", k)
 		}
 	}
 	if err := d.cloud.CheckEndpoint(cfg.Endpoint); err != nil {
-		return nil, plugin.Wrap(fmt.Errorf("glance: %w", err), plugin.Permanent)
+		return config{}, 0, plugin.Wrap(fmt.Errorf("glance: %w", err), plugin.Permanent)
+	}
+	return cfg, ttl, nil
+}
+
+// CheckConfig is what Open checks before connecting (PLG-10).
+func (d Driver) CheckConfig(_ context.Context, raw plugin.Config) error {
+	_, _, err := d.parse(raw)
+	return err
+}
+
+// Open authenticates to Keystone and finds Glance in the catalog.
+func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	cfg, ttl, err := d.parse(raw)
+	if err != nil {
+		return nil, err
 	}
 	sc, err := d.cloud.Connect(ctx, cfg.Endpoint, creds, openstack.Image)
 	if err != nil {

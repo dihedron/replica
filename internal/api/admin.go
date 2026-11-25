@@ -38,6 +38,25 @@ type admin struct {
 	s *Server
 }
 
+// invalidEndpoints is ListEndpoints with invalid: the endpoints the drivers
+// now refuse, each with its problem.
+func (es endpoints) invalidEndpoints(ctx context.Context, t uuid.UUID) (*vehov1.ListEndpointsResponse, error) {
+	bad, err := es.s.engine.InvalidEndpoints(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	out := &vehov1.ListEndpointsResponse{}
+	for _, b := range bad {
+		e, err := toEndpoint(b.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+		e.Problem = b.Problem
+		out.Endpoints = append(out.Endpoints, e)
+	}
+	return out, nil
+}
+
 func toEndpoint(ep engine.Endpoint) (*vehov1.Endpoint, error) {
 	st := &structpb.Struct{}
 	if err := protojson.Unmarshal(ep.Config, st); err != nil {
@@ -89,10 +108,13 @@ func (es endpoints) GetEndpoint(ctx context.Context, r *vehov1.EndpointName) (*v
 }
 
 // ListEndpoints implements EndpointService.
-func (es endpoints) ListEndpoints(ctx context.Context, _ *vehov1.ListEndpointsRequest) (*vehov1.ListEndpointsResponse, error) {
+func (es endpoints) ListEndpoints(ctx context.Context, r *vehov1.ListEndpointsRequest) (*vehov1.ListEndpointsResponse, error) {
 	t, err := tenant(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if r.GetInvalid() {
+		return es.invalidEndpoints(ctx, t)
 	}
 	all, err := es.s.engine.ListEndpoints(ctx, t)
 	if err != nil {

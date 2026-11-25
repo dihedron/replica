@@ -40,6 +40,8 @@ type Endpoint struct {
 	// db://<secret name>, or empty.
 	CredentialRef string                 `protobuf:"bytes,5,opt,name=credential_ref,json=credentialRef,proto3" json:"credential_ref,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// With ListEndpointsRequest.invalid: why the drivers refuse it.
+	Problem       string `protobuf:"bytes,7,opt,name=problem,proto3" json:"problem,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -116,6 +118,13 @@ func (x *Endpoint) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Endpoint) GetProblem() string {
+	if x != nil {
+		return x.Problem
+	}
+	return ""
+}
+
 type EndpointName struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -161,7 +170,10 @@ func (x *EndpointName) GetName() string {
 }
 
 type ListEndpointsRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Revalidate the endpoints and list only those the drivers now refuse,
+	// each with its problem (veho-config-validation.md, decision 6).
+	Invalid       bool `protobuf:"varint,1,opt,name=invalid,proto3" json:"invalid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -194,6 +206,13 @@ func (x *ListEndpointsRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListEndpointsRequest.ProtoReflect.Descriptor instead.
 func (*ListEndpointsRequest) Descriptor() ([]byte, []int) {
 	return file_veho_v1_admin_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ListEndpointsRequest) GetInvalid() bool {
+	if x != nil {
+		return x.Invalid
+	}
+	return false
 }
 
 type ListEndpointsResponse struct {
@@ -2046,7 +2065,7 @@ var File_veho_v1_admin_proto protoreflect.FileDescriptor
 
 const file_veho_v1_admin_proto_rawDesc = "" +
 	"\n" +
-	"\x13veho/v1/admin.proto\x12\aveho.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16veho/v1/policies.proto\"\xe5\x01\n" +
+	"\x13veho/v1/admin.proto\x12\aveho.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x16veho/v1/policies.proto\"\xff\x01\n" +
 	"\bEndpoint\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06driver\x18\x02 \x01(\tR\x06driver\x12\x1a\n" +
@@ -2054,10 +2073,12 @@ const file_veho_v1_admin_proto_rawDesc = "" +
 	"\x06config\x18\x04 \x01(\v2\x17.google.protobuf.StructR\x06config\x12%\n" +
 	"\x0ecredential_ref\x18\x05 \x01(\tR\rcredentialRef\x129\n" +
 	"\n" +
-	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x18\n" +
+	"\aproblem\x18\a \x01(\tR\aproblem\"\"\n" +
 	"\fEndpointName\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\x16\n" +
-	"\x14ListEndpointsRequest\"H\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"0\n" +
+	"\x14ListEndpointsRequest\x12\x18\n" +
+	"\ainvalid\x18\x01 \x01(\bR\ainvalid\"H\n" +
 	"\x15ListEndpointsResponse\x12/\n" +
 	"\tendpoints\x18\x01 \x03(\v2\x11.veho.v1.EndpointR\tendpoints\"7\n" +
 	"\x11EndpointCheckName\x12\x12\n" +

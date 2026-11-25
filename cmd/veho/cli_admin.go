@@ -214,12 +214,18 @@ func (cmd *EndpointShowCommand) Execute([]string) error {
 }
 
 // EndpointListCommand is "veho endpoint list".
-type EndpointListCommand struct{ apiOptions }
+type EndpointListCommand struct {
+	apiOptions
+	Invalid bool `long:"invalid" description:"Revalidate the endpoints and list only those the drivers now refuse, with the problem (after an upgrade)"`
+}
 
 // Execute prints the endpoints.
 func (cmd *EndpointListCommand) Execute([]string) error {
-	return cmd.show("veho.v1.EndpointService.ListEndpoints", &vehov1.ListEndpointsRequest{}, &vehov1.ListEndpointsResponse{},
-		"name", "driver", "location", "credential_ref")
+	columns := []string{"name", "driver", "location", "credential_ref"}
+	if cmd.Invalid {
+		columns = []string{"name", "driver", "problem"}
+	}
+	return cmd.show("veho.v1.EndpointService.ListEndpoints", &vehov1.ListEndpointsRequest{Invalid: cmd.Invalid}, &vehov1.ListEndpointsResponse{}, columns...)
 }
 
 // EndpointUpdateCommand is "veho endpoint update": what is not given stays.

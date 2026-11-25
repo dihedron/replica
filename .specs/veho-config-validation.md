@@ -2,7 +2,7 @@
 
 This file specifies backlog item 39, PLG-10 of `veho-plugins.md`: an endpoint's configuration is validated when the endpoint is created or updated, so a wrong one is refused then, with a message that says why, and not at the endpoint test or the first transfer (`veho-storage-class.md` §6). It is part of `veho_specification.md` and extends the driver contract and the plugin protocol (`veho-plugins.md`).
 
-Status: approved, 2026-11-25, with the revalidation of stored endpoints added (decision 6).
+Status: approved, 2026-11-25, with the revalidation of stored endpoints added (decision 6); implemented the same day (§6).
 
 ## 1. Today
 
@@ -43,3 +43,10 @@ Status: approved, 2026-11-25, with the revalidation of stored endpoints added (d
 ## 5. Documentation
 
 The Operator's Guide (the error at `endpoint create`, its message, and `endpoint list --invalid` after an upgrade), the Architecture and Design Guide (PLG-10 as implemented), `veho-plugins.md` (the RPC), `veho-threat-model.md` (CV-1 to CV-3, in T-39's row of plugin trust).
+
+## 6. Changes from the implementation (2026-11-25)
+
+- **`CheckConfig` takes a context** (`CheckConfig(ctx, config)`): over the plugin protocol it carries the request's deadline (CV-3); `file` and every caller follow.
+- **The schemas are validated by `internal/schema`** (`Compile`, `Validate`): the compiler's loader resolves no scheme at all, so neither `http` nor `file` references load anything; the validator's patterns use Go's `regexp` (the library's `regexp2` appears only in its own examples).
+- **The `s3` schema no longer excludes the archive classes with `not`**, whose message is only "'not' failed": the driver refuses them, naming them (`storage class GLACIER is an archive class, refused`).
+- Tests: CV-T1, CV-T2, CV-T5 (`internal/schema`), CV-T3 (`pkg/plugin/process/checkconfig_test.go`), CV-T4 and CV-T6 (`internal/engine/configcheck_integration_test.go`, and `TestCLI`), and the acceptance suite's endpoints created through the S3 plugin on the six nodes.

@@ -89,7 +89,7 @@ func TestRoots(t *testing.T) {
 	}
 	cc := d.(plugin.ConfigChecker)
 	for _, ok := range []string{images, filepath.Join(images, "a")} {
-		if err := cc.CheckConfig(cfg(ok)); err != nil {
+		if err := cc.CheckConfig(context.Background(), cfg(ok)); err != nil {
 			t.Errorf("%s: %v", ok, err)
 		}
 		c, err := d.Open(context.Background(), cfg(ok), nil)
@@ -100,7 +100,7 @@ func TestRoots(t *testing.T) {
 		}
 	}
 	for _, bad := range []string{base, "/etc", images + "-other", filepath.Join(images, "..", "x"), "relative"} {
-		if err := cc.CheckConfig(cfg(bad)); err == nil || plugin.ClassOf(err) != plugin.Permanent {
+		if err := cc.CheckConfig(context.Background(), cfg(bad)); err == nil || plugin.ClassOf(err) != plugin.Permanent {
 			t.Errorf("CheckConfig %s: %v, want refused", bad, err)
 		}
 	}
@@ -113,10 +113,10 @@ func TestRoots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := none.(plugin.ConfigChecker).CheckConfig(cfg(images)); err == nil {
+	if err := none.(plugin.ConfigChecker).CheckConfig(context.Background(), cfg(images)); err == nil {
 		t.Error("no roots: an endpoint was accepted")
 	}
-	if err := New().CheckConfig(cfg(images)); err != nil {
+	if err := New().CheckConfig(context.Background(), cfg(images)); err != nil {
 		t.Errorf("New: %v", err)
 	}
 	for _, bad := range []string{`{"roots": ["relative"]}`, `{"roots": ["/a/../b"]}`, `{"nope": 1}`} {

@@ -76,7 +76,7 @@ func (d Driver) under(dir string) bool {
 
 // CheckConfig refuses a root that is not a clean absolute path, or not
 // under the driver's roots; the engine calls it when an endpoint is created.
-func (d Driver) CheckConfig(cfg plugin.Config) error {
+func (d Driver) CheckConfig(_ context.Context, cfg plugin.Config) error {
 	var c config
 	if err := json.Unmarshal(cfg, &c); err != nil || !path.IsAbs(c.Root) || path.Clean(c.Root) != c.Root {
 		return plugin.Wrapf(plugin.Permanent, "file: the configuration needs a clean absolute root")
@@ -134,7 +134,7 @@ func (d Driver) Open(ctx context.Context, cfg plugin.Config, _ plugin.Credential
 		return nil, plugin.Wrapf(plugin.Permanent, "file: the configuration needs an absolute root (%v)", err)
 	}
 	if d.restricted {
-		if err := d.CheckConfig(cfg); err != nil {
+		if err := d.CheckConfig(ctx, cfg); err != nil {
 			return nil, err
 		}
 		// the root as the node sees it: a link must not lead out of the roots

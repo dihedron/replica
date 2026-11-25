@@ -60,13 +60,19 @@ message Endpoint {
   // db://<secret name>, or empty.
   string credential_ref = 5;
   google.protobuf.Timestamp created_at = 6;
+  // With ListEndpointsRequest.invalid: why the drivers refuse it.
+  string problem = 7;
 }
 
 message EndpointName {
   string name = 1;
 }
 
-message ListEndpointsRequest {}
+message ListEndpointsRequest {
+  // Revalidate the endpoints and list only those the drivers now refuse,
+  // each with its problem (veho-config-validation.md, decision 6).
+  bool invalid = 1;
+}
 
 message ListEndpointsResponse {
   repeated Endpoint endpoints = 1;

@@ -37,7 +37,7 @@ type Driver interface {
 // transfer is refused at once (part of PLG-10, backlog 39). Built-in
 // drivers only: the plugin protocol does not carry it yet.
 type ConfigChecker interface {
-	CheckConfig(cfg Config) error
+	CheckConfig(ctx context.Context, cfg Config) error
 }
 
 // Presigner is a source that can give a URL to read an object without

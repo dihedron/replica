@@ -138,24 +138,39 @@ type config struct {
 	StoragePolicy    string `json:"storage_policy"`
 }
 
-// Open authenticates to Keystone and finds Swift in the catalog.
-func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+// parse checks a configuration without credentials or network.
+func (d Driver) parse(raw plugin.Config) (config, error) {
 	var cfg config
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "swift: configuration: %v", err)
+		return config{}, plugin.Wrapf(plugin.Permanent, "swift: configuration: %v", err)
 	}
 	if err := checkContainer(cfg.Container); err != nil {
-		return nil, err
+		return config{}, err
 	}
 	if cfg.SegmentContainer != "" {
 		if err := checkContainer(cfg.SegmentContainer); err != nil {
-			return nil, err
+			return config{}, err
 		}
 	}
 	if err := d.cloud.CheckEndpoint(cfg.Endpoint); err != nil {
-		return nil, plugin.Wrap(fmt.Errorf("swift: %w", err), plugin.Permanent)
+		return config{}, plugin.Wrap(fmt.Errorf("swift: %w", err), plugin.Permanent)
+	}
+	return cfg, nil
+}
+
+// CheckConfig is what Open checks before connecting (PLG-10).
+func (d Driver) CheckConfig(_ context.Context, raw plugin.Config) error {
+	_, err := d.parse(raw)
+	return err
+}
+
+// Open authenticates to Keystone and finds Swift in the catalog.
+func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	cfg, err := d.parse(raw)
+	if err != nil {
+		return nil, err
 	}
 	sc, err := d.cloud.Connect(ctx, cfg.Endpoint, creds, openstack.ObjectStore)
 	if err != nil {

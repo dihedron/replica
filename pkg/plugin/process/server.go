@@ -106,6 +106,16 @@ func (s *server) Describe(context.Context, *pb.Empty) (*pb.Description, error) {
 	return &pb.Description{Name: s.d.Name(), Schemes: s.d.Schemes(), Capabilities: toCaps(s.d.Capabilities()), ConfigSchema: s.d.ConfigSchema()}, nil
 }
 
+// CheckConfig is the driver's, or nothing to check.
+func (s *server) CheckConfig(ctx context.Context, r *pb.ConfigRequest) (*pb.Empty, error) {
+	if cc, ok := s.d.(plugin.ConfigChecker); ok {
+		if err := cc.CheckConfig(ctx, r.GetConfig()); err != nil {
+			return nil, unary(ctx, err)
+		}
+	}
+	return &pb.Empty{}, nil
+}
+
 func (s *server) ParseRef(ctx context.Context, r *pb.ParseRefRequest) (*pb.Ref, error) {
 	ref, err := s.d.ParseRef(r.GetUrl())
 	if err != nil {

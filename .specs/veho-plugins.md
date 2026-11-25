@@ -127,7 +127,9 @@ see veho_specification.md OI-6.)
 - **PLG-9** Drivers declare accurate `Capabilities`; core adapts (e.g.
   single-part streaming if `ParallelParts=false`).
 - **PLG-10** Each driver ships a **config JSON Schema** used to validate
-  `endpoints.config` at registration time.
+  `endpoints.config` at registration time. Implemented 2026-11-25 (`veho-config-validation.md`): the schema,
+  then the driver's `CheckConfig(ctx, config)`, also over the plugin
+  protocol (`rpc CheckConfig(ConfigRequest) returns (Empty)`).
 
 ## 4. Conformance suite
 

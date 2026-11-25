@@ -46,10 +46,8 @@ func (e *Engine) checkEndpoint(ctx context.Context, tx pgx.Tx, ep Endpoint) erro
 	if len(bytes.TrimSpace(ep.Config)) == 0 || bytes.TrimSpace(ep.Config)[0] != '{' {
 		return fmt.Errorf("%w: the configuration must be a JSON object", ErrInvalid)
 	}
-	if cc, ok := d.(plugin.ConfigChecker); ok {
-		if err := cc.CheckConfig(ep.Config); err != nil {
-			return fmt.Errorf("%w: %w", ErrInvalid, err)
-		}
+	if err := e.checkConfig(ctx, ep.Driver, d, ep.Config); err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	topo, err := LoadTopology(ctx, tx)
 	if err != nil {
@@ -75,6 +73,46 @@ func (e *Engine) checkEndpoint(ctx context.Context, tx pgx.Tx, ep Endpoint) erro
 		}
 	}
 	return nil
+}
+
+// checkConfig validates a configuration against the driver's schema, then
+// its own checks (veho-config-validation.md).
+func (e *Engine) checkConfig(ctx context.Context, name string, d plugin.Driver, cfg json.RawMessage) error {
+	if err := e.schemas[name].Validate(cfg); err != nil {
+		return fmt.Errorf("configuration: %w", err)
+	}
+	if cc, ok := d.(plugin.ConfigChecker); ok {
+		return cc.CheckConfig(ctx, plugin.Config(cfg))
+	}
+	return nil
+}
+
+// InvalidEndpoint is a stored endpoint the drivers now refuse, and why.
+type InvalidEndpoint struct {
+	Endpoint
+	Problem string
+}
+
+// InvalidEndpoints revalidates the tenant's endpoints and returns those
+// refused (decision 6): a stricter driver, or one this node lacks.
+func (e *Engine) InvalidEndpoints(ctx context.Context, tenant uuid.UUID) ([]InvalidEndpoint, error) {
+	all, err := e.ListEndpoints(ctx, tenant)
+	if err != nil {
+		return nil, err
+	}
+	var out []InvalidEndpoint
+	for _, ep := range all {
+		d, ok := e.drivers[ep.Driver]
+		switch {
+		case !ok:
+			out = append(out, InvalidEndpoint{ep, fmt.Sprintf("no driver %q on this node", ep.Driver)})
+		default:
+			if err := e.checkConfig(ctx, ep.Driver, d, ep.Config); err != nil {
+				out = append(out, InvalidEndpoint{ep, err.Error()})
+			}
+		}
+	}
+	return out, nil
 }
 
 func nullable(s string) *string {

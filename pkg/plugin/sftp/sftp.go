@@ -102,30 +102,45 @@ type config struct {
 // Open checks the configuration and the credentials (username, and
 // private_key, optionally with passphrase, or password); the connection is
 // made at the first call.
-func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// parse checks a configuration without credentials or network.
+func parse(cfg plugin.Config) (config, ssh.PublicKey, error) {
 	var c config
 	dec := json.NewDecoder(strings.NewReader(string(cfg)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: %v", err)
+		return config{}, nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: %v", err)
 	}
 	if c.Port == 0 {
 		c.Port = 22
 	}
 	switch {
 	case c.Host == "" || strings.ContainsAny(c.Host, "/@ "):
-		return nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: a host is required")
+		return config{}, nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: a host is required")
 	case c.Port < 1 || c.Port > 65535:
-		return nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: port %d", c.Port)
+		return config{}, nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: port %d", c.Port)
 	case !path.IsAbs(c.Root) || path.Clean(c.Root) != c.Root:
-		return nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: root must be a clean absolute path")
+		return config{}, nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: root must be a clean absolute path")
 	}
 	hostKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(c.HostKey))
 	if err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: host_key: %v", err)
+		return config{}, nil, plugin.Wrapf(plugin.Permanent, "sftp: configuration: host_key: %v", err)
+	}
+	return c, hostKey, nil
+}
+
+// CheckConfig is what Open checks before the credentials (PLG-10).
+func (Driver) CheckConfig(_ context.Context, cfg plugin.Config) error {
+	_, _, err := parse(cfg)
+	return err
+}
+
+func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c, hostKey, err := parse(cfg)
+	if err != nil {
+		return nil, err
 	}
 	auth, err := authMethods(creds)
 	if err != nil {
