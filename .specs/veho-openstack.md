@@ -2,7 +2,7 @@
 
 This file specifies the `glance` and `swift` drivers (backlog 21 and 34, OI-6) and the lab that tests them against DevStack. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`.
 
-Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1). Steps 1 to 4 implemented the same day (§10 records what the implementation changed); the end-to-end tests of step 5 next.
+Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1). Steps 1 to 4 implemented the same day (§10 records what the implementation changed); step 5's OS-T7 (`internal/engine/openstack_integration_test.go`: a file to Glance by `put` and by `glance-direct` to a store and to Swift, and an http source to Glance by `web-download`, each verified against the source's digest) passing on DevStack, run from the lab host with both labs' environments (`eval "$(test/devstack/lab.sh env)"; test/lab/lab.sh test ./internal/engine`).
 
 ## 1. Decisions (2026-11-25)
 
