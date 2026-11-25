@@ -290,11 +290,11 @@ func (e *Engine) answerCheck(ctx context.Context, tenant, check uuid.UUID) error
 	if err := json.Unmarshal(flowsJSON, &flows); err != nil {
 		return err
 	}
-	guard, err := e.dialGuard(driver)
+	guard, proxy, err := e.dialGuard(driver)
 	if err != nil {
 		return err
 	}
-	results := flowcheck.Check(ctx, flows, flowcheck.Options{Guard: guard})
+	results := flowcheck.Check(ctx, flows, flowcheck.Options{Guard: guard, Proxy: proxy})
 	if results == nil {
 		results = []flowcheck.Result{}
 	}
@@ -306,24 +306,28 @@ func (e *Engine) answerCheck(ctx context.Context, tenant, check uuid.UUID) error
 	})
 }
 
-// dialGuard is the dial guard of a driver: its allow_cidrs setting (NC-1).
-func (e *Engine) dialGuard(driver string) (*netguard.Guard, error) {
-	var allow []string
+// dialGuard is the dial guard and the proxy of a driver, from its
+// settings, as the driver builds them (NC-1, veho-proxy.md §6).
+func (e *Engine) dialGuard(driver string) (*netguard.Guard, *netguard.Proxy, error) {
+	var s struct {
+		AllowCIDRs []string                `json:"allow_cidrs"`
+		Proxy      *netguard.ProxySettings `json:"proxy"`
+	}
 	for _, d := range e.cfg.Drivers {
-		if d.Name != driver {
-			continue
-		}
-		if v, ok := d.Settings["allow_cidrs"].([]any); ok {
-			for _, x := range v {
-				if s, ok := x.(string); ok {
-					allow = append(allow, s)
-				}
+		if d.Name == driver {
+			b, _ := json.Marshal(d.Settings) // read from YAML: cannot fail
+			if err := json.Unmarshal(b, &s); err != nil {
+				return nil, nil, fmt.Errorf("engine: driver %s: settings: %w", driver, err)
 			}
 		}
 	}
-	g, err := netguard.New(allow)
+	g, err := netguard.New(s.AllowCIDRs)
 	if err != nil {
-		return nil, fmt.Errorf("engine: driver %s: %w", driver, err)
+		return nil, nil, fmt.Errorf("engine: driver %s: %w", driver, err)
 	}
-	return g, nil
+	p, err := netguard.NewProxy(s.Proxy)
+	if err != nil {
+		return nil, nil, fmt.Errorf("engine: driver %s: %w", driver, err)
+	}
+	return g, p, nil
 }

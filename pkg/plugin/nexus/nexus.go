@@ -41,14 +41,16 @@ const (
 // Driver is the Nexus driver under one platform's settings.
 type Driver struct {
 	guard      *netguard.Guard
+	proxy      *netguard.Proxy // the operator's, or nil
 	plaintext  bool
 	maxNPMSize int64
 }
 
 type settings struct {
-	AllowCIDRs []string `json:"allow_cidrs"`
-	Plaintext  bool     `json:"plaintext"`
-	MaxNPMSize int64    `json:"max_npm_size"`
+	AllowCIDRs []string                `json:"allow_cidrs"`
+	Plaintext  bool                    `json:"plaintext"`
+	MaxNPMSize int64                   `json:"max_npm_size"`
+	Proxy      *netguard.ProxySettings `json:"proxy"`
 }
 
 // defaultMaxNPMSize bounds an npm upload, held in memory (NX-10).
@@ -71,7 +73,11 @@ func Factory(raw json.RawMessage) (plugin.Driver, error) {
 	case s.MaxNPMSize == 0:
 		s.MaxNPMSize = defaultMaxNPMSize
 	}
-	return Driver{guard: g, plaintext: s.Plaintext, maxNPMSize: s.MaxNPMSize}, nil
+	p, err := netguard.NewProxy(s.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("nexus: %w", err)
+	}
+	return Driver{guard: g, proxy: p, plaintext: s.Plaintext, maxNPMSize: s.MaxNPMSize}, nil
 }
 
 func (Driver) Name() string      { return "nexus" }
@@ -188,16 +194,17 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	if cfg.CACert != "" && !roots.AppendCertsFromPEM([]byte(cfg.CACert)) {
 		return nil, plugin.Wrapf(plugin.Permanent, "nexus: ca_cert: no PEM certificate")
 	}
+	transport := &http.Transport{
+		TLSClientConfig:       &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
+		TLSHandshakeTimeout:   dialTimeout,
+		ResponseHeaderTimeout: headerTimeout,
+	}
+	d.proxy.Apply(transport, d.guard, dialTimeout) // the guard, and the operator's proxy if any (veho-proxy.md)
 	c := &client{
 		base: base, repo: cfg.Repository, format: cfg.Format, fm: fm, user: creds["username"], password: creds["password"],
 		maxNPMSize: d.maxNPMSize, distTag: cfg.NPMDistTag, ca: cfg.CACert, assets: map[string]asset{}, verified: map[string]string{},
 		hc: &http.Client{
-			Transport: &http.Transport{
-				DialContext:           d.guard.Dialer(dialTimeout).DialContext,
-				TLSClientConfig:       &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
-				TLSHandshakeTimeout:   dialTimeout,
-				ResponseHeaderTimeout: headerTimeout,
-			},
+			Transport: transport,
 			// credentials never leave url's host (SEC-13)
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
@@ -382,8 +389,8 @@ func (c *client) do(ctx context.Context, method, u string, header http.Header, b
 		return resp, nil
 	case ctx.Err() != nil:
 		return nil, ctx.Err()
-	case errors.Is(err, netguard.ErrForbidden):
-		return nil, plugin.Wrap(fmt.Errorf("nexus: %w", netguard.ErrForbidden), plugin.Permanent)
+	case netguard.Classified("nexus", err) != nil:
+		return nil, netguard.Classified("nexus", err)
 	}
 	var cert *tls.CertificateVerificationError
 	if errors.As(err, &cert) {

@@ -46,6 +46,7 @@ const (
 // Driver is the S3 driver.
 type Driver struct {
 	guard *netguard.Guard
+	proxy *netguard.Proxy // the operator's, or nil
 }
 
 // public is the guard without allow_cidrs: public addresses only.
@@ -55,7 +56,8 @@ var public, _ = netguard.New(nil) // cannot fail
 func New() Driver { return Driver{guard: public} }
 
 type settings struct {
-	AllowCIDRs []string `json:"allow_cidrs"`
+	AllowCIDRs []string                `json:"allow_cidrs"`
+	Proxy      *netguard.ProxySettings `json:"proxy"`
 }
 
 // Factory builds the driver from its settings: allow_cidrs, the ranges the
@@ -70,7 +72,11 @@ func Factory(raw json.RawMessage) (plugin.Driver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("s3: %w", err)
 	}
-	return Driver{guard: g}, nil
+	p, err := netguard.NewProxy(s.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("s3: %w", err)
+	}
+	return Driver{guard: g, proxy: p}, nil
 }
 
 func (Driver) Name() string      { return "s3" }
@@ -136,11 +142,11 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	if guard == nil {
 		guard = public // the zero Driver
 	}
-	// every connection through the dial guard (SRC-3); no proxy, which the
-	// guard would see instead of the service, and no redirect (SEC-13)
+	// every connection through the dial guard (SRC-3), or through the
+	// operator's proxy for the names it lists (veho-proxy.md); never the
+	// environment's proxy; no redirect (SEC-13)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.DialContext = guard.Dialer(30 * time.Second).DialContext
+	d.proxy.Apply(transport, guard, 30*time.Second)
 	opts := s3.Options{
 		Region:       cfg.Region,
 		UsePathStyle: cfg.PathStyle,
@@ -207,8 +213,8 @@ func classify(ctx context.Context, op string, err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
-	if errors.Is(err, netguard.ErrForbidden) {
-		return plugin.Wrap(fmt.Errorf("s3: %s: %w", op, netguard.ErrForbidden), plugin.Permanent)
+	if refused := netguard.Classified("s3: "+op, err); refused != nil {
+		return refused
 	}
 	err = fmt.Errorf("s3: %s: %w", op, err)
 	code := ""

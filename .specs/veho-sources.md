@@ -80,7 +80,7 @@ The dial guard of the webhooks (`internal/webhook`, `Guard`) moves to a package 
 - refused: loopback, link-local, private (RFC 1918, ULA), CGNAT, multicast, unspecified, and the metadata addresses (`169.254.169.254`, `fd00:ec2::254`), these last ones always;
 - the driver's `allow_cidrs` setting opens extra ranges, for storage on a private network; it never opens the metadata addresses.
 
-The `s3` driver goes through the guard too (decided 2026-11-25, §9 point 1): an S3 service on a private network (Garage in the lab) is listed in the driver's `allow_cidrs`. Without that, a tenant's S3 endpoint at the metadata address could copy the node's cloud credentials (IMDSv1, OpenStack's metadata service). Its connections use no proxy (the guard would see the proxy, not the service) and follow no redirect, as every guarded driver's.
+The `s3` driver goes through the guard too (decided 2026-11-25, §9 point 1): an S3 service on a private network (Garage in the lab) is listed in the driver's `allow_cidrs`. Without that, a tenant's S3 endpoint at the metadata address could copy the node's cloud credentials (IMDSv1, OpenStack's metadata service). Its connections follow no redirect, as every guarded driver's, and use no proxy of the environment; the one exception is the operator's forward proxy for the names it lists (`veho-proxy.md`, 2026-11-25), through which veho sends only `https`, unresolved, TLS verified end to end.
 
 ## 5. Configuration
 

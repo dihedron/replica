@@ -111,7 +111,7 @@ secrets: {unwrap_key: "systemd-credential:unwrap-key"}
 drivers:
   - {name: file}
   # the regions' Garage, on the lab's private network (the dial guard)
-  - {name: s3, path: /usr/libexec/veho/plugins/veho-plugin-s3, sha256: $2, settings: {allow_cidrs: [10.60.0.0/16]}}
+  - {name: s3, path: /usr/libexec/veho/plugins/veho-plugin-s3, sha256: $2, settings: {allow_cidrs: [10.60.0.0/16]$(proxy_settings)}}
 api:
   listen: "$(inner_ip "$name"):$NODE_API_PORT"
   tls: {cert_file: /etc/veho/tls/server.crt, key_file: /etc/veho/tls/server.key}
@@ -166,6 +166,9 @@ nodes_deploy() {
 		inner_push "$binary" "$name" /usr/bin/veho 0755
 		inner_exec "$name" install -d -o root -g root -m 0755 /usr/libexec/veho/plugins
 		inner_push "$bin/veho-plugin-s3" "$name" /usr/libexec/veho/plugins/veho-plugin-s3 0755
+		# the lab CA in the system's roots: S3 has no ca_cert (the outside S3)
+		inner_push "$LAB_STATE_DIR/pki/ca.crt" "$name" /usr/local/share/ca-certificates/veho-lab.crt 0644
+		inner_exec "$name" update-ca-certificates >/dev/null 2>&1
 		node_yaml "$name" "$s3sum"
 		inner_push "$REPO_DIR/packaging/veho.service" "$name" /usr/lib/systemd/system/veho.service 0644
 		node_unblock "$name"
