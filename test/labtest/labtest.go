@@ -37,7 +37,8 @@ func members(t *testing.T) []member {
 }
 
 // Switchover moves the primary to a quorum standby and waits until the new
-// primary runs; it skips the test without the lab.
+// primary runs; it skips the test without the lab, or on test/ci's single
+// PostgreSQL.
 func Switchover(t *testing.T) string {
 	t.Helper()
 	if os.Getenv("VEHO_TEST_DATABASE_URL") == "" || os.Getenv("VEHO_TEST_STANDALONE") != "" {
