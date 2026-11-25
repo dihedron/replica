@@ -6,7 +6,7 @@ set -euo pipefail
 LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LAB_DIR/../.." && pwd)"
 
-for lib in common preflight lxd inner pki fetch wan db s3 nodes campaign snapshot selftest; do
+for lib in common preflight lxd inner pki fetch wan db s3 nexus nodes campaign snapshot selftest; do
 	# shellcheck source=/dev/null
 	source "$LAB_DIR/lib/$lib.sh"
 done
@@ -149,6 +149,7 @@ cmd_env() {
 	require_lab
 	db_env
 	s3_env
+	nexus_env
 	nodes_env
 }
 
@@ -224,6 +225,14 @@ main() {
 		local x="$1"
 		shift
 		garage "s3-$x" "$@"
+		;;
+	nexus)
+		require_lab
+		case "${1:-}" in
+		up) nexus_up ;;
+		down) nexus_down ;;
+		*) die "usage: lab.sh nexus up|down" ;;
+		esac
 		;;
 	snapshot) require_lab && lab_snapshot ;;
 	reset) require_lab && lab_reset ;;

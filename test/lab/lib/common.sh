@@ -101,6 +101,7 @@ inner_ip() {
 	case "$name" in
 	db-?) region="${name#db-}" host=10 ;;
 	s3-?) region="${name#s3-}" host=20 ;;
+	nexus-?) region="${name#nexus-}" host=40 ;;
 	veho-??) region="${name:5:1}" host="3${name:6:1}" ;;
 	*) die "no address for $name" ;;
 	esac

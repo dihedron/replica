@@ -3,7 +3,6 @@ package glance
 import (
 	"context"
 	"crypto/md5" //nolint:gosec // Glance's checksum before Rocky
-	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
@@ -21,6 +20,7 @@ import (
 
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/openstack"
+	"github.com/dihedron/veho/pkg/plugin/stream"
 )
 
 // token is an upload's identity: Glance cannot resume one, so the token
@@ -35,18 +35,13 @@ type token struct {
 type upload struct {
 	c      *client
 	t      token
-	size   int64
-	hidden bool // os_hidden, else a temporary name (Glance before Rocky)
+	hidden bool           // os_hidden, else a temporary name (Glance before Rocky)
+	s      *stream.Stream // put, glance-direct: the data request
 
 	mu        sync.Mutex
-	pw        *io.PipeWriter
-	cancel    context.CancelFunc
-	done      chan error
-	written   int64
-	parts     []plugin.PartResult
 	sha512    hash.Hash
 	md5       hash.Hash
-	broken    error // the stream failed: the upload must begin again
+	broken    error // a step after the data failed: the upload must begin again
 	committed *plugin.ObjectInfo
 	pull      bool // web-download: Glance fetches the data
 	pulled    *image
@@ -159,8 +154,11 @@ func (c *client) Begin(ctx context.Context, ref plugin.Ref, info plugin.ObjectIn
 	if err := c.methods(ctx, minor); err != nil {
 		return nil, err
 	}
-	u := &upload{c: c, size: info.Size, hidden: minor >= 7, sha512: sha512.New(), md5: md5.New(), pull: c.cfg.Upload == "web-download"} //nolint:gosec // Glance's checksum
+	u := &upload{c: c, hidden: minor >= 7, sha512: sha512.New(), md5: md5.New(), pull: c.cfg.Upload == "web-download"} //nolint:gosec // Glance's checksum
 	u.t = token{ImageID: uuid.NewString(), Name: ref.Key, UploadID: uuid.NewString()}
+	if !u.pull {
+		u.s = stream.New("glance: upload of "+ref.Key, info.Size, io.MultiWriter(u.sha512, u.md5), u.send)
+	}
 	body := map[string]any{
 		"id": u.t.ImageID, "name": ref.Key, "disk_format": c.cfg.DiskFormat, "container_format": c.cfg.ContainerFormat,
 		"visibility": c.cfg.Visibility, "veho_upload": u.t.UploadID,
@@ -210,38 +208,23 @@ func (u *upload) Token() []byte {
 	return b
 }
 
-// start opens the data request: PUT of the file (put) or of the staging
-// area (glance-direct), with the whole size as its length.
-func (u *upload) start(empty bool) {
-	pr, pw := io.Pipe()
-	ctx, cancel := context.WithCancel(context.Background())
-	u.pw, u.cancel, u.done = pw, cancel, make(chan error, 1)
+// send is the data request: PUT of the file (put) or of the staging area
+// (glance-direct), of the size announced at Begin, or chunked when none was
+// (some Glance deployments refuse chunked uploads: the engine always
+// announces it).
+func (u *upload) send(ctx context.Context, body io.Reader, length int64) error {
 	where := "file"
 	if u.c.cfg.Upload == "glance-direct" {
 		where = "stage"
 	}
-	go func() {
-		defer cancel()
-		err := u.send(ctx, where, pr, empty)
-		_ = pr.CloseWithError(err) // unblocks a writer if the request ended early
-		u.done <- err
-	}()
-}
-
-func (u *upload) send(ctx context.Context, where string, body io.Reader, empty bool) error {
+	if body == nil {
+		body = http.NoBody
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u.c.sc.ServiceURL("images", url.PathEscape(u.t.ImageID), where), body)
 	if err != nil {
 		return plugin.Wrap(fmt.Errorf("glance: upload: %w", err), plugin.Permanent)
 	}
-	// the size announced at Begin, or chunked when none was (some Glance
-	// deployments refuse chunked uploads: the engine always announces it)
-	req.ContentLength = u.size
-	switch {
-	case empty:
-		req.ContentLength, req.Body = 0, http.NoBody
-	case u.size == 0:
-		req.ContentLength = -1
-	}
+	req.ContentLength = length
 	req.Header.Set("Content-Type", "application/octet-stream")
 	req.Header.Set("X-Auth-Token", u.c.sc.Token())
 	resp, err := u.c.sc.HTTPClient.Do(req)
@@ -266,13 +249,11 @@ func (u *upload) send(ctx context.Context, where string, body io.Reader, empty b
 	}
 }
 
-// fail records that the stream broke: the upload must begin again.
+// fail records that a step after the data failed: the upload must begin
+// again.
 func (u *upload) fail(err error) error {
 	if u.broken == nil {
 		u.broken = err
-		if u.cancel != nil {
-			u.cancel()
-		}
 	}
 	return err
 }
@@ -287,79 +268,15 @@ func (u *upload) WritePart(ctx context.Context, partNo int, r io.Reader, length 
 		return plugin.PartResult{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: the upload of %s is committed", u.t.Name)
 	case u.broken != nil:
 		return plugin.PartResult{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: the upload of %s broke (%v): begin again", u.t.Name, u.broken)
-	case partNo >= 0 && partNo < len(u.parts):
-		return u.again(partNo, r, length)
-	case partNo != len(u.parts):
-		return plugin.PartResult{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: part %d after %d parts: an upload to Glance is written in order", partNo, len(u.parts))
-	case length < 0 || u.size > 0 && u.written+length > u.size:
-		return plugin.PartResult{}, plugin.Wrapf(plugin.Permanent, "glance: part %d of %d bytes: beyond the %d bytes announced", partNo, length, u.size)
 	}
-	if length > 0 && u.pw == nil {
-		u.start(false)
-	}
-	stop := context.AfterFunc(ctx, func() { u.cancel() })
-	defer stop()
-	sha := sha256.New()
-	w := io.MultiWriter(sha, u.sha512, u.md5)
-	if length > 0 {
-		w = io.MultiWriter(u.pw, w)
-	}
-	src := &reader{r: io.LimitReader(r, length)}
-	n, err := io.Copy(w, src)
-	u.written += n
-	switch {
-	case ctx.Err() != nil:
-		return plugin.PartResult{}, u.fail(ctx.Err())
-	case src.err != nil: // the part's reader
-		return plugin.PartResult{}, u.fail(plugin.Wrap(fmt.Errorf("glance: part %d: %w", partNo, src.err), plugin.Transient))
-	case err != nil: // the request ended: its answer says why
-		derr := <-u.done
-		if derr == nil {
-			derr = plugin.Wrapf(plugin.ResumeInvalid, "glance: part %d: Glance ended the upload early: begin again", partNo)
-		}
-		return plugin.PartResult{}, u.fail(derr)
-	case n != length:
-		return plugin.PartResult{}, u.fail(plugin.Wrapf(plugin.Integrity, "glance: part %d: %d bytes of %d", partNo, n, length))
-	}
-	p := plugin.PartResult{PartNo: partNo, Size: length, SHA256: hex.EncodeToString(sha.Sum(nil))}
-	u.parts = append(u.parts, p)
-	return p, nil
-}
-
-// again is a part written before, written again: harmless with the same
-// bytes, which their SHA-256 shows; other bytes cannot replace those sent.
-func (u *upload) again(partNo int, r io.Reader, length int64) (plugin.PartResult, error) {
-	p := u.parts[partNo]
-	sha := sha256.New()
-	n, err := io.Copy(sha, io.LimitReader(r, length))
-	if err != nil {
-		return plugin.PartResult{}, plugin.Wrap(fmt.Errorf("glance: part %d: %w", partNo, err), plugin.Transient)
-	}
-	if n != p.Size || length != p.Size || hex.EncodeToString(sha.Sum(nil)) != p.SHA256 {
-		return plugin.PartResult{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: part %d again, with other bytes: begin again", partNo)
-	}
-	return p, nil
-}
-
-// reader records the error of the part's reader, to tell it from the
-// request's.
-type reader struct {
-	r   io.Reader
-	err error
-}
-
-func (r *reader) Read(p []byte) (int, error) {
-	n, err := r.r.Read(p)
-	if err != nil && err != io.EOF {
-		r.err = err
-	}
-	return n, err
+	return u.s.Write(ctx, partNo, r, length)
 }
 
 func (u *upload) ListParts(context.Context) ([]plugin.PartResult, error) {
-	u.mu.Lock()
-	defer u.mu.Unlock()
-	return slices.Clone(u.parts), nil
+	if u.s == nil {
+		return nil, nil
+	}
+	return u.s.Parts(), nil
 }
 
 // Commit ends the data request, imports (glance-direct), waits for the image
@@ -380,23 +297,8 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 		}
 		return u.publish(ctx, *u.pulled)
 	}
-	if len(parts) != len(u.parts) {
-		return plugin.ObjectInfo{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: commit of %d parts, %d written", len(parts), len(u.parts))
-	}
-	for i, p := range parts {
-		if p.PartNo != i || p.Size != u.parts[i].Size {
-			return plugin.ObjectInfo{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: part %d is not the one written", i)
-		}
-	}
-	if u.size > 0 && u.written != u.size {
-		return plugin.ObjectInfo{}, u.fail(plugin.Wrapf(plugin.Integrity, "glance: %d bytes written of %d", u.written, u.size))
-	}
-	if u.pw == nil { // an empty image
-		u.start(true)
-	}
-	_ = u.pw.Close()
-	if err := <-u.done; err != nil {
-		return plugin.ObjectInfo{}, u.fail(err)
+	if err := u.s.Close(parts); err != nil {
+		return plugin.ObjectInfo{}, err
 	}
 	if u.c.cfg.Upload == "glance-direct" {
 		body := map[string]any{"method": map[string]string{"name": "glance-direct"}}
@@ -485,11 +387,8 @@ func (u *upload) Abort(ctx context.Context) error {
 	if u.committed != nil {
 		return nil
 	}
-	if u.pw != nil && u.broken == nil {
-		u.cancel()
-		_ = u.pw.CloseWithError(context.Canceled)
-		<-u.done
-		u.broken = context.Canceled
+	if u.s != nil {
+		u.s.Abort()
 	}
 	return u.c.remove(ctx, u.t.ImageID)
 }

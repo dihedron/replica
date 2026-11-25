@@ -2,15 +2,16 @@
 
 This file specifies the `nexus` driver: Sonatype Nexus Repository 3 as a source and a destination. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`. It follows the `http` driver (`veho-sources.md`) and the Glance `put` method (`veho-openstack.md` §3.2), whose patterns it reuses.
 
-Status: draft, 2026-11-25, for approval (the user asked for the driver on 2026-11-25).
+Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1). Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
 
-## 1. Decisions (proposed)
+## 1. Decisions (2026-11-25)
 
 1. **A plugin**, `veho-plugin-nexus`, over the standard library (`net/http`): Nexus's content and REST APIs are plain HTTP. It is a plugin, not built in, because it is a vendor's product with its own release cycle (`veho-plugin-distribution.md`).
 2. **Nexus Repository 3 only** (Community Edition and Pro): Nexus 2 is out of support. The lab tests the current Community Edition.
 3. **Source: any repository, any format**, by the path of the content (`/repository/<repo>/<path>`): hosted, proxy and group repositories of every format serve their content at that path.
-4. **Destination: `raw` hosted repositories only.** Other formats (Maven's checksums and metadata, npm's packument) need their own layout: later, on demand (backlog).
+4. **Destination: `raw` hosted repositories first.** Maven, npm and Python (PyPI) repositories are planned: each has its own key syntax and upload protocol, chosen by the endpoint's `format` (§2.1).
 5. **Credentials:** a user and password, or a user token (its name and passcode), sent with HTTP Basic, only over HTTPS. No anonymous upload.
+6. **The format is in the endpoint, not in the driver.** One endpoint names one repository, and a repository has one format, fixed by Nexus: so the endpoint says which format it expects (`format`), the driver checks that the repository has it, and the format decides what a job's key means and how an object is written. One plugin serves every format; the driver's capabilities (source, sink, not resumable) are the same for all of them.
 
 ## 2. Endpoint
 
@@ -22,6 +23,27 @@ Status: draft, 2026-11-25, for approval (the user asked for the driver on 2026-1
 - `repository`: the repository's name. The key is the path in it; `ParseRef` takes `nexus://<repository>/<path>`.
 - Settings, in `drivers[].settings`: `allow_cidrs`, `plaintext` (default `false`). Every connection goes through the dial guard (SRC-3); no redirects are followed (SEC-13), so credentials never leave `url`'s host.
 - Keys are checked as `http`'s (`locate`): each segment escaped, `.` and `..` refused, no empty segment.
+
+### 2.1 Formats
+
+```json
+{"url": "https://nexus.example", "repository": "releases", "format": "maven2"}
+```
+
+`format` is optional. Without it, a key is a **content path** (`/repository/<repo>/<key>`), which every format serves: the endpoint is then a source of any repository, and a destination only of a `raw` one. With it, the driver checks at `Open` that the repository has that format (`GET /service/rest/v1/repositories/<repo>`, which a user with read access may call), and keys follow the format's syntax:
+
+| `format` | Key | Source | Destination | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| (none) | the content path | any repository | `raw` hosted only | first |
+| `raw` | the path | `HEAD`/`GET` of the path | `PUT` of the path (§4) | first |
+| `maven2` | a path in the Maven layout (`org/acme/app/1.2/app-1.2.jar`), or coordinates `group:artifact:version[:classifier]@extension` (`org.acme:app:1.2@jar`), mapped to that path | the path | `PUT` of the artifact; Nexus computes the checksums and `maven-metadata.xml`; the repository's version policy (release, snapshot) refuses the other kind (`Permanent`); a POM is copied as its own object (`@pom`) | planned |
+| `npm` | `package@version` or `@scope/package@version` | the tarball named by the packument (`GET /repository/<repo>/<package>`: `versions[v].dist.tarball`); the version is the tarball's `dist.integrity` | `PUT /repository/<repo>/<package>` of a publish document carrying the tarball in base64: held in memory, bounded by the setting `max_npm_size` (default 100 MiB) | planned |
+| `pypi` | a distribution's file name (`pkg-1.0-py3-none-any.whl`, `pkg-1.0.tar.gz`, PEP 427 and PEP 625 names) | the file the simple index links (`GET /repository/<repo>/simple/<project>/`), its `#sha256=` the version | `POST /repository/<repo>/` as `twine` does (multipart, `:action=file_upload`, name and version from the file name, `sha256_digest`) | planned |
+
+- Until a format is implemented, an endpoint naming it is refused at `Open` (and at `endpoint create`, through `CheckConfig` when the driver runs in process) with a `Permanent` error that says so.
+- Every format's destination is one request per attempt, invisible until it ends (Nexus creates the component when the request completes), not resumable (R-18), and checked after the upload against the checksum Nexus reports (§4).
+- `ParseRef` takes `nexus://<repository>/<key>`; a key's syntax is checked by the endpoint's format at `Open`'s client, not by `ParseRef`, which does not know the endpoint.
+- Adding a format is a change to the driver and its tests only: its key mapping, its source lookup, its upload, and a lab repository of that format.
 
 ## 3. Source
 
@@ -57,11 +79,15 @@ New residual risk:
 
 A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD container `nexus` from Sonatype's Unix archive (with its bundled Java), a `raw` hosted repository with redeploy allowed and one with it refused, a test user with a user token, and Nexus's own TLS through a reverse proxy with the lab's CA. `lab.sh nexus up|down` builds and removes it, so the rest of the lab does not need its memory (about 3 GiB).
 
+### 6.1 Order of the formats
+
+`raw` (with no `format`, the content path) first; then `maven2`, `npm` and `pypi`, each on demand and with a revision of this table: its key syntax, the lab repository and its tests (NX-T6 for Maven, NX-T7 for npm, NX-T8 for PyPI), and the threat rows its upload adds (a publish document parsed by Nexus, a multipart form).
+
 ## 7. Tests (written first)
 
 | ID | Test | Kind |
 | :--- | :--- | :--- |
-| NX-T1 | `ParseRef`, `locate`, the settings and the endpoint's checks | unit, fuzz |
+| NX-T1 | `ParseRef`, `locate`, the settings and the endpoint's checks; `format`: absent, `raw`, a repository of another format refused, a planned format refused as not implemented | unit, fuzz |
 | NX-T2 | Source against a fake Nexus: the version from the `ETag`, a changed `ETag` `SourceChanged`, a `200` to a range refused, `PresignRead` only without credentials | unit |
 | NX-T3 | Destination against a fake: the stream in order, the SHA-1 compared, `overwrite: never` and a refused redeploy, a repository not `raw` or not `hosted` refused | unit |
 | NX-T4 | The conformance suite, source and sink, against the lab's Nexus | lab |

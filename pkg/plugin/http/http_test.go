@@ -356,7 +356,7 @@ func FuzzLocate(f *testing.F) {
 	}
 	base, _ := url.Parse("https://images.example/pub/")
 	f.Fuzz(func(t *testing.T, key string) {
-		u, err := locate(base, key)
+		u, err := Locate(base, key)
 		if err != nil {
 			return
 		}

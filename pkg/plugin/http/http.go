@@ -195,7 +195,7 @@ func (c *client) PresignRead(ctx context.Context, ref plugin.Ref, _ string, _ ti
 	if len(c.header) > 0 {
 		return "", plugin.Wrapf(plugin.Permanent, "http: an endpoint with credentials or headers cannot give a URL to another service")
 	}
-	return locate(c.base, ref.Key)
+	return Locate(c.base, ref.Key)
 }
 
 // checkKey refuses a key that is not a clean relative path of non-empty
@@ -218,9 +218,9 @@ func checkKey(key string) error {
 	return nil
 }
 
-// locate is the URL of key under base: each segment escaped, so that "%",
+// Locate is the URL of key under base: each segment escaped, so that "%",
 // "?" and "#" are part of the name and the URL stays under base.
-func locate(base *url.URL, key string) (string, error) {
+func Locate(base *url.URL, key string) (string, error) {
 	if err := checkKey(key); err != nil {
 		return "", err
 	}
@@ -242,7 +242,7 @@ func (c *client) request(ctx context.Context, method string, ref plugin.Ref) (*n
 	if ref.Container != "" {
 		return nil, plugin.Wrapf(plugin.Permanent, "http: no containers (got %q)", ref.Container)
 	}
-	u, err := locate(c.base, ref.Key)
+	u, err := Locate(c.base, ref.Key)
 	if err != nil {
 		return nil, err
 	}
