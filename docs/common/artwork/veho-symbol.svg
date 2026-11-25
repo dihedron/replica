@@ -1,15 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 180" width="220" height="180">
-  <!-- The veho symbol (preliminary): veho is Latin for "I carry". A parcel,
-       the object, sits at the base of a V whose two arms carry it to two
-       regions; the dashed arc between them is the WAN. On a transparent
-       background, for light and dark pages alike. Colours from ligo's
-       palette, so that the projects look related. -->
+  <!-- The veho symbol: veho is Latin for "I carry". A parcel, the object,
+       sits at the base of a V whose two arms carry it, arrows, to two
+       regions, rings with a centre that read as destinations; the dashed
+       arc between them is the WAN, over which a copy goes on. Redrawn
+       2026-11-25 from docs/common/artwork/proposal.jpg: flat, on a
+       transparent background, for light and dark pages alike. Colours
+       from ligo's palette, so that the projects look related. -->
   <defs>
-    <linearGradient id="arm-cyan" gradientUnits="userSpaceOnUse" x1="110" y1="140" x2="38" y2="40">
+    <linearGradient id="arm-cyan" gradientUnits="userSpaceOnUse" x1="101" y1="124" x2="51" y2="57">
       <stop offset="0%" stop-color="#0369A1"/>
       <stop offset="100%" stop-color="#06C8E0"/>
     </linearGradient>
-    <linearGradient id="arm-indigo" gradientUnits="userSpaceOnUse" x1="110" y1="140" x2="182" y2="40">
+    <linearGradient id="arm-indigo" gradientUnits="userSpaceOnUse" x1="119" y1="124" x2="169" y2="57">
       <stop offset="0%" stop-color="#3730A3"/>
       <stop offset="100%" stop-color="#818CF8"/>
     </linearGradient>
@@ -17,15 +19,23 @@
       <stop offset="0%" stop-color="#FDE047"/>
       <stop offset="100%" stop-color="#D97706"/>
     </linearGradient>
+    <marker id="wan-head" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="3.2" markerHeight="3.2" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#64748B"/>
+    </marker>
   </defs>
-  <!-- the WAN between the two regions -->
-  <path d="M 62 24 Q 110 -8 158 24" fill="none" stroke="#64748B" stroke-width="5" stroke-linecap="round" stroke-dasharray="2 11"/>
-  <!-- the two arms of the V -->
-  <path d="M 104 132 L 56 63" fill="none" stroke="url(#arm-cyan)" stroke-width="20" stroke-linecap="round"/>
-  <path d="M 116 132 L 164 63" fill="none" stroke="url(#arm-indigo)" stroke-width="20" stroke-linecap="round"/>
-  <!-- the regions: rings, so that they read as places, not as more parcels -->
-  <circle cx="38" cy="38" r="17" fill="none" stroke="#06C8E0" stroke-width="8"/>
-  <circle cx="182" cy="38" r="17" fill="none" stroke="#818CF8" stroke-width="8"/>
+  <!-- the WAN between the two regions, a copy going on -->
+  <path d="M 62 26 Q 110 -6 154 22" fill="none" stroke="#64748B" stroke-width="5" stroke-linecap="round"
+        stroke-dasharray="7 7" marker-end="url(#wan-head)"/>
+  <!-- the two arms of the V, each ending in an arrow at its region -->
+  <path d="M 101.0 124.0 L 59.3 68.4" fill="none" stroke="url(#arm-cyan)" stroke-width="13" stroke-linecap="round"/>
+  <path d="M 51.2 57.6 L 68.2 63.6 L 52.2 75.6 Z" fill="#06C8E0"/>
+  <path d="M 119.0 124.0 L 160.7 68.4" fill="none" stroke="url(#arm-indigo)" stroke-width="13" stroke-linecap="round"/>
+  <path d="M 168.8 57.6 L 167.8 75.6 L 151.8 63.6 Z" fill="#818CF8"/>
+  <!-- the regions: rings with a centre, so that they read as places -->
+  <circle cx="38" cy="40" r="15" fill="none" stroke="#06C8E0" stroke-width="7"/>
+  <circle cx="38" cy="40" r="5" fill="#06C8E0"/>
+  <circle cx="182" cy="40" r="15" fill="none" stroke="#818CF8" stroke-width="7"/>
+  <circle cx="182" cy="40" r="5" fill="#818CF8"/>
   <!-- the parcel: a cube seen from above a corner -->
   <g transform="translate(110 140)">
     <path d="M 0 -26 L 23 -13 L 0 0 L -23 -13 Z" fill="#FDE047"/>
