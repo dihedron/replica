@@ -30,6 +30,10 @@ type Target struct {
 	Container string
 	// Prefix starts every key the suite writes.
 	Prefix string
+	// Key, when set, maps each key the suite makes (Prefix, a name, a
+	// random suffix: letters, digits, '-') to one of the driver's syntax,
+	// such as a format's coordinates; distinct keys must stay distinct.
+	Key func(string) string
 	// PartSize is the size of the parts (default: the driver's minimum part
 	// size, at least 1 MiB).
 	PartSize int64
@@ -113,7 +117,11 @@ func (s *suite) open(t *testing.T) plugin.Client {
 func (s *suite) ref(name string) plugin.Ref {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return plugin.Ref{Container: s.Container, Key: fmt.Sprintf("%s%s-%016x", s.Prefix, name, s.rnd.Uint64())}
+	key := fmt.Sprintf("%s%s-%016x", s.Prefix, name, s.rnd.Uint64())
+	if s.Key != nil {
+		key = s.Key(key)
+	}
+	return plugin.Ref{Container: s.Container, Key: key}
 }
 
 func (s *suite) bytes(n int64) []byte {

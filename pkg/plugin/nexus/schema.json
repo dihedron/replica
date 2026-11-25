@@ -15,6 +15,10 @@
       "enum": ["raw", "maven2", "npm", "pypi"],
       "description": "the repository's format, which decides the keys' syntax; absent: keys are content paths (veho-nexus.md §2.1)"
     },
+    "npm_dist_tag": {
+      "type": "string",
+      "description": "the dist-tag an npm publish sets (format npm only; default latest)"
+    },
     "ca_cert": {
       "type": "string",
       "description": "PEM certificates trusted besides the system's"
