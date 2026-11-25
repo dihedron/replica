@@ -15,6 +15,7 @@ import (
 	"github.com/dbos-inc/dbos-transact-golang/dbos"
 	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
+	"github.com/dihedron/veho/internal/schema"
 	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/internal/webhook"
@@ -68,6 +69,7 @@ type Engine struct {
 	audit       audit.Auditor
 	secrets     *secrets.Store
 	drivers     map[string]plugin.Driver
+	schemas     map[string]*schema.Schema // the drivers' configuration schemas, compiled (PLG-10)
 	queues      map[string]dbos.Queue
 	metrics     *metrics
 	// hooks keeps webhook deliveries off internal addresses (W-1)
@@ -118,7 +120,15 @@ func New(ctx context.Context, d Deps) (*Engine, error) {
 		pool.Close()
 		return nil, fmt.Errorf("engine: notifications: %w", err)
 	}
-	e := &Engine{cfg: c, hooks: guard, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, executor: c.Node.ID, region: c.Node.Region,
+	schemas := map[string]*schema.Schema{}
+	for name, d := range d.Drivers {
+		s, err := schema.Compile(name, d.ConfigSchema())
+		if err != nil {
+			return nil, fmt.Errorf("engine: %w", err) // the node does not start (CV-T5)
+		}
+		schemas[name] = s
+	}
+	e := &Engine{cfg: c, hooks: guard, api: d.API, worker: d.Worker, dbos: dc, audit: d.Audit, secrets: d.Secrets, drivers: d.Drivers, schemas: schemas, executor: c.Node.ID, region: c.Node.Region,
 		dbosPool:   pool,
 		partMemory: semaphore.NewWeighted(int64(c.Engine.PartMemoryMiB) << 20),
 		lastOK:     time.Now(), stop: make(chan struct{}), queues: map[string]dbos.Queue{}, metrics: newMetrics()}

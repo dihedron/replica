@@ -65,6 +65,50 @@ func (*Empty) Descriptor() ([]byte, []int) {
 	return file_plugin_proto_rawDescGZIP(), []int{0}
 }
 
+type ConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Config        []byte                 `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ConfigRequest) Reset() {
+	*x = ConfigRequest{}
+	mi := &file_plugin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConfigRequest) ProtoMessage() {}
+
+func (x *ConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConfigRequest.ProtoReflect.Descriptor instead.
+func (*ConfigRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ConfigRequest) GetConfig() []byte {
+	if x != nil {
+		return x.Config
+	}
+	return nil
+}
+
 type Capabilities struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	Source          bool                   `protobuf:"varint,1,opt,name=source,proto3" json:"source,omitempty"`
@@ -83,7 +127,7 @@ type Capabilities struct {
 
 func (x *Capabilities) Reset() {
 	*x = Capabilities{}
-	mi := &file_plugin_proto_msgTypes[1]
+	mi := &file_plugin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -95,7 +139,7 @@ func (x *Capabilities) String() string {
 func (*Capabilities) ProtoMessage() {}
 
 func (x *Capabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[1]
+	mi := &file_plugin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -108,7 +152,7 @@ func (x *Capabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capabilities.ProtoReflect.Descriptor instead.
 func (*Capabilities) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{1}
+	return file_plugin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Capabilities) GetSource() bool {
@@ -193,7 +237,7 @@ type Description struct {
 
 func (x *Description) Reset() {
 	*x = Description{}
-	mi := &file_plugin_proto_msgTypes[2]
+	mi := &file_plugin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -205,7 +249,7 @@ func (x *Description) String() string {
 func (*Description) ProtoMessage() {}
 
 func (x *Description) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[2]
+	mi := &file_plugin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -218,7 +262,7 @@ func (x *Description) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Description.ProtoReflect.Descriptor instead.
 func (*Description) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{2}
+	return file_plugin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Description) GetName() string {
@@ -259,7 +303,7 @@ type Ref struct {
 
 func (x *Ref) Reset() {
 	*x = Ref{}
-	mi := &file_plugin_proto_msgTypes[3]
+	mi := &file_plugin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -271,7 +315,7 @@ func (x *Ref) String() string {
 func (*Ref) ProtoMessage() {}
 
 func (x *Ref) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[3]
+	mi := &file_plugin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -284,7 +328,7 @@ func (x *Ref) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ref.ProtoReflect.Descriptor instead.
 func (*Ref) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{3}
+	return file_plugin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Ref) GetContainer() string {
@@ -310,7 +354,7 @@ type ParseRefRequest struct {
 
 func (x *ParseRefRequest) Reset() {
 	*x = ParseRefRequest{}
-	mi := &file_plugin_proto_msgTypes[4]
+	mi := &file_plugin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -322,7 +366,7 @@ func (x *ParseRefRequest) String() string {
 func (*ParseRefRequest) ProtoMessage() {}
 
 func (x *ParseRefRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[4]
+	mi := &file_plugin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -335,7 +379,7 @@ func (x *ParseRefRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ParseRefRequest.ProtoReflect.Descriptor instead.
 func (*ParseRefRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{4}
+	return file_plugin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ParseRefRequest) GetUrl() string {
@@ -355,7 +399,7 @@ type OpenRequest struct {
 
 func (x *OpenRequest) Reset() {
 	*x = OpenRequest{}
-	mi := &file_plugin_proto_msgTypes[5]
+	mi := &file_plugin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -367,7 +411,7 @@ func (x *OpenRequest) String() string {
 func (*OpenRequest) ProtoMessage() {}
 
 func (x *OpenRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[5]
+	mi := &file_plugin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -380,7 +424,7 @@ func (x *OpenRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenRequest.ProtoReflect.Descriptor instead.
 func (*OpenRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{5}
+	return file_plugin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *OpenRequest) GetConfig() []byte {
@@ -407,7 +451,7 @@ type Handle struct {
 
 func (x *Handle) Reset() {
 	*x = Handle{}
-	mi := &file_plugin_proto_msgTypes[6]
+	mi := &file_plugin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -419,7 +463,7 @@ func (x *Handle) String() string {
 func (*Handle) ProtoMessage() {}
 
 func (x *Handle) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[6]
+	mi := &file_plugin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -432,7 +476,7 @@ func (x *Handle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Handle.ProtoReflect.Descriptor instead.
 func (*Handle) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{6}
+	return file_plugin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Handle) GetId() string {
@@ -454,7 +498,7 @@ type ObjectInfo struct {
 
 func (x *ObjectInfo) Reset() {
 	*x = ObjectInfo{}
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +510,7 @@ func (x *ObjectInfo) String() string {
 func (*ObjectInfo) ProtoMessage() {}
 
 func (x *ObjectInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +523,7 @@ func (x *ObjectInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ObjectInfo.ProtoReflect.Descriptor instead.
 func (*ObjectInfo) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{7}
+	return file_plugin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ObjectInfo) GetSize() int64 {
@@ -520,7 +564,7 @@ type StatRequest struct {
 
 func (x *StatRequest) Reset() {
 	*x = StatRequest{}
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -532,7 +576,7 @@ func (x *StatRequest) String() string {
 func (*StatRequest) ProtoMessage() {}
 
 func (x *StatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -545,7 +589,7 @@ func (x *StatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatRequest.ProtoReflect.Descriptor instead.
 func (*StatRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{8}
+	return file_plugin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *StatRequest) GetClient() string {
@@ -575,7 +619,7 @@ type ReadRangeRequest struct {
 
 func (x *ReadRangeRequest) Reset() {
 	*x = ReadRangeRequest{}
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -587,7 +631,7 @@ func (x *ReadRangeRequest) String() string {
 func (*ReadRangeRequest) ProtoMessage() {}
 
 func (x *ReadRangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -600,7 +644,7 @@ func (x *ReadRangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRangeRequest.ProtoReflect.Descriptor instead.
 func (*ReadRangeRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{9}
+	return file_plugin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ReadRangeRequest) GetClient() string {
@@ -647,7 +691,7 @@ type Chunk struct {
 
 func (x *Chunk) Reset() {
 	*x = Chunk{}
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -659,7 +703,7 @@ func (x *Chunk) String() string {
 func (*Chunk) ProtoMessage() {}
 
 func (x *Chunk) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -672,7 +716,7 @@ func (x *Chunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Chunk.ProtoReflect.Descriptor instead.
 func (*Chunk) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{10}
+	return file_plugin_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Chunk) GetData() []byte {
@@ -695,7 +739,7 @@ type BeginRequest struct {
 
 func (x *BeginRequest) Reset() {
 	*x = BeginRequest{}
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -707,7 +751,7 @@ func (x *BeginRequest) String() string {
 func (*BeginRequest) ProtoMessage() {}
 
 func (x *BeginRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -720,7 +764,7 @@ func (x *BeginRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BeginRequest.ProtoReflect.Descriptor instead.
 func (*BeginRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{11}
+	return file_plugin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *BeginRequest) GetClient() string {
@@ -769,7 +813,7 @@ type ResumeRequest struct {
 
 func (x *ResumeRequest) Reset() {
 	*x = ResumeRequest{}
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -781,7 +825,7 @@ func (x *ResumeRequest) String() string {
 func (*ResumeRequest) ProtoMessage() {}
 
 func (x *ResumeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -794,7 +838,7 @@ func (x *ResumeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeRequest.ProtoReflect.Descriptor instead.
 func (*ResumeRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{12}
+	return file_plugin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ResumeRequest) GetClient() string {
@@ -831,7 +875,7 @@ type UploadHandle struct {
 
 func (x *UploadHandle) Reset() {
 	*x = UploadHandle{}
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -843,7 +887,7 @@ func (x *UploadHandle) String() string {
 func (*UploadHandle) ProtoMessage() {}
 
 func (x *UploadHandle) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -856,7 +900,7 @@ func (x *UploadHandle) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UploadHandle.ProtoReflect.Descriptor instead.
 func (*UploadHandle) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{13}
+	return file_plugin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *UploadHandle) GetId() string {
@@ -892,7 +936,7 @@ type PresignRequest struct {
 
 func (x *PresignRequest) Reset() {
 	*x = PresignRequest{}
-	mi := &file_plugin_proto_msgTypes[14]
+	mi := &file_plugin_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -904,7 +948,7 @@ func (x *PresignRequest) String() string {
 func (*PresignRequest) ProtoMessage() {}
 
 func (x *PresignRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[14]
+	mi := &file_plugin_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -917,7 +961,7 @@ func (x *PresignRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PresignRequest.ProtoReflect.Descriptor instead.
 func (*PresignRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{14}
+	return file_plugin_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *PresignRequest) GetClient() string {
@@ -957,7 +1001,7 @@ type PresignedURL struct {
 
 func (x *PresignedURL) Reset() {
 	*x = PresignedURL{}
-	mi := &file_plugin_proto_msgTypes[15]
+	mi := &file_plugin_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -969,7 +1013,7 @@ func (x *PresignedURL) String() string {
 func (*PresignedURL) ProtoMessage() {}
 
 func (x *PresignedURL) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[15]
+	mi := &file_plugin_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -982,7 +1026,7 @@ func (x *PresignedURL) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PresignedURL.ProtoReflect.Descriptor instead.
 func (*PresignedURL) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{15}
+	return file_plugin_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PresignedURL) GetUrl() string {
@@ -1002,7 +1046,7 @@ type PullRequest struct {
 
 func (x *PullRequest) Reset() {
 	*x = PullRequest{}
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1014,7 +1058,7 @@ func (x *PullRequest) String() string {
 func (*PullRequest) ProtoMessage() {}
 
 func (x *PullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[16]
+	mi := &file_plugin_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1027,7 +1071,7 @@ func (x *PullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullRequest.ProtoReflect.Descriptor instead.
 func (*PullRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{16}
+	return file_plugin_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PullRequest) GetUpload() string {
@@ -1057,7 +1101,7 @@ type WritePartRequest struct {
 
 func (x *WritePartRequest) Reset() {
 	*x = WritePartRequest{}
-	mi := &file_plugin_proto_msgTypes[17]
+	mi := &file_plugin_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1069,7 +1113,7 @@ func (x *WritePartRequest) String() string {
 func (*WritePartRequest) ProtoMessage() {}
 
 func (x *WritePartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[17]
+	mi := &file_plugin_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1082,7 +1126,7 @@ func (x *WritePartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WritePartRequest.ProtoReflect.Descriptor instead.
 func (*WritePartRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{17}
+	return file_plugin_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *WritePartRequest) GetMsg() isWritePartRequest_Msg {
@@ -1138,7 +1182,7 @@ type PartResult struct {
 
 func (x *PartResult) Reset() {
 	*x = PartResult{}
-	mi := &file_plugin_proto_msgTypes[18]
+	mi := &file_plugin_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1150,7 +1194,7 @@ func (x *PartResult) String() string {
 func (*PartResult) ProtoMessage() {}
 
 func (x *PartResult) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[18]
+	mi := &file_plugin_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1163,7 +1207,7 @@ func (x *PartResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartResult.ProtoReflect.Descriptor instead.
 func (*PartResult) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{18}
+	return file_plugin_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *PartResult) GetPartNo() int64 {
@@ -1203,7 +1247,7 @@ type PartList struct {
 
 func (x *PartList) Reset() {
 	*x = PartList{}
-	mi := &file_plugin_proto_msgTypes[19]
+	mi := &file_plugin_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1215,7 +1259,7 @@ func (x *PartList) String() string {
 func (*PartList) ProtoMessage() {}
 
 func (x *PartList) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[19]
+	mi := &file_plugin_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1228,7 +1272,7 @@ func (x *PartList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartList.ProtoReflect.Descriptor instead.
 func (*PartList) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{19}
+	return file_plugin_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *PartList) GetParts() []*PartResult {
@@ -1248,7 +1292,7 @@ type CommitRequest struct {
 
 func (x *CommitRequest) Reset() {
 	*x = CommitRequest{}
-	mi := &file_plugin_proto_msgTypes[20]
+	mi := &file_plugin_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1260,7 +1304,7 @@ func (x *CommitRequest) String() string {
 func (*CommitRequest) ProtoMessage() {}
 
 func (x *CommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[20]
+	mi := &file_plugin_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1273,7 +1317,7 @@ func (x *CommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitRequest.ProtoReflect.Descriptor instead.
 func (*CommitRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{20}
+	return file_plugin_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CommitRequest) GetUpload() string {
@@ -1306,7 +1350,7 @@ type Flow struct {
 
 func (x *Flow) Reset() {
 	*x = Flow{}
-	mi := &file_plugin_proto_msgTypes[21]
+	mi := &file_plugin_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1318,7 +1362,7 @@ func (x *Flow) String() string {
 func (*Flow) ProtoMessage() {}
 
 func (x *Flow) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[21]
+	mi := &file_plugin_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1331,7 +1375,7 @@ func (x *Flow) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Flow.ProtoReflect.Descriptor instead.
 func (*Flow) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{21}
+	return file_plugin_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Flow) GetPurpose() string {
@@ -1399,7 +1443,7 @@ type FlowList struct {
 
 func (x *FlowList) Reset() {
 	*x = FlowList{}
-	mi := &file_plugin_proto_msgTypes[22]
+	mi := &file_plugin_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1411,7 +1455,7 @@ func (x *FlowList) String() string {
 func (*FlowList) ProtoMessage() {}
 
 func (x *FlowList) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[22]
+	mi := &file_plugin_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1424,7 +1468,7 @@ func (x *FlowList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FlowList.ProtoReflect.Descriptor instead.
 func (*FlowList) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{22}
+	return file_plugin_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *FlowList) GetFlows() []*Flow {
@@ -1445,7 +1489,7 @@ type WritePartRequest_Header struct {
 
 func (x *WritePartRequest_Header) Reset() {
 	*x = WritePartRequest_Header{}
-	mi := &file_plugin_proto_msgTypes[27]
+	mi := &file_plugin_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1457,7 +1501,7 @@ func (x *WritePartRequest_Header) String() string {
 func (*WritePartRequest_Header) ProtoMessage() {}
 
 func (x *WritePartRequest_Header) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[27]
+	mi := &file_plugin_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1470,7 +1514,7 @@ func (x *WritePartRequest_Header) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WritePartRequest_Header.ProtoReflect.Descriptor instead.
 func (*WritePartRequest_Header) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{17, 0}
+	return file_plugin_proto_rawDescGZIP(), []int{18, 0}
 }
 
 func (x *WritePartRequest_Header) GetUpload() string {
@@ -1499,7 +1543,9 @@ var File_plugin_proto protoreflect.FileDescriptor
 const file_plugin_proto_rawDesc = "" +
 	"\n" +
 	"\fplugin.proto\x12\x0eveho.plugin.v1\"\a\n" +
-	"\x05Empty\"\xe3\x02\n" +
+	"\x05Empty\"'\n" +
+	"\rConfigRequest\x12\x16\n" +
+	"\x06config\x18\x01 \x01(\fR\x06config\"\xe3\x02\n" +
 	"\fCapabilities\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\bR\x06source\x12\x12\n" +
 	"\x04sink\x18\x02 \x01(\bR\x04sink\x12\x1d\n" +
@@ -1613,11 +1659,12 @@ const file_plugin_proto_rawDesc = "" +
 	"\aca_cert\x18\a \x01(\tR\x06caCert\x12\x1a\n" +
 	"\bunprobed\x18\b \x01(\tR\bunprobed\"6\n" +
 	"\bFlowList\x12*\n" +
-	"\x05flows\x18\x01 \x03(\v2\x14.veho.plugin.v1.FlowR\x05flows2\x9d\b\n" +
+	"\x05flows\x18\x01 \x03(\v2\x14.veho.plugin.v1.FlowR\x05flows2\xe2\b\n" +
 	"\x06Driver\x12>\n" +
 	"\bDescribe\x12\x15.veho.plugin.v1.Empty\x1a\x1b.veho.plugin.v1.Description\x12@\n" +
 	"\bParseRef\x12\x1f.veho.plugin.v1.ParseRefRequest\x1a\x13.veho.plugin.v1.Ref\x12;\n" +
-	"\x04Open\x12\x1b.veho.plugin.v1.OpenRequest\x1a\x16.veho.plugin.v1.Handle\x126\n" +
+	"\x04Open\x12\x1b.veho.plugin.v1.OpenRequest\x1a\x16.veho.plugin.v1.Handle\x12C\n" +
+	"\vCheckConfig\x12\x1d.veho.plugin.v1.ConfigRequest\x1a\x15.veho.plugin.v1.Empty\x126\n" +
 	"\x05Close\x12\x16.veho.plugin.v1.Handle\x1a\x15.veho.plugin.v1.Empty\x12?\n" +
 	"\x04Stat\x12\x1b.veho.plugin.v1.StatRequest\x1a\x1a.veho.plugin.v1.ObjectInfo\x12F\n" +
 	"\tReadRange\x12 .veho.plugin.v1.ReadRangeRequest\x1a\x15.veho.plugin.v1.Chunk0\x01\x12<\n" +
@@ -1644,87 +1691,90 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_plugin_proto_goTypes = []any{
 	(*Empty)(nil),                   // 0: veho.plugin.v1.Empty
-	(*Capabilities)(nil),            // 1: veho.plugin.v1.Capabilities
-	(*Description)(nil),             // 2: veho.plugin.v1.Description
-	(*Ref)(nil),                     // 3: veho.plugin.v1.Ref
-	(*ParseRefRequest)(nil),         // 4: veho.plugin.v1.ParseRefRequest
-	(*OpenRequest)(nil),             // 5: veho.plugin.v1.OpenRequest
-	(*Handle)(nil),                  // 6: veho.plugin.v1.Handle
-	(*ObjectInfo)(nil),              // 7: veho.plugin.v1.ObjectInfo
-	(*StatRequest)(nil),             // 8: veho.plugin.v1.StatRequest
-	(*ReadRangeRequest)(nil),        // 9: veho.plugin.v1.ReadRangeRequest
-	(*Chunk)(nil),                   // 10: veho.plugin.v1.Chunk
-	(*BeginRequest)(nil),            // 11: veho.plugin.v1.BeginRequest
-	(*ResumeRequest)(nil),           // 12: veho.plugin.v1.ResumeRequest
-	(*UploadHandle)(nil),            // 13: veho.plugin.v1.UploadHandle
-	(*PresignRequest)(nil),          // 14: veho.plugin.v1.PresignRequest
-	(*PresignedURL)(nil),            // 15: veho.plugin.v1.PresignedURL
-	(*PullRequest)(nil),             // 16: veho.plugin.v1.PullRequest
-	(*WritePartRequest)(nil),        // 17: veho.plugin.v1.WritePartRequest
-	(*PartResult)(nil),              // 18: veho.plugin.v1.PartResult
-	(*PartList)(nil),                // 19: veho.plugin.v1.PartList
-	(*CommitRequest)(nil),           // 20: veho.plugin.v1.CommitRequest
-	(*Flow)(nil),                    // 21: veho.plugin.v1.Flow
-	(*FlowList)(nil),                // 22: veho.plugin.v1.FlowList
-	nil,                             // 23: veho.plugin.v1.OpenRequest.CredentialsEntry
-	nil,                             // 24: veho.plugin.v1.ObjectInfo.ChecksumsEntry
-	nil,                             // 25: veho.plugin.v1.ObjectInfo.MetadataEntry
-	nil,                             // 26: veho.plugin.v1.BeginRequest.MetadataEntry
-	(*WritePartRequest_Header)(nil), // 27: veho.plugin.v1.WritePartRequest.Header
+	(*ConfigRequest)(nil),           // 1: veho.plugin.v1.ConfigRequest
+	(*Capabilities)(nil),            // 2: veho.plugin.v1.Capabilities
+	(*Description)(nil),             // 3: veho.plugin.v1.Description
+	(*Ref)(nil),                     // 4: veho.plugin.v1.Ref
+	(*ParseRefRequest)(nil),         // 5: veho.plugin.v1.ParseRefRequest
+	(*OpenRequest)(nil),             // 6: veho.plugin.v1.OpenRequest
+	(*Handle)(nil),                  // 7: veho.plugin.v1.Handle
+	(*ObjectInfo)(nil),              // 8: veho.plugin.v1.ObjectInfo
+	(*StatRequest)(nil),             // 9: veho.plugin.v1.StatRequest
+	(*ReadRangeRequest)(nil),        // 10: veho.plugin.v1.ReadRangeRequest
+	(*Chunk)(nil),                   // 11: veho.plugin.v1.Chunk
+	(*BeginRequest)(nil),            // 12: veho.plugin.v1.BeginRequest
+	(*ResumeRequest)(nil),           // 13: veho.plugin.v1.ResumeRequest
+	(*UploadHandle)(nil),            // 14: veho.plugin.v1.UploadHandle
+	(*PresignRequest)(nil),          // 15: veho.plugin.v1.PresignRequest
+	(*PresignedURL)(nil),            // 16: veho.plugin.v1.PresignedURL
+	(*PullRequest)(nil),             // 17: veho.plugin.v1.PullRequest
+	(*WritePartRequest)(nil),        // 18: veho.plugin.v1.WritePartRequest
+	(*PartResult)(nil),              // 19: veho.plugin.v1.PartResult
+	(*PartList)(nil),                // 20: veho.plugin.v1.PartList
+	(*CommitRequest)(nil),           // 21: veho.plugin.v1.CommitRequest
+	(*Flow)(nil),                    // 22: veho.plugin.v1.Flow
+	(*FlowList)(nil),                // 23: veho.plugin.v1.FlowList
+	nil,                             // 24: veho.plugin.v1.OpenRequest.CredentialsEntry
+	nil,                             // 25: veho.plugin.v1.ObjectInfo.ChecksumsEntry
+	nil,                             // 26: veho.plugin.v1.ObjectInfo.MetadataEntry
+	nil,                             // 27: veho.plugin.v1.BeginRequest.MetadataEntry
+	(*WritePartRequest_Header)(nil), // 28: veho.plugin.v1.WritePartRequest.Header
 }
 var file_plugin_proto_depIdxs = []int32{
-	1,  // 0: veho.plugin.v1.Description.capabilities:type_name -> veho.plugin.v1.Capabilities
-	23, // 1: veho.plugin.v1.OpenRequest.credentials:type_name -> veho.plugin.v1.OpenRequest.CredentialsEntry
-	24, // 2: veho.plugin.v1.ObjectInfo.checksums:type_name -> veho.plugin.v1.ObjectInfo.ChecksumsEntry
-	25, // 3: veho.plugin.v1.ObjectInfo.metadata:type_name -> veho.plugin.v1.ObjectInfo.MetadataEntry
-	3,  // 4: veho.plugin.v1.StatRequest.ref:type_name -> veho.plugin.v1.Ref
-	3,  // 5: veho.plugin.v1.ReadRangeRequest.ref:type_name -> veho.plugin.v1.Ref
-	3,  // 6: veho.plugin.v1.BeginRequest.ref:type_name -> veho.plugin.v1.Ref
-	7,  // 7: veho.plugin.v1.BeginRequest.info:type_name -> veho.plugin.v1.ObjectInfo
-	26, // 8: veho.plugin.v1.BeginRequest.metadata:type_name -> veho.plugin.v1.BeginRequest.MetadataEntry
-	3,  // 9: veho.plugin.v1.ResumeRequest.ref:type_name -> veho.plugin.v1.Ref
-	3,  // 10: veho.plugin.v1.PresignRequest.ref:type_name -> veho.plugin.v1.Ref
-	27, // 11: veho.plugin.v1.WritePartRequest.header:type_name -> veho.plugin.v1.WritePartRequest.Header
-	18, // 12: veho.plugin.v1.PartList.parts:type_name -> veho.plugin.v1.PartResult
-	18, // 13: veho.plugin.v1.CommitRequest.parts:type_name -> veho.plugin.v1.PartResult
-	21, // 14: veho.plugin.v1.FlowList.flows:type_name -> veho.plugin.v1.Flow
+	2,  // 0: veho.plugin.v1.Description.capabilities:type_name -> veho.plugin.v1.Capabilities
+	24, // 1: veho.plugin.v1.OpenRequest.credentials:type_name -> veho.plugin.v1.OpenRequest.CredentialsEntry
+	25, // 2: veho.plugin.v1.ObjectInfo.checksums:type_name -> veho.plugin.v1.ObjectInfo.ChecksumsEntry
+	26, // 3: veho.plugin.v1.ObjectInfo.metadata:type_name -> veho.plugin.v1.ObjectInfo.MetadataEntry
+	4,  // 4: veho.plugin.v1.StatRequest.ref:type_name -> veho.plugin.v1.Ref
+	4,  // 5: veho.plugin.v1.ReadRangeRequest.ref:type_name -> veho.plugin.v1.Ref
+	4,  // 6: veho.plugin.v1.BeginRequest.ref:type_name -> veho.plugin.v1.Ref
+	8,  // 7: veho.plugin.v1.BeginRequest.info:type_name -> veho.plugin.v1.ObjectInfo
+	27, // 8: veho.plugin.v1.BeginRequest.metadata:type_name -> veho.plugin.v1.BeginRequest.MetadataEntry
+	4,  // 9: veho.plugin.v1.ResumeRequest.ref:type_name -> veho.plugin.v1.Ref
+	4,  // 10: veho.plugin.v1.PresignRequest.ref:type_name -> veho.plugin.v1.Ref
+	28, // 11: veho.plugin.v1.WritePartRequest.header:type_name -> veho.plugin.v1.WritePartRequest.Header
+	19, // 12: veho.plugin.v1.PartList.parts:type_name -> veho.plugin.v1.PartResult
+	19, // 13: veho.plugin.v1.CommitRequest.parts:type_name -> veho.plugin.v1.PartResult
+	22, // 14: veho.plugin.v1.FlowList.flows:type_name -> veho.plugin.v1.Flow
 	0,  // 15: veho.plugin.v1.Driver.Describe:input_type -> veho.plugin.v1.Empty
-	4,  // 16: veho.plugin.v1.Driver.ParseRef:input_type -> veho.plugin.v1.ParseRefRequest
-	5,  // 17: veho.plugin.v1.Driver.Open:input_type -> veho.plugin.v1.OpenRequest
-	6,  // 18: veho.plugin.v1.Driver.Close:input_type -> veho.plugin.v1.Handle
-	8,  // 19: veho.plugin.v1.Driver.Stat:input_type -> veho.plugin.v1.StatRequest
-	9,  // 20: veho.plugin.v1.Driver.ReadRange:input_type -> veho.plugin.v1.ReadRangeRequest
-	8,  // 21: veho.plugin.v1.Driver.Delete:input_type -> veho.plugin.v1.StatRequest
-	11, // 22: veho.plugin.v1.Driver.Begin:input_type -> veho.plugin.v1.BeginRequest
-	12, // 23: veho.plugin.v1.Driver.Resume:input_type -> veho.plugin.v1.ResumeRequest
-	17, // 24: veho.plugin.v1.Driver.WritePart:input_type -> veho.plugin.v1.WritePartRequest
-	6,  // 25: veho.plugin.v1.Driver.ListParts:input_type -> veho.plugin.v1.Handle
-	20, // 26: veho.plugin.v1.Driver.Commit:input_type -> veho.plugin.v1.CommitRequest
-	6,  // 27: veho.plugin.v1.Driver.Abort:input_type -> veho.plugin.v1.Handle
-	14, // 28: veho.plugin.v1.Driver.PresignRead:input_type -> veho.plugin.v1.PresignRequest
-	16, // 29: veho.plugin.v1.Driver.Pull:input_type -> veho.plugin.v1.PullRequest
-	6,  // 30: veho.plugin.v1.Driver.Flows:input_type -> veho.plugin.v1.Handle
-	2,  // 31: veho.plugin.v1.Driver.Describe:output_type -> veho.plugin.v1.Description
-	3,  // 32: veho.plugin.v1.Driver.ParseRef:output_type -> veho.plugin.v1.Ref
-	6,  // 33: veho.plugin.v1.Driver.Open:output_type -> veho.plugin.v1.Handle
-	0,  // 34: veho.plugin.v1.Driver.Close:output_type -> veho.plugin.v1.Empty
-	7,  // 35: veho.plugin.v1.Driver.Stat:output_type -> veho.plugin.v1.ObjectInfo
-	10, // 36: veho.plugin.v1.Driver.ReadRange:output_type -> veho.plugin.v1.Chunk
-	0,  // 37: veho.plugin.v1.Driver.Delete:output_type -> veho.plugin.v1.Empty
-	13, // 38: veho.plugin.v1.Driver.Begin:output_type -> veho.plugin.v1.UploadHandle
-	13, // 39: veho.plugin.v1.Driver.Resume:output_type -> veho.plugin.v1.UploadHandle
-	18, // 40: veho.plugin.v1.Driver.WritePart:output_type -> veho.plugin.v1.PartResult
-	19, // 41: veho.plugin.v1.Driver.ListParts:output_type -> veho.plugin.v1.PartList
-	7,  // 42: veho.plugin.v1.Driver.Commit:output_type -> veho.plugin.v1.ObjectInfo
-	0,  // 43: veho.plugin.v1.Driver.Abort:output_type -> veho.plugin.v1.Empty
-	15, // 44: veho.plugin.v1.Driver.PresignRead:output_type -> veho.plugin.v1.PresignedURL
-	3,  // 45: veho.plugin.v1.Driver.Pull:output_type -> veho.plugin.v1.Ref
-	22, // 46: veho.plugin.v1.Driver.Flows:output_type -> veho.plugin.v1.FlowList
-	31, // [31:47] is the sub-list for method output_type
-	15, // [15:31] is the sub-list for method input_type
+	5,  // 16: veho.plugin.v1.Driver.ParseRef:input_type -> veho.plugin.v1.ParseRefRequest
+	6,  // 17: veho.plugin.v1.Driver.Open:input_type -> veho.plugin.v1.OpenRequest
+	1,  // 18: veho.plugin.v1.Driver.CheckConfig:input_type -> veho.plugin.v1.ConfigRequest
+	7,  // 19: veho.plugin.v1.Driver.Close:input_type -> veho.plugin.v1.Handle
+	9,  // 20: veho.plugin.v1.Driver.Stat:input_type -> veho.plugin.v1.StatRequest
+	10, // 21: veho.plugin.v1.Driver.ReadRange:input_type -> veho.plugin.v1.ReadRangeRequest
+	9,  // 22: veho.plugin.v1.Driver.Delete:input_type -> veho.plugin.v1.StatRequest
+	12, // 23: veho.plugin.v1.Driver.Begin:input_type -> veho.plugin.v1.BeginRequest
+	13, // 24: veho.plugin.v1.Driver.Resume:input_type -> veho.plugin.v1.ResumeRequest
+	18, // 25: veho.plugin.v1.Driver.WritePart:input_type -> veho.plugin.v1.WritePartRequest
+	7,  // 26: veho.plugin.v1.Driver.ListParts:input_type -> veho.plugin.v1.Handle
+	21, // 27: veho.plugin.v1.Driver.Commit:input_type -> veho.plugin.v1.CommitRequest
+	7,  // 28: veho.plugin.v1.Driver.Abort:input_type -> veho.plugin.v1.Handle
+	15, // 29: veho.plugin.v1.Driver.PresignRead:input_type -> veho.plugin.v1.PresignRequest
+	17, // 30: veho.plugin.v1.Driver.Pull:input_type -> veho.plugin.v1.PullRequest
+	7,  // 31: veho.plugin.v1.Driver.Flows:input_type -> veho.plugin.v1.Handle
+	3,  // 32: veho.plugin.v1.Driver.Describe:output_type -> veho.plugin.v1.Description
+	4,  // 33: veho.plugin.v1.Driver.ParseRef:output_type -> veho.plugin.v1.Ref
+	7,  // 34: veho.plugin.v1.Driver.Open:output_type -> veho.plugin.v1.Handle
+	0,  // 35: veho.plugin.v1.Driver.CheckConfig:output_type -> veho.plugin.v1.Empty
+	0,  // 36: veho.plugin.v1.Driver.Close:output_type -> veho.plugin.v1.Empty
+	8,  // 37: veho.plugin.v1.Driver.Stat:output_type -> veho.plugin.v1.ObjectInfo
+	11, // 38: veho.plugin.v1.Driver.ReadRange:output_type -> veho.plugin.v1.Chunk
+	0,  // 39: veho.plugin.v1.Driver.Delete:output_type -> veho.plugin.v1.Empty
+	14, // 40: veho.plugin.v1.Driver.Begin:output_type -> veho.plugin.v1.UploadHandle
+	14, // 41: veho.plugin.v1.Driver.Resume:output_type -> veho.plugin.v1.UploadHandle
+	19, // 42: veho.plugin.v1.Driver.WritePart:output_type -> veho.plugin.v1.PartResult
+	20, // 43: veho.plugin.v1.Driver.ListParts:output_type -> veho.plugin.v1.PartList
+	8,  // 44: veho.plugin.v1.Driver.Commit:output_type -> veho.plugin.v1.ObjectInfo
+	0,  // 45: veho.plugin.v1.Driver.Abort:output_type -> veho.plugin.v1.Empty
+	16, // 46: veho.plugin.v1.Driver.PresignRead:output_type -> veho.plugin.v1.PresignedURL
+	4,  // 47: veho.plugin.v1.Driver.Pull:output_type -> veho.plugin.v1.Ref
+	23, // 48: veho.plugin.v1.Driver.Flows:output_type -> veho.plugin.v1.FlowList
+	32, // [32:49] is the sub-list for method output_type
+	15, // [15:32] is the sub-list for method input_type
 	15, // [15:15] is the sub-list for extension type_name
 	15, // [15:15] is the sub-list for extension extendee
 	0,  // [0:15] is the sub-list for field type_name
@@ -1735,7 +1785,7 @@ func file_plugin_proto_init() {
 	if File_plugin_proto != nil {
 		return
 	}
-	file_plugin_proto_msgTypes[17].OneofWrappers = []any{
+	file_plugin_proto_msgTypes[18].OneofWrappers = []any{
 		(*WritePartRequest_Header_)(nil),
 		(*WritePartRequest_Data)(nil),
 	}
@@ -1745,7 +1795,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

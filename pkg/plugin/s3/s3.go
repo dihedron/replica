@@ -122,18 +122,33 @@ var archive = []string{"GLACIER", "DEEP_ARCHIVE"}
 // Open builds a client with its own connections, closed by Close (no state
 // shared across tenants, PLG-6). The SDK does not retry: the core does, by
 // the class of the error.
-func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// parse checks a configuration without credentials or network.
+func parse(raw plugin.Config) (config, error) {
 	var cfg config
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields() // a misspelled key must not be dropped
 	if err := dec.Decode(&cfg); err != nil || cfg.Region == "" || cfg.Bucket == "" {
-		return nil, plugin.Wrapf(plugin.Permanent, "s3: the configuration needs region and bucket, and no other keys than the schema's (%v)", err)
+		return config{}, plugin.Wrapf(plugin.Permanent, "s3: the configuration needs region and bucket, and no other keys than the schema's (%v)", err)
 	}
 	if slices.Contains(archive, cfg.StorageClass) {
-		return nil, plugin.Wrapf(plugin.Permanent, "s3: storage class %s is an archive class, refused", cfg.StorageClass)
+		return config{}, plugin.Wrapf(plugin.Permanent, "s3: storage class %s is an archive class, refused", cfg.StorageClass)
+	}
+	return cfg, nil
+}
+
+// CheckConfig is what Open checks before the credentials (PLG-10).
+func (Driver) CheckConfig(_ context.Context, raw plugin.Config) error {
+	_, err := parse(raw)
+	return err
+}
+
+func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cfg, err := parse(raw)
+	if err != nil {
+		return nil, err
 	}
 	if creds["access_key_id"] == "" || creds["secret_access_key"] == "" {
 		return nil, plugin.Wrapf(plugin.Permanent, "s3: the credentials need access_key_id and secret_access_key")

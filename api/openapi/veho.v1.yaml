@@ -280,6 +280,10 @@ components:
         created_at:
           title: created_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
+        problem:
+          type: string
+          title: problem
+          description: 'With ListEndpointsRequest.invalid: why the drivers refuse it.'
       title: Endpoint
       additionalProperties: false
     veho.v1.EndpointCheck:
@@ -1097,6 +1101,15 @@ paths:
         - veho.v1.EndpointService
       summary: ListEndpoints
       operationId: veho.v1.EndpointService.ListEndpoints
+      parameters:
+        - name: invalid
+          in: query
+          description: |-
+            Revalidate the endpoints and list only those the drivers now refuse,
+             each with its problem (veho-config-validation.md, decision 6).
+          schema:
+            type: boolean
+            title: invalid
       responses:
         "200":
           description: Success
@@ -1191,6 +1204,10 @@ paths:
                 created_at:
                   title: created_at
                   $ref: '#/components/schemas/google.protobuf.Timestamp'
+                problem:
+                  type: string
+                  title: problem
+                  description: 'With ListEndpointsRequest.invalid: why the drivers refuse it.'
               title: Endpoint
               additionalProperties: false
         required: true

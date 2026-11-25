@@ -9,7 +9,9 @@ import (
 
 	"github.com/dihedron/veho/pkg/plugin"
 	pb "github.com/dihedron/veho/pkg/plugin/process/proto"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 // remote is the core's side of a plugin process: a plugin.Driver whose
@@ -32,6 +34,26 @@ func (d *remote) ParseRef(url string) (plugin.Ref, error) {
 		return plugin.Ref{}, fromStatus(ctx, err, md)
 	}
 	return fromRef(r), nil
+}
+
+// CheckConfig asks the plugin; an older one, without the method, has no
+// checks to offer (the schema still runs, veho-config-validation.md).
+func (d *remote) CheckConfig(ctx context.Context, cfg plugin.Config) error {
+	var md metadata.MD
+	_, err := d.rpc.CheckConfig(ctx, &pb.ConfigRequest{Config: cfg}, trailerOf(&md))
+	if err := checkConfigAnswer(ctx, err); err == nil {
+		return nil
+	}
+	return fromStatus(ctx, err, md)
+}
+
+// checkConfigAnswer is nil for success and for a plugin without the
+// method; else err.
+func checkConfigAnswer(_ context.Context, err error) error {
+	if err == nil || status.Code(err) == codes.Unimplemented {
+		return nil
+	}
+	return err
 }
 
 func (d *remote) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {

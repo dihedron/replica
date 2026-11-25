@@ -96,15 +96,14 @@ type config struct {
 
 // Open checks the configuration and the credentials (username and
 // password; neither is anonymous FTP).
-func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// parse checks a configuration without credentials or network, its
+// defaults applied.
+func (d Driver) parse(cfg plugin.Config) (config, error) {
 	var c config
 	dec := json.NewDecoder(strings.NewReader(string(cfg)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "ftp: configuration: %v", err)
+		return config{}, plugin.Wrapf(plugin.Permanent, "ftp: configuration: %v", err)
 	}
 	if c.TLS == "" {
 		c.TLS = "explicit"
@@ -117,15 +116,32 @@ func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Creden
 	}
 	switch {
 	case c.Host == "" || strings.ContainsAny(c.Host, "/@ "):
-		return nil, plugin.Wrapf(plugin.Permanent, "ftp: configuration: a host is required")
+		return config{}, plugin.Wrapf(plugin.Permanent, "ftp: configuration: a host is required")
 	case c.Port < 1 || c.Port > 65535:
-		return nil, plugin.Wrapf(plugin.Permanent, "ftp: configuration: port %d", c.Port)
+		return config{}, plugin.Wrapf(plugin.Permanent, "ftp: configuration: port %d", c.Port)
 	case !path.IsAbs(c.Root) || path.Clean(c.Root) != c.Root || strings.ContainsAny(c.Root, "\r\n\x00"):
-		return nil, plugin.Wrapf(plugin.Permanent, "ftp: configuration: root must be a clean absolute path")
+		return config{}, plugin.Wrapf(plugin.Permanent, "ftp: configuration: root must be a clean absolute path")
 	case c.TLS != "explicit" && c.TLS != "implicit" && c.TLS != "none":
-		return nil, plugin.Wrapf(plugin.Permanent, "ftp: configuration: tls must be explicit, implicit or none")
+		return config{}, plugin.Wrapf(plugin.Permanent, "ftp: configuration: tls must be explicit, implicit or none")
 	case c.TLS == "none" && !d.plaintext:
-		return nil, plugin.Wrapf(plugin.Permanent, "ftp: tls: none is not allowed on this platform (the driver's plaintext setting)")
+		return config{}, plugin.Wrapf(plugin.Permanent, "ftp: tls: none is not allowed on this platform (the driver's plaintext setting)")
+	}
+	return c, nil
+}
+
+// CheckConfig is what Open checks before the credentials (PLG-10).
+func (d Driver) CheckConfig(_ context.Context, cfg plugin.Config) error {
+	_, err := d.parse(cfg)
+	return err
+}
+
+func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	c, err := d.parse(cfg)
+	if err != nil {
+		return nil, err
 	}
 	for k := range creds {
 		if k != "username" && k != "password" {

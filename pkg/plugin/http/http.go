@@ -103,24 +103,23 @@ var reserved = map[string]bool{
 
 // Open checks the configuration and the credentials: bearer_token, or
 // username and password, only over HTTPS (SRC-W2).
-func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+// parse checks a configuration without credentials or network: the base
+// URL, with a final slash, and the headers.
+func parse(cfg plugin.Config) (*url.URL, nethttp.Header, error) {
 	var c config
 	dec := json.NewDecoder(strings.NewReader(string(cfg)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "http: configuration: %v", err)
+		return nil, nil, plugin.Wrapf(plugin.Permanent, "http: configuration: %v", err)
 	}
 	base, err := url.Parse(c.BaseURL)
 	switch {
 	case err != nil:
-		return nil, plugin.Wrapf(plugin.Permanent, "http: base_url: %v", err)
+		return nil, nil, plugin.Wrapf(plugin.Permanent, "http: base_url: %v", err)
 	case base.Scheme != "http" && base.Scheme != "https":
-		return nil, plugin.Wrapf(plugin.Permanent, "http: base_url: want http or https")
+		return nil, nil, plugin.Wrapf(plugin.Permanent, "http: base_url: want http or https")
 	case base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" || strings.Contains(c.BaseURL, "#"):
-		return nil, plugin.Wrapf(plugin.Permanent, "http: base_url: want a host, no user information, query or fragment")
+		return nil, nil, plugin.Wrapf(plugin.Permanent, "http: base_url: want a host, no user information, query or fragment")
 	}
 	if !strings.HasSuffix(base.Path, "/") {
 		base.Path += "/"
@@ -130,9 +129,26 @@ func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Creden
 	for k, v := range c.Headers {
 		ck := nethttp.CanonicalHeaderKey(k)
 		if reserved[ck] || strings.ContainsAny(k+v, "\r\n\x00") || k == "" {
-			return nil, plugin.Wrapf(plugin.Permanent, "http: header %q is not allowed", k)
+			return nil, nil, plugin.Wrapf(plugin.Permanent, "http: header %q is not allowed", k)
 		}
 		header.Set(ck, v)
+	}
+	return base, header, nil
+}
+
+// CheckConfig is what Open checks before the credentials (PLG-10).
+func (Driver) CheckConfig(_ context.Context, cfg plugin.Config) error {
+	_, _, err := parse(cfg)
+	return err
+}
+
+func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	base, header, err := parse(cfg)
+	if err != nil {
+		return nil, err
 	}
 	for k := range creds {
 		if k != "bearer_token" && k != "username" && k != "password" {

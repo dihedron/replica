@@ -66,6 +66,8 @@ veho endpoint test b-images
 
 An endpoint referenced by a job (settled ones included, until retention removes them) cannot be deleted; a secret referenced by an endpoint cannot be deleted either.
 
+An endpoint's configuration is checked when it is created or updated: first against its driver's schema (types, required keys, allowed values, no unknown key), then by the driver itself (combinations of keys, a URL's form, a `ca_cert` that is not PEM, an archive storage class). A wrong one is refused with `invalid_argument` and the path of the value, such as `configuration: /bucket: got number, want string`. Checks that need the storage system (Keystone, a Nexus repository's format) still run at `endpoint test` and at the first transfer. After an upgrade, `veho endpoint list --invalid` revalidates the stored endpoints and lists only those a driver now refuses, each with the reason, or whose driver this node does not offer: fix them with `endpoint update` before a transfer fails.
+
 ## Drivers
 
 A node offers the drivers `drivers[]` lists in `veho.yaml`, and no other: an endpoint of a driver no node lists cannot be created. List the same drivers on every node. A driver of the release other than `file` comes in its own package (`veho-plugin-<name>`), signed with the release's key. A third-party plugin is either signed by its publisher, whose key you name, or pinned by its executable and SHA-256:

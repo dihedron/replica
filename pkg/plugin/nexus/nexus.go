@@ -149,35 +149,59 @@ type config struct {
 
 // Open checks the configuration and, with a format, that the repository
 // has it.
-func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+// parse checks a configuration without credentials or network: its
+// format, the base URL with a final slash, the roots with its ca_cert.
+func (d Driver) parse(raw plugin.Config) (config, format, *url.URL, *x509.CertPool, error) {
 	var cfg config
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: configuration: %v", err)
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: configuration: %v", err)
 	}
 	fm, known := formats[cfg.Format]
 	switch {
 	case !known:
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: format: want raw, maven2, npm or pypi")
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: format: want raw, maven2, npm or pypi")
 	case cfg.NPMDistTag != "" && cfg.Format != "npm":
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: npm_dist_tag is only for format npm")
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: npm_dist_tag is only for format npm")
 	}
 	if err := checkRepository(cfg.Repository); err != nil {
-		return nil, err
+		return config{}, nil, nil, nil, err
 	}
 	base, err := url.Parse(cfg.URL)
 	switch {
 	case err != nil || base.Host == "":
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: url: want a URL")
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: url: want a URL")
 	case base.Scheme != "https" && (base.Scheme != "http" || !d.plaintext):
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: url: want https (http only with the driver's plaintext setting)")
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: url: want https (http only with the driver's plaintext setting)")
 	case base.User != nil || base.RawQuery != "" || base.Fragment != "":
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: url: want no user information, query or fragment")
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: url: want no user information, query or fragment")
 	}
 	if !strings.HasSuffix(base.Path, "/") {
 		base.Path += "/"
 		base.RawPath = ""
+	}
+	roots, err := x509.SystemCertPool()
+	if err != nil {
+		roots = x509.NewCertPool()
+	}
+	if cfg.CACert != "" && !roots.AppendCertsFromPEM([]byte(cfg.CACert)) {
+		return config{}, nil, nil, nil, plugin.Wrapf(plugin.Permanent, "nexus: ca_cert: no PEM certificate")
+	}
+	return cfg, fm, base, roots, nil
+}
+
+// CheckConfig is what Open checks before the credentials (PLG-10); the
+// repository's format, which needs Nexus, is checked at Open.
+func (d Driver) CheckConfig(_ context.Context, raw plugin.Config) error {
+	_, _, _, _, err := d.parse(raw)
+	return err
+}
+
+func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+	cfg, fm, base, roots, err := d.parse(raw)
+	if err != nil {
+		return nil, err
 	}
 	for k := range creds {
 		if k != "username" && k != "password" {
@@ -186,13 +210,6 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	}
 	if (creds["username"] == "") != (creds["password"] == "") {
 		return nil, plugin.Wrapf(plugin.Permanent, "nexus: credentials: username and password (a user token's name and passcode), or none")
-	}
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		roots = x509.NewCertPool()
-	}
-	if cfg.CACert != "" && !roots.AppendCertsFromPEM([]byte(cfg.CACert)) {
-		return nil, plugin.Wrapf(plugin.Permanent, "nexus: ca_cert: no PEM certificate")
 	}
 	transport := &http.Transport{
 		TLSClientConfig:       &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},

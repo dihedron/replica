@@ -30,6 +30,7 @@ const (
 	Driver_Describe_FullMethodName    = "/veho.plugin.v1.Driver/Describe"
 	Driver_ParseRef_FullMethodName    = "/veho.plugin.v1.Driver/ParseRef"
 	Driver_Open_FullMethodName        = "/veho.plugin.v1.Driver/Open"
+	Driver_CheckConfig_FullMethodName = "/veho.plugin.v1.Driver/CheckConfig"
 	Driver_Close_FullMethodName       = "/veho.plugin.v1.Driver/Close"
 	Driver_Stat_FullMethodName        = "/veho.plugin.v1.Driver/Stat"
 	Driver_ReadRange_FullMethodName   = "/veho.plugin.v1.Driver/ReadRange"
@@ -52,6 +53,9 @@ type DriverClient interface {
 	Describe(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Description, error)
 	ParseRef(ctx context.Context, in *ParseRefRequest, opts ...grpc.CallOption) (*Ref, error)
 	Open(ctx context.Context, in *OpenRequest, opts ...grpc.CallOption) (*Handle, error)
+	// CheckConfig checks an endpoint's configuration without credentials or
+	// network (PLG-10); Empty when the driver has no checks of its own.
+	CheckConfig(ctx context.Context, in *ConfigRequest, opts ...grpc.CallOption) (*Empty, error)
 	Close(ctx context.Context, in *Handle, opts ...grpc.CallOption) (*Empty, error)
 	Stat(ctx context.Context, in *StatRequest, opts ...grpc.CallOption) (*ObjectInfo, error)
 	ReadRange(ctx context.Context, in *ReadRangeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Chunk], error)
@@ -104,6 +108,16 @@ func (c *driverClient) Open(ctx context.Context, in *OpenRequest, opts ...grpc.C
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Handle)
 	err := c.cc.Invoke(ctx, Driver_Open_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *driverClient) CheckConfig(ctx context.Context, in *ConfigRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, Driver_CheckConfig_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -259,6 +273,9 @@ type DriverServer interface {
 	Describe(context.Context, *Empty) (*Description, error)
 	ParseRef(context.Context, *ParseRefRequest) (*Ref, error)
 	Open(context.Context, *OpenRequest) (*Handle, error)
+	// CheckConfig checks an endpoint's configuration without credentials or
+	// network (PLG-10); Empty when the driver has no checks of its own.
+	CheckConfig(context.Context, *ConfigRequest) (*Empty, error)
 	Close(context.Context, *Handle) (*Empty, error)
 	Stat(context.Context, *StatRequest) (*ObjectInfo, error)
 	ReadRange(*ReadRangeRequest, grpc.ServerStreamingServer[Chunk]) error
@@ -295,6 +312,9 @@ func (UnimplementedDriverServer) ParseRef(context.Context, *ParseRefRequest) (*R
 }
 func (UnimplementedDriverServer) Open(context.Context, *OpenRequest) (*Handle, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Open not implemented")
+}
+func (UnimplementedDriverServer) CheckConfig(context.Context, *ConfigRequest) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckConfig not implemented")
 }
 func (UnimplementedDriverServer) Close(context.Context, *Handle) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Close not implemented")
@@ -406,6 +426,24 @@ func _Driver_Open_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(DriverServer).Open(ctx, req.(*OpenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Driver_CheckConfig_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DriverServer).CheckConfig(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Driver_CheckConfig_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DriverServer).CheckConfig(ctx, req.(*ConfigRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -644,6 +682,10 @@ var Driver_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Open",
 			Handler:    _Driver_Open_Handler,
+		},
+		{
+			MethodName: "CheckConfig",
+			Handler:    _Driver_CheckConfig_Handler,
 		},
 		{
 			MethodName: "Close",
