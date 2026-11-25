@@ -2,7 +2,7 @@
 
 This file specifies the `glance` and `swift` drivers (backlog 21 and 34, OI-6) and the lab that tests them against DevStack. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`.
 
-Status: draft, 2026-11-25, for approval.
+Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1).
 
 ## 1. Decisions (2026-11-25)
 
@@ -10,7 +10,25 @@ Status: draft, 2026-11-25, for approval.
 2. **Both authentications**, chosen per endpoint by its credentials: Keystone v3 **application credentials** (`application_credential_id` and `application_credential_secret`, scoped to one project by Keystone) or **username and password** (`username`, `password`, `user_domain_name`, `project_name`, `project_domain_name`). No token is stored: each `Open` authenticates, and gophercloud re-authenticates when the token expires.
 3. **Glance offers the three upload methods, chosen per endpoint** (`upload`): `put` (the plain `PUT /v2/images/{id}/file`), `glance-direct` (stage, then import, which lets multi-store choose the stores) and `web-download` (Glance pulls the object from a URL veho gives it). Each restarts from zero after a failure: Glance has no resumable upload.
 4. **Swift is a source and a destination**, with **static large objects** (SLO): each part a segment, the manifest written at commit, so parts are parallel and resumable as with S3.
-5. **The minimum OpenStack release is Rocky (2018)**: Glance v2.7 with `os_hidden` and the interoperable import, Keystone v3 with application credentials. Every release since works; the lab runs the most recent DevStack stable branch.
+5. **The minimum OpenStack release is Queens (2018), and each feature asks only for the release it needs** (§1.1): the plain `put` upload, the import methods and application credentials work on Queens; hiding an image while it uploads, Glance's SHA-512 and the stores need Rocky or later. The driver detects what the cloud offers; it does not take a release number from the endpoint. The lab runs the most recent DevStack stable branch.
+6. **Nexus** (Sonatype Nexus Repository) is specified apart, in `veho-nexus.md`.
+
+### 1.1 The release each feature needs
+
+| Feature | Needs | Detected by | Without it |
+| :--- | :--- | :--- | :--- |
+| Keystone v3, username and password | any release with Keystone v3 | | |
+| Application credentials | Keystone Queens | the authentication's answer | the endpoint's credentials are refused with a `Permanent` error that says so |
+| Glance source (`GET /v2/images/{id}`, download) | Glance v2, any release | | |
+| Ranges on the image download | probed | `Stat`'s probe (§3.1) | `Permanent` |
+| `put` (`PUT /v2/images/{id}/file`) | Glance v2, any release | | |
+| `glance-direct`, `web-download` (interoperable import, API 2.6) | Glance Queens | `GET /v2/info/import` | `Begin` refuses the method (§3.3) |
+| `os_hidden` (API 2.7) | Glance Rocky | the API versions (`GET /versions`) | the image uploads under a temporary name (§3.2) |
+| `os_hash_algo`, `os_hash_value` (multihash, API 2.7) | Glance Rocky | the image's fields | the MD5 `checksum` is compared instead (§3.2) |
+| `stores` (multi-store, API 2.8) | Glance Rocky (experimental), Train (stable) | `GET /v2/info/stores` | `Begin` refuses `stores` (§3.3) |
+| Swift SLO | any supported release | `GET /info` (`slo`) | `Begin` refuses the endpoint |
+
+The floor is Queens because it is the oldest release with application credentials and the import methods; a Pike cloud would work for `put` with a password, but it is not supported or tested.
 
 ## 2. Common: endpoints, catalog, TLS, dial guard
 
@@ -45,8 +63,9 @@ The destination path is the **image name**. Properties of the new image come fro
 
 - `disk_format` and `container_format` are required (Glance needs them); `visibility` defaults to `private`; `properties` are set on the image; `stores` only with `glance-direct` (multi-store `import` with `stores`; `all_stores: true` with `"stores": ["*"]`).
 - **Invisible until commit (PLG-8):** `Begin` creates the image with `os_hidden: true` and the property `veho_upload: <upload id>`, under the name `<name>`, with an **ID derived from the upload** (UUIDv5 of the transfer's token), so a `Begin` retried after a lost answer finds its image instead of creating a second one. `Commit` sets `os_hidden: false` once the image is `active` and its hash checked. A hidden image is not listed by default, but it is readable by its ID to the project: accepted (R-16).
+- **On a Glance before Rocky** (no `os_hidden`), `Begin` creates the image under the temporary name `veho-upload-<upload id>`, and `Commit` renames it to `<name>`. The image is listed while it uploads, under a name that says what it is, and is never found by `Stat` under the destination name before `Commit` (R-16).
 - **Overwrite.** Glance names are not unique. `Stat` of a destination finds the project's visible, active images of that name: none is `ErrNotFound`, more than one is a `Permanent` error. With `overwrite: replace`, `Commit` unhides the new image, then deletes the older ones of that name (a moment when both are visible: R-16).
-- **Integrity.** The driver computes the SHA-512 of the bytes it uploads (`put`, `glance-direct`) and compares it, at `Commit`, with Glance's `os_hash_value` (when `os_hash_algo` is `sha512`, Glance's default); a mismatch is `Integrity`. The engine's own digest (SHA-256 of the parts) and size check apply as for every destination.
+- **Integrity.** The driver computes the SHA-512 of the bytes it uploads (`put`, `glance-direct`) and compares it, at `Commit`, with Glance's `os_hash_value` (when `os_hash_algo` is `sha512`, Glance's default); a mismatch is `Integrity`. A Glance without multihash (before Rocky), or with another `os_hash_algo`, has its MD5 `checksum` compared instead, from an MD5 the driver computes too: enough against corruption, not against a Glance that lies (OS-8). The engine's own digest (SHA-256 of the parts) and size check apply as for every destination.
 - **Capabilities:** sink, not resumable (`ResumableUpload: false`, `ParallelParts: false`): the parts of an attempt are streamed in order into one request; a new attempt finds the token's upload gone (`ResumeInvalid`), deletes the hidden image and begins again from byte zero. `MaxParts` is unbounded and the part size is the engine's.
 
 **The three methods:**
@@ -88,11 +107,12 @@ A `Begin` refuses an endpoint whose Glance lacks the upload method (`GET /v2/inf
 | OS-4 | **Glance stores bytes other than the source's** (`web-download`: Glance fetched another object, or a man in the middle on Glance's side). | Read-back: the image's parts are hashed by veho and compared with the source's digest (§3.2). |
 | OS-5 | **A half-uploaded image is used** before veho has verified it. | `os_hidden` until `Commit`, after `active` and the hash check; the hidden image deleted on a new attempt or `Abort` (R-16). |
 | OS-6 | **An image replaced under its ID** while it is read. | The status and the hash are checked before every range; a changed image is `SourceChanged`. |
+| OS-8 | **A weaker hash on old clouds**: before Rocky only Glance's MD5 compares the stored image with the uploaded bytes. | The MD5 detects corruption, which is the threat (Glance is the tenant's own service); `web-download` always uses the read-back, which veho hashes with SHA-256. |
 | OS-7 | **Swift segments of another upload or object** are taken into a manifest. | Segment names carry the upload ID; Swift checks each segment's size and `ETag` against the manifest. |
 
 New residual risks:
 
-- **R-16** A Glance image being uploaded is hidden, not invisible: the project's users can read it by its ID before `Commit`, and with `overwrite: replace` the old and new images are both visible for a moment. Glance has no atomic replacement; accepted.
+- **R-16** A Glance image being uploaded is hidden, not invisible: the project's users can read it by its ID before `Commit` (and, before Rocky, see it listed under its temporary name), and with `overwrite: replace` the old and new images are both visible for a moment. Glance has no atomic replacement; accepted.
 - **R-17** Glance cannot resume an upload: a failed attempt restarts a 5 to 10 GB image from zero (`put`, `glance-direct`). Mitigated by the engine's retries and backoff; `web-download` moves the transfer to Glance. Accepted.
 
 ## 6. The DevStack lab
@@ -103,6 +123,7 @@ A lab of its own, **self-contained in this repository** (`test/devstack/`), so i
 - Glance with the **import workflow** (`glance-direct` and `web-download` enabled, `web-download` allowed to reach the lab's addresses), **multi-store** with two file stores (`fast`, `cheap`), and `os_hidden` support (every release since Rocky).
 - `lab.sh` commands as in the veho and openstack-spiffe labs: `preflight`, `up`, `down`, `status`, `ssh`, `snapshot`, `reset` (back to the baseline in minutes), `stop`, `start`, `env` (the tests' environment: `auth_url`, CA, credentials of a test project with an application credential and a user), `test`.
 - `up` makes a baseline snapshot after `stack.sh`, so later runs `reset` instead of stacking again (about 30 minutes). An optional `LAB_IMPORT_IMAGE` takes an Ubuntu cloud image already downloaded (such as openstack-spiffe's cache) instead of downloading one; nothing else is shared.
+- DevStack builds only recent releases on Ubuntu 24.04, so the lab tests the current release; the paths for older clouds (§1.1) are tested against fakes (OS-T4b).
 - The tests (build tag `devstack`) run the conformance suite on Glance (source; destination with each method) and Swift (source and destination), the checks of §3 and §4, and an end-to-end job from S3 (the veho lab's Garage, when it runs) or an HTTP source to Glance and Swift.
 
 ## 7. Tests (written first)
@@ -113,6 +134,7 @@ A lab of its own, **self-contained in this repository** (`test/devstack/`), so i
 | OS-T2 | The catalog: region and interface chosen; an endpoint on a refused address (`ErrForbidden`); `ca_cert` trusted, an unknown CA refused | unit |
 | OS-T3 | Glance source: version from the hash, a deactivated or deleted image `SourceChanged`, a Glance without ranges refused | unit (fake Glance), DevStack |
 | OS-T4 | Glance destination, each method: hidden until commit, the ID derived from the upload, the hash compared, `overwrite: replace`, a new attempt deletes the hidden image, a missing method or store refused at `Begin` | unit, DevStack |
+| OS-T4b | A Glance of Queens (a fake answering API 2.6, no multihash, no stores): `put` under the temporary name and renamed, the MD5 compared, `stores` refused, application credentials accepted | unit |
 | OS-T5 | `web-download`: the presigned URL from `s3` and `http`, a source that cannot presign refused at submission, the read-back digest compared with the source's, a URL never logged | unit, integration, DevStack |
 | OS-T6 | Swift: the conformance suite as source and sink, SLO manifest, segment `ETag` checked, `storage_policy` | DevStack |
 | OS-T7 | End to end: a job to Glance (each method) and Swift | DevStack |
