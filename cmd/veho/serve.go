@@ -25,6 +25,7 @@ import (
 	"github.com/dihedron/veho/pkg/metadata"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
+	httpdriver "github.com/dihedron/veho/pkg/plugin/http"
 	"github.com/dihedron/veho/pkg/plugin/process"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
@@ -153,7 +154,7 @@ func connect(ctx context.Context, cfg *config.Config) (map[string]*pgxpool.Pool,
 
 // builtins are the drivers compiled into veho: those that need only the
 // standard library (veho-plugin-distribution.md §1).
-var builtins = map[string]process.Factory{"file": file.Factory}
+var builtins = map[string]process.Factory{"file": file.Factory, "http": httpdriver.Factory}
 
 // The plugins' and keys' directories, and whether their files must be
 // root's (PD-1, PD-6); tests change them to start plugins they build.

@@ -40,7 +40,7 @@ veho has not been released yet. What follows is true of the current code and is 
 
 - **No upgrade path for the schema.** Until the first deployment, the database schema is changed in place: a new version may need an empty database (chapter *Upgrades and removal*). Rolling upgrades of the nodes with transfers in flight are validated.
 - **Topology by SQL.** The regions and sites that endpoints and nodes refer to are created with a SQL function; no command or API manages them yet.
-- **Drivers.** The shipped drivers are `file` (a directory), built in, and `s3` (any S3-compatible service), a plugin with a package of its own. HTTP, SFTP and FTP sources come next; a Glance driver is planned. Third-party plugins can be loaded, pinned by their SHA-256, but none exists.
+- **Drivers.** Built in: `file` (a directory, typically an NFS mount) and `http` (HTTP and HTTPS sources). Plugins, each with a package of its own: `s3` (any S3-compatible service), `sftp` (SFTP and SCP, sources and destinations) and `ftp` (FTP and FTPS sources). Glance and Swift drivers are planned. Third-party plugins can be loaded, pinned by their SHA-256, but none exists.
 - **Audit.** Audit events go to the local system log, to be forwarded to a SIEM; they are not tamper-evident (the full audit log is planned).
 - **Secrets.** The key that protects the stored credentials comes from a file or a systemd credential; Vault, HSMs and a Shamir unseal are planned.
 - **WAN validation.** The state store's behaviour over the real inter-region latency for days on end, and the latency envelope, are still being measured.

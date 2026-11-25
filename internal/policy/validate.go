@@ -16,9 +16,12 @@ const (
 	CodeDuplicateDestination = "duplicate_destination"
 	CodeDestinationIsSource  = "destination_is_source"
 	CodeUnsatisfiable        = "unsatisfiable_policy"
+	// CodeInvalidEndpoint: the source cannot be read, or a destination
+	// written, by its driver on this node (veho-sources.md §2, decision 1).
+	CodeInvalidEndpoint = "invalid_endpoint"
 )
 
-// Error is a policy the API refuses (HTTP 422).
+// Error is a policy the API refuses (HTTP 400, with its Code).
 type Error struct {
 	Code    string
 	Message string

@@ -36,6 +36,14 @@ type Target struct {
 	// Seed of the random sizes and contents (default: the time); a failure
 	// reports it.
 	Seed uint64
+	// Put stores data as ref behind the driver's back, for a driver that is
+	// a source only (veho-sources.md SRC-4): the suite then runs its source
+	// cases, writing the objects through Put. It replaces an object that is
+	// there, and removes the objects in t's cleanup.
+	Put func(t *testing.T, ref plugin.Ref, data []byte)
+	// Confined: the driver refuses keys that leave its root (SRC-W4), which
+	// the suite checks with "..", absolute and encoded keys.
+	Confined bool
 }
 
 // suite holds the state of one run.
@@ -62,8 +70,20 @@ func Run(t *testing.T, tg Target) {
 	s := &suite{Target: tg, src: src, rnd: rand.New(src)} //nolint:gosec // test data, not secrets
 	t.Logf("conformance: driver %s, seed %d, part size %d", tg.Driver.Name(), tg.Seed, tg.PartSize)
 	t.Run("Capabilities", s.capabilities)
+	if tg.Confined {
+		t.Run("Confined", s.confined)
+	}
+	if caps.Source && !caps.Sink && tg.Put != nil {
+		t.Run("ZeroBytes", s.zeroBytes)
+		t.Run("RoundTrip", s.roundTrip)
+		t.Run("SourceChanged", s.sourceChanged)
+		t.Run("NotFound", s.notFound)
+		t.Run("Cancellation", s.cancellation)
+		t.Run("BadCredentials", s.badCredentials)
+		return
+	}
 	if !caps.Sink || !caps.Source {
-		t.Skip("conformance: the suite needs a driver that is both source and sink")
+		t.Skip("conformance: the suite needs a driver that is both source and sink, or a Put for a source")
 	}
 	t.Run("ZeroBytes", s.zeroBytes)
 	t.Run("RoundTrip", s.roundTrip)
@@ -121,6 +141,17 @@ func (s *suite) parts(data []byte) [][]byte {
 		out = [][]byte{{}}
 	}
 	return out
+}
+
+// put stores data as ref: through Put for a source-only driver, else
+// through the driver.
+func (s *suite) put(t *testing.T, c plugin.Client, ref plugin.Ref, data []byte) {
+	t.Helper()
+	if s.Put != nil && !s.Driver.Capabilities().Sink {
+		s.Put(t, ref, data)
+		return
+	}
+	s.write(t, c, ref, data)
 }
 
 // write uploads data as ref, in parts (concurrently when the driver allows
@@ -225,7 +256,7 @@ func (s *suite) capabilities(t *testing.T) {
 func (s *suite) zeroBytes(t *testing.T) {
 	c := s.open(t)
 	ref := s.ref("zero")
-	s.write(t, c, ref, nil)
+	s.put(t, c, ref, nil)
 	info, err := c.Stat(context.Background(), ref)
 	if err != nil || info.Size != 0 {
 		t.Fatalf("Stat = %+v, %v", info, err)
@@ -241,7 +272,7 @@ func (s *suite) roundTrip(t *testing.T) {
 	for _, size := range sizes {
 		ref := s.ref(fmt.Sprintf("rt%d", size))
 		data := s.bytes(size)
-		s.write(t, c, ref, data)
+		s.put(t, c, ref, data)
 		info, err := c.Stat(context.Background(), ref)
 		if err != nil || info.Size != size || info.Version == "" {
 			t.Fatalf("size %d: Stat = %+v, %v", size, info, err)
@@ -379,15 +410,39 @@ func (s *suite) resumeInvalid(t *testing.T) {
 func (s *suite) sourceChanged(t *testing.T) {
 	c := s.open(t)
 	ref := s.ref("changed")
-	s.write(t, c, ref, s.bytes(100))
+	s.put(t, c, ref, s.bytes(100))
 	before, err := c.Stat(context.Background(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(10 * time.Millisecond) // a version may include a time
-	s.write(t, c, ref, s.bytes(101))
+	s.put(t, c, ref, s.bytes(101))
 	_, err = c.ReadRange(context.Background(), ref, 0, 10, before.Version)
 	wantClass(t, "ReadRange of an old version", err, plugin.SourceChanged)
+}
+
+// confined: keys that leave the root are refused as Permanent, not looked
+// up (SRC-W4); keys with encoded separators are at most absent, as a
+// driver for which they are plain names finds no such object.
+func (s *suite) confined(t *testing.T) {
+	c := s.open(t)
+	ctx := context.Background()
+	for _, key := range []string{"../x", "a/../../x", "/etc/passwd", "..", "."} {
+		ref := plugin.Ref{Container: s.Container, Key: key}
+		if _, err := c.Stat(ctx, ref); err == nil || errors.Is(err, plugin.ErrNotFound) || plugin.ClassOf(err) != plugin.Permanent {
+			t.Errorf("Stat(%q): %v, want a Permanent refusal", key, err)
+		}
+		if r, err := c.ReadRange(ctx, ref, 0, 1, ""); err == nil {
+			_ = r.Close()
+			t.Errorf("ReadRange(%q): no error", key)
+		}
+	}
+	for _, key := range []string{"%2e%2e/x", "a/%2e%2e/%2e%2e/x", "..%2fx", "%2e%2e%2fx"} {
+		ref := plugin.Ref{Container: s.Container, Key: key}
+		if _, err := c.Stat(ctx, ref); err == nil || plugin.ClassOf(err) != plugin.Permanent {
+			t.Errorf("Stat(%q): %v, want refused or absent", key, err)
+		}
+	}
 }
 
 func (s *suite) notFound(t *testing.T) {

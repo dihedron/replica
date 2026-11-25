@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -31,23 +32,64 @@ const staging = ".veho-staging"
 // maxParts bounds the part numbers.
 const maxParts = 10000
 
-// Driver is the file driver.
-type Driver struct{}
-
-// New returns the file driver.
-func New() Driver { return Driver{} }
-
-// Factory builds the driver from its settings; it has none yet, so any key
-// is refused (veho-plugin-distribution.md §4).
-func Factory(settings json.RawMessage) (plugin.Driver, error) {
-	var none struct{}
-	if err := plugin.DecodeSettings(settings, &none); err != nil {
-		return nil, fmt.Errorf("file: %w", err)
-	}
-	return New(), nil
+// Driver is the file driver. With restricted, an endpoint's root must be
+// one of roots or under one (veho-sources.md §3.5, SRC-W7).
+type Driver struct {
+	roots      []string
+	restricted bool
 }
 
-func (Driver) Name() string      { return "file" }
+// New returns the file driver without restriction, for tests and libraries;
+// veho's nodes build it with Factory.
+func New() Driver { return Driver{} }
+
+type settings struct {
+	// Roots are the directories an endpoint's root may be, or be under;
+	// empty, no file endpoint can be created.
+	Roots []string `json:"roots"`
+}
+
+// Factory builds the driver from its settings, roots (veho-sources.md §5).
+func Factory(raw json.RawMessage) (plugin.Driver, error) {
+	var s settings
+	if err := plugin.DecodeSettings(raw, &s); err != nil {
+		return nil, fmt.Errorf("file: %w", err)
+	}
+	for _, r := range s.Roots {
+		if !path.IsAbs(r) || path.Clean(r) != r {
+			return nil, fmt.Errorf("file: settings: roots: %q is not a clean absolute path", r)
+		}
+	}
+	return Driver{roots: s.Roots, restricted: true}, nil
+}
+
+// under reports whether dir is one of the roots or under one.
+func (d Driver) under(dir string) bool {
+	for _, r := range d.roots {
+		if dir == r || r == "/" || strings.HasPrefix(dir, r+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// CheckConfig refuses a root that is not a clean absolute path, or not
+// under the driver's roots; the engine calls it when an endpoint is created.
+func (d Driver) CheckConfig(cfg plugin.Config) error {
+	var c config
+	if err := json.Unmarshal(cfg, &c); err != nil || !path.IsAbs(c.Root) || path.Clean(c.Root) != c.Root {
+		return plugin.Wrapf(plugin.Permanent, "file: the configuration needs a clean absolute root")
+	}
+	if d.restricted && !d.under(c.Root) {
+		return plugin.Wrapf(plugin.Permanent, "file: root %q is not under the driver's roots on this node (drivers[].settings.roots)", c.Root)
+	}
+	return nil
+}
+
+func (Driver) Name() string { return "file" }
+
+var _ plugin.ConfigChecker = Driver{}
+
 func (Driver) Schemes() []string { return []string{"file"} }
 
 func (Driver) Capabilities() plugin.Capabilities {
@@ -85,13 +127,23 @@ type config struct {
 
 // Open binds a client to the root directory of the configuration; the file
 // driver takes no credentials.
-func (Driver) Open(ctx context.Context, cfg plugin.Config, _ plugin.Credentials) (plugin.Client, error) {
+func (d Driver) Open(ctx context.Context, cfg plugin.Config, _ plugin.Credentials) (plugin.Client, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	var c config
 	if err := json.Unmarshal(cfg, &c); err != nil || !path.IsAbs(c.Root) {
 		return nil, plugin.Wrapf(plugin.Permanent, "file: the configuration needs an absolute root (%v)", err)
+	}
+	if d.restricted {
+		if err := d.CheckConfig(cfg); err != nil {
+			return nil, err
+		}
+		// the root as the node sees it: a link must not lead out of the roots
+		real, err := filepath.EvalSymlinks(c.Root)
+		if err == nil && !d.under(real) {
+			return nil, plugin.Wrapf(plugin.Permanent, "file: root %q leads to %q, not under the driver's roots", c.Root, real)
+		}
 	}
 	root, err := os.OpenRoot(c.Root)
 	if err != nil {
@@ -110,7 +162,7 @@ func (c *client) Close() error { return c.root.Close() }
 // checkKey refuses keys that are not clean relative paths, or that reach the
 // staging directory.
 func checkKey(key string) error {
-	if key == "" || path.IsAbs(key) || path.Clean(key) != key || key == ".." || strings.HasPrefix(key, "../") ||
+	if key == "" || key == "." || path.IsAbs(key) || path.Clean(key) != key || key == ".." || strings.HasPrefix(key, "../") ||
 		key == staging || strings.HasPrefix(key, staging+"/") {
 		return plugin.Wrapf(plugin.Permanent, "file: invalid key %q", key)
 	}

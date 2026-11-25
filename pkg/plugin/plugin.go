@@ -29,6 +29,14 @@ type Driver interface {
 	Open(ctx context.Context, cfg Config, creds Credentials) (Client, error)
 }
 
+// ConfigChecker is a driver that checks an endpoint's configuration when the
+// endpoint is created, so that a configuration it would refuse at every
+// transfer is refused at once (part of PLG-10, backlog 39). Built-in
+// drivers only: the plugin protocol does not carry it yet.
+type ConfigChecker interface {
+	CheckConfig(cfg Config) error
+}
+
 // Capabilities are what a driver can do; the core adapts to them (PLG-9).
 type Capabilities struct {
 	Source          bool

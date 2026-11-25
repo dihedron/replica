@@ -53,7 +53,12 @@ func TestMain(m *testing.M) {
 
 func load(t testing.TB, name string) *Process {
 	t.Helper()
-	p, err := Load(Options{Path: binaries[name].path, SHA256: binaries[name].sum})
+	// the file plugin's endpoints are the tests' temporary directories
+	settings, _ := json.Marshal(map[string]any{"roots": []string{filepath.Clean(os.TempDir())}})
+	if name != "file" {
+		settings = nil
+	}
+	p, err := Load(Options{Path: binaries[name].path, SHA256: binaries[name].sum, Settings: settings})
 	if err != nil {
 		t.Fatal(err)
 	}
