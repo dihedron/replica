@@ -22,7 +22,6 @@ import (
 	"github.com/dihedron/veho/migrations"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
-	"github.com/dihedron/veho/pkg/plugin/nexus"
 	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -110,11 +109,7 @@ func setup(t *testing.T) fixture {
 		"sinkonly": capsDriver{file.New(), "sinkonly", plugin.Capabilities{Sink: true}},
 		"srconly":  capsDriver{file.New(), "srconly", plugin.Capabilities{Source: true, RangeRead: true}},
 		"norange":  capsDriver{file.New(), "norange", plugin.Capabilities{Source: true, Sink: true}}}
-	if allow := os.Getenv("VEHO_TEST_NEXUS_ALLOW"); allow != "" {
-		if drivers["nexus"], err = nexus.Factory([]byte(`{"allow_cidrs": ["` + allow + `"]}`)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	labDrivers(t, drivers)
 	if f.e, err = New(ctx, Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
 		Version: "test", Audit: f.audit, Secrets: f.secrets, Drivers: drivers}); err != nil {
 		t.Fatal(err)
