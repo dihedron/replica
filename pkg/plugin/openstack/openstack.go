@@ -284,12 +284,22 @@ func find(catalog *tokens.ServiceCatalog, eo gophercloud.EndpointOpts) (string, 
 	return "", false
 }
 
+// ResponseError is the service's answer in err, if any: gophercloud returns
+// it by value, or by pointer after a re-authentication.
+func ResponseError(err error) (gophercloud.ErrUnexpectedResponseCode, bool) {
+	if e, ok := errors.AsType[gophercloud.ErrUnexpectedResponseCode](err); ok {
+		return e, true
+	}
+	if e, ok := errors.AsType[*gophercloud.ErrUnexpectedResponseCode](err); ok && e != nil {
+		return *e, true
+	}
+	return gophercloud.ErrUnexpectedResponseCode{}, false
+}
+
 // StatusOf is the HTTP status of a service's error, if it has one.
 func StatusOf(err error) (int, bool) {
-	if e, ok := errors.AsType[gophercloud.ErrUnexpectedResponseCode](err); ok {
-		return e.Actual, true
-	}
-	return 0, false
+	e, ok := ResponseError(err)
+	return e.Actual, ok
 }
 
 // Classify gives an error of gophercloud or of the transport its class
@@ -305,7 +315,10 @@ func Classify(err error, what string) error {
 	if errors.Is(err, netguard.ErrForbidden) {
 		return plugin.Wrap(fmt.Errorf("%s: %w", what, netguard.ErrForbidden), plugin.Permanent)
 	}
-	if e, ok := errors.AsType[gophercloud.ErrUnexpectedResponseCode](err); ok {
+	if _, ok := errors.AsType[*gophercloud.ErrUnableToReauthenticate](err); ok {
+		return plugin.Wrap(fmt.Errorf("%s: not authorised (re-authentication failed)", what), plugin.Permanent)
+	}
+	if e, ok := ResponseError(err); ok {
 		msg := fmt.Errorf("%s: %s answered %d", what, e.Method, e.Actual)
 		switch {
 		case e.Actual == http.StatusNotFound:

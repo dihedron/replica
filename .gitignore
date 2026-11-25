@@ -49,3 +49,7 @@ test/lab/.evidence/
 test/lab/lab.local.env
 
 _test/.env
+
+# DevStack lab (test/devstack)
+test/devstack/.state/
+test/devstack/lab.local.env

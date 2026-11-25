@@ -298,6 +298,8 @@ func TestClassify(t *testing.T) {
 		{context.DeadlineExceeded, plugin.Transient},
 		{fmt.Errorf("dial: %w", netguard.ErrForbidden), plugin.Permanent},
 		{errors.New("connection reset"), plugin.Transient},
+		{&gophercloud.ErrErrorAfterReauthentication{ErrOriginal: code(503)}, plugin.Transient},
+		{&gophercloud.ErrUnableToReauthenticate{ErrOriginal: code(401), ErrReauth: code(401)}, plugin.Permanent},
 	} {
 		got := Classify(tc.err, "image")
 		if plugin.ClassOf(got) != tc.want {

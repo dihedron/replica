@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "container": {
+      "type": "string",
+      "description": "the container of the objects"
+    },
+    "segment_container": {
+      "type": "string",
+      "description": "the container of the segments of large objects; default: <container>_segments"
+    },
+    "storage_policy": {
+      "type": "string",
+      "description": "the policy of the containers veho creates, checked on existing ones"
+    }
+  },
+  "required": [
+    "container"
+  ],
+  "additionalProperties": false
+}
