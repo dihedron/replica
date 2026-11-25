@@ -2,15 +2,15 @@
 
 This file specifies how a driver reaches a storage service through an HTTP forward proxy: the `s3` driver first, so that a backup from an on-premise source to AWS S3 works where every non-corporate connection must go through a corporate proxy. It is part of `veho_specification.md`; it extends the dial guard of `veho-sources.md` §4 (SRC-3, SEC-13) and the network checks of `veho-network-checks.md`.
 
-Status: proposed, 2026-11-25; awaiting approval.
+Status: approved, 2026-11-25, for the `s3`, `http` and `nexus` drivers together (decision 7); §11 records what the implementation changed.
 
 ## 1. Why
 
 veho dials every storage service itself, through the dial guard, and uses no proxy (`veho-sources.md` §4): through a proxy the guard would see the proxy's address, not the target's, and a tenant's endpoint could make the proxy reach the metadata service or an internal host. But a common deployment has an on-premise network whose hosts reach the Internet only through a proxy, and **resolve only corporate names**: the proxy alone resolves the external ones. A backup from an on-premise S3 (or SFTP) to AWS S3 is then impossible.
 
-## 2. Decisions (proposed)
+## 2. Decisions (approved 2026-11-25)
 
-| # | Question | Proposal |
+| # | Question | Decision |
 | :--- | :--- | :--- |
 | 1 | Who chooses the proxy | The operator, per driver, in `drivers[].settings.proxy`. Never a tenant, never the environment (`HTTPS_PROXY` stays ignored): the configuration is the one source, and it is visible. |
 | 2 | Which targets go through it | Those whose **host name** matches `proxy.hosts`, a list of exact names (`s3.backup.example.net`) and suffix patterns (`*.amazonaws.com`: any name ending in `.amazonaws.com`). The match is on the name, case-insensitive, after the name is normalised (no trailing dot); veho does **not** resolve it: only the proxy does. |
@@ -18,7 +18,7 @@ veho dials every storage service itself, through the dial guard, and uses no pro
 | 4 | How | `https` through `CONNECT host:port` to the proxy, then TLS end to end with the target, verified for the target's name against the system roots and the endpoint's CA. The proxy sees the host name and port, never the content or the credentials. |
 | 5 | The proxy's own address | Dialled directly; it is the operator's, so the guard allows it (whatever its range) and only it. Its URL is `http://` (the `CONNECT` is in clear, the tunnel is TLS) or `https://` (TLS to the proxy too, verified against `proxy.ca_cert` or the system roots). |
 | 6 | Proxy authentication | Optional Basic credentials, from a file the operator names (`proxy.credentials_file`, `user:password`, mode 0600), sent only to the proxy in `Proxy-Authorization`; never in the configuration's text, never in a log. |
-| 7 | Which drivers | `s3` now. The same setting suits `http` and `nexus` later (backlog); the code is a shared dialer (`internal/netguard`), so they need only to use it. |
+| 7 | Which drivers | `s3`, `http` and `nexus`, the drivers built on `net/http`, through one shared dialer (`internal/netguard`). |
 | 8 | Network checks | A proxied flow is probed as the path a transfer takes: TCP (or TLS) to the proxy, `CONNECT` to the target, then the TLS handshake with the target's name. Its result says `via proxy`. |
 
 ## 3. Settings
@@ -98,4 +98,10 @@ The Setup Guide (the `proxy` settings, the credentials file), the Operator's Gui
 
 ## 10. Out of scope
 
-SOCKS proxies; PAC files; a proxy for the webhooks; `http` and `nexus` through the proxy (backlog, decision 7); the DevStack drivers (Keystone's catalog names are the cloud's, so a proxy for them needs its own list).
+SOCKS proxies; PAC files; a proxy for the webhooks; the DevStack drivers (Keystone's catalog names are the cloud's, so a proxy for them needs its own list).
+
+## 11. Changes from the implementation (2026-11-25)
+
+- **`http://` proxies only.** The `CONNECT` is in clear and the tunnel is TLS with the target, which is what a corporate proxy offers; a TLS connection to the proxy itself would gain little (the target's TLS protects the content and the credentials) and the probes could not follow it. `proxy.ca_cert_file` is dropped, and an `https://` proxy URL is refused when the driver is built.
+- **The route is decided by one shared `netguard.Proxy`** (`Routes(scheme, host)`), which the drivers and the probes build from the same `drivers[].settings.proxy`: the probes need no `Flow.Proxy` field (§6), the engine builds the proxy of the endpoint's driver as it builds its guard.
+- A `CONNECT` refused is reported through `http.Transport.OnProxyConnectResponse` as a `netguard.ProxyError` with the proxy's status, which each driver classifies (decision §4).

@@ -31,13 +31,15 @@ const (
 // Driver reads objects from HTTP servers, through the dial guard.
 type Driver struct {
 	guard *netguard.Guard
+	proxy *netguard.Proxy // the operator's, or nil
 	// tlsConfig is for tests, which trust their own server
 	tlsConfig *tls.Config
 }
 
 // settings are the platform's (veho-sources.md §5).
 type settings struct {
-	AllowCIDRs []string `json:"allow_cidrs"`
+	AllowCIDRs []string                `json:"allow_cidrs"`
+	Proxy      *netguard.ProxySettings `json:"proxy"`
 }
 
 // Factory builds the driver from its settings: allow_cidrs, the ranges the
@@ -51,7 +53,11 @@ func Factory(raw json.RawMessage) (plugin.Driver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("http: %w", err)
 	}
-	return Driver{guard: g}, nil
+	p, err := netguard.NewProxy(s.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("http: %w", err)
+	}
+	return Driver{guard: g, proxy: p}, nil
 }
 
 func (Driver) Name() string      { return "http" }
@@ -156,16 +162,16 @@ func (d Driver) Open(ctx context.Context, cfg plugin.Config, creds plugin.Creden
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
+	transport := &nethttp.Transport{
+		TLSClientConfig:       tlsConfig,
+		TLSHandshakeTimeout:   dialTimeout,
+		ResponseHeaderTimeout: headerTimeout,
+		MaxIdleConnsPerHost:   4,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	d.proxy.Apply(transport, guard, dialTimeout) // the guard, and the operator's proxy if any (veho-proxy.md)
 	hc := &nethttp.Client{
-		Transport: &nethttp.Transport{
-			Proxy:                 nil,
-			DialContext:           guard.Dialer(dialTimeout).DialContext,
-			TLSClientConfig:       tlsConfig,
-			TLSHandshakeTimeout:   dialTimeout,
-			ResponseHeaderTimeout: headerTimeout,
-			MaxIdleConnsPerHost:   4,
-			IdleConnTimeout:       90 * time.Second,
-		},
+		Transport: transport,
 		// no redirects: a 3xx is an answer (SEC-13, T-29)
 		CheckRedirect: func(*nethttp.Request, []*nethttp.Request) error { return nethttp.ErrUseLastResponse },
 	}
@@ -271,8 +277,8 @@ func (c *client) do(ctx context.Context, req *nethttp.Request) (*nethttp.Respons
 	switch {
 	case ctx.Err() != nil:
 		return nil, ctx.Err()
-	case errors.Is(err, netguard.ErrForbidden):
-		return nil, plugin.Wrap(fmt.Errorf("http: %w", netguard.ErrForbidden), plugin.Permanent)
+	case netguard.Classified("http", err) != nil:
+		return nil, netguard.Classified("http", err)
 	}
 	var cert *tls.CertificateVerificationError
 	if errors.As(err, &cert) {

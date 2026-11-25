@@ -1,16 +1,20 @@
 package flowcheck
 
 import (
+	"bufio"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/pem"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -249,4 +253,85 @@ func FuzzCheck(f *testing.F) {
 			}
 		}
 	})
+}
+
+// connectProxy is a CONNECT proxy whose DNS alone knows name: it is to; it
+// refuses any other name, and records the Proxy-Authorization it got.
+func connectProxy(t *testing.T, name, to string, auth *atomic.Value) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = c.Close() }()
+				req, err := http.ReadRequest(bufio.NewReader(c))
+				if err != nil || req.Method != http.MethodConnect {
+					return
+				}
+				auth.Store(req.Header.Get("Proxy-Authorization"))
+				if host, _, _ := net.SplitHostPort(req.Host); host != name {
+					_, _ = io.WriteString(c, "HTTP/1.1 403 Forbidden\r\n\r\n")
+					return
+				}
+				up, err := net.Dial("tcp", to)
+				if err != nil {
+					return
+				}
+				defer func() { _ = up.Close() }()
+				_, _ = io.WriteString(c, "HTTP/1.1 200 OK\r\n\r\n")
+				go func() { _, _ = io.Copy(up, c) }()
+				_, _ = io.Copy(c, up)
+			}()
+		}
+	}()
+	return ln.Addr().String()
+}
+
+// PX-T4: a flow to a name the proxy serves is probed through it, unresolved
+// here, the TLS name verified through the tunnel; a refusal of the proxy is
+// unreachable; the proxy's credentials never in the result.
+func TestProxied(t *testing.T) {
+	srv := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	u, _ := url.Parse(srv.URL)
+	var auth atomic.Value
+	proxy := connectProxy(t, "example.com", u.Host, &auth)
+	cred := filepath.Join(t.TempDir(), "proxy")
+	if err := os.WriteFile(cred, []byte("veho:s3cret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := netguard.NewProxy(&netguard.ProxySettings{URL: "http://" + proxy, Hosts: []string{"example.com", "*.example.net"}, CredentialsFile: cred})
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, _ := netguard.New(nil)
+	o := Options{Guard: public, Proxy: p, Timeout: time.Second, Retries: 1,
+		Resolve: func(context.Context, string) ([]netip.Addr, error) {
+			t.Error("a proxied name was resolved")
+			return nil, errors.New("no")
+		}}
+	ca := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.Certificate().Raw}))
+	port := port(t, u.Host)
+	r := one(t, plugin.Flow{Purpose: "s3", Host: "example.com", Port: port, TLS: true, ServerName: "example.com", CACert: ca}, o)
+	if r.Status != Reachable || r.Protocol != "tls via proxy" || r.Address != proxy || strings.Contains(r.Reason+r.Address, "s3cret") {
+		t.Fatalf("through the proxy: %+v", r)
+	}
+	if got, _ := auth.Load().(string); !strings.HasPrefix(got, "Basic ") {
+		t.Fatalf("the proxy's credentials: %q", got)
+	}
+	if r := one(t, plugin.Flow{Purpose: "s3", Host: "b.example.net", Port: port, TLS: true, CACert: ca}, o); r.Status != Unreachable || !strings.Contains(r.Reason, "403") {
+		t.Fatalf("refused by the proxy: %+v", r)
+	}
+	wrong := plugin.Flow{Purpose: "s3", Host: "example.com", Port: port, TLS: true, ServerName: "example.com"} // no CA
+	if r := one(t, wrong, o); r.Status != Unreachable {
+		t.Fatalf("untrusted through the proxy: %+v", r)
+	}
 }
