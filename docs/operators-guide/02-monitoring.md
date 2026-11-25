@@ -80,6 +80,7 @@ The actions:
 | `JOB_SUBMIT`, `JOB_CANCEL`, `JOB_RETRY`, `JOB_SETTLED` | A job submitted, cancelled, retried; a job's last transfer ended |
 | `POLICY_CREATE`, `POLICY_DELETE`, `POLICY_GRANTS` | A policy version created; a policy deleted; its grants changed |
 | `ENDPOINT_CREATE`, `ENDPOINT_UPDATE`, `ENDPOINT_DELETE` | An endpoint registered, changed, removed |
+| `ENDPOINT_CHECKED` | A network check of an endpoint started: its id and the counts of its flows and nodes, never the addresses |
 | `WEBHOOK_CREATE`, `WEBHOOK_UPDATE`, `WEBHOOK_ROTATE`, `WEBHOOK_DELETE`, `WEBHOOK_TEST` | A webhook registered, changed, given a new secret, removed; a ping posted |
 | `WEBHOOK_DISABLE`, `WEBHOOK_DELIVERY_ABANDONED` | A webhook switched off after 12 consecutive failed deliveries; an event given up after 12 attempts, or past the cap of 10,000 pending |
 | `SECRET_PUT`, `SECRET_DELETE` | A secret written (a new version) or removed |

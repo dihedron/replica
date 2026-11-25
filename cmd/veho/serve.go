@@ -94,6 +94,7 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 	go e.RunHeartbeat(hctx)
 	go e.RunHousekeeping(hctx)
 	go e.RunWebhooks(hctx)
+	go e.RunEndpointChecks(hctx)
 	stopMetrics, err := serveMetrics(cfg, e, aud)
 	if err != nil {
 		stopBeat()

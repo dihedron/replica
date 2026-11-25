@@ -2,7 +2,7 @@
 
 This file specifies backlog item 40: veho records the network flows each endpoint needs and checks them from every executor node, with netcheck, as ligo's client SDK does (`ligo/.specs/ligo-network-checks.md`, `ligo/pkg/client/flowcheck.go`). It is part of `veho_specification.md`; it extends the driver contract (`veho-plugins.md`), the endpoint API (`veho-api.md`) and the command line (`veho-cli.md`).
 
-Status: approved, 2026-11-25, as proposed: the executors answer at their heartbeat (decision 3; LISTEN/NOTIFY was the alternative), and periodic checks go to the backlog (item 41).
+Status: approved, 2026-11-25, as proposed, and implemented the same day (§10): the executors answer at their heartbeat (decision 3; LISTEN/NOTIFY was the alternative), and periodic checks go to the backlog (item 41).
 
 ## 1. Why
 
@@ -113,3 +113,12 @@ The Operator's Guide (endpoint checks, what `Skipped` means, the firewall rules 
 ## 9. Out of scope
 
 Periodic checks (a background check of every endpoint: backlog item 41); checks of the flows a destination opens itself (Glance's `web-download` fetches its source from Glance's network, not veho's); ICMP; the flows of the state store and of the notifications (webhooks), which are the platform's, not an endpoint's.
+
+## 10. Changes from the implementation (2026-11-25)
+
+- **`FlowLister` is on the client** (`Flows(ctx)`), not on the driver with the configuration and credentials: `Open` already reads both, and authenticates where it must (an OpenStack catalog). Forwarded over gRPC as `Flows(Handle)`.
+- **`Flow.Unguarded`**: the `s3` driver connects without the dial guard (`veho-sources.md` §9), so its probes refuse only the metadata addresses and reach no further than its transfers. Every other driver's probes use its `allow_cidrs`.
+- **The last ten checks are kept by the insert of a new one**, not by housekeeping: the same transaction deletes the older ones.
+- **Explicit FTPS** is probed over TCP only: the TLS upgrade follows `AUTH TLS` inside the protocol; the result says so.
+- **Data model** as §4, with `pending_endpoint_checks(node, window)` the one function that crosses tenants (identifiers only).
+- Tests: NC-T1 (`pkg/plugin/*/flows_test.go`, `pkg/plugin/process/flows_test.go`), NC-T2 and NC-T6's fuzz (`internal/flowcheck`), NC-T3 (`internal/engine/checks_integration_test.go`), NC-T4 (`TestCLI`).

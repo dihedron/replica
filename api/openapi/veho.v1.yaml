@@ -282,6 +282,38 @@ components:
           $ref: '#/components/schemas/google.protobuf.Timestamp'
       title: Endpoint
       additionalProperties: false
+    veho.v1.EndpointCheck:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        endpoint:
+          type: string
+          title: endpoint
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        state:
+          type: string
+          title: state
+          description: running, complete, expired.
+        error:
+          type: string
+          title: error
+          description: Why the flows could not be found.
+        flows:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.Flow'
+          title: flows
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.NodeCheck'
+          title: nodes
+      title: EndpointCheck
+      additionalProperties: false
     veho.v1.EndpointTest:
       type: object
       properties:
@@ -327,6 +359,75 @@ components:
           $ref: '#/components/schemas/google.protobuf.Timestamp'
       title: Entitlement
       additionalProperties: false
+    veho.v1.Flow:
+      type: object
+      properties:
+        purpose:
+          type: string
+          title: purpose
+        host:
+          type: string
+          title: host
+        port:
+          type: integer
+          title: port
+          format: int32
+        tls:
+          type: boolean
+          title: tls
+        server_name:
+          type: string
+          title: server_name
+        handshake:
+          type: string
+          title: handshake
+          description: '"": TCP, or TLS with tls; "ssh".'
+        unprobed:
+          type: string
+          title: unprobed
+          description: Why the flow is not probed, if so.
+        unguarded:
+          type: boolean
+          title: unguarded
+          description: The driver connects without the dial guard (s3).
+      title: Flow
+      additionalProperties: false
+      description: A network flow of an endpoint, from an executor to host:port.
+    veho.v1.FlowResult:
+      type: object
+      properties:
+        purpose:
+          type: string
+          title: purpose
+        host:
+          type: string
+          title: host
+        port:
+          type: integer
+          title: port
+          format: int32
+        address:
+          type: string
+          title: address
+          description: Empty when no address was probed.
+        protocol:
+          type: string
+          title: protocol
+          description: tcp, tls, ssh.
+        status:
+          type: string
+          title: status
+          description: reachable, unreachable, skipped.
+        reason:
+          type: string
+          title: reason
+        latency_ms:
+          type: string
+          title: latency_ms
+          format: int64
+      title: FlowResult
+      additionalProperties: false
+      description: One flow's outcome at one address, from one node.
     veho.v1.Grant:
       type: object
       properties:
@@ -415,6 +516,16 @@ components:
             $ref: '#/components/schemas/veho.v1.Transfer'
           title: transfers
       title: Job
+      additionalProperties: false
+    veho.v1.ListEndpointChecksResponse:
+      type: object
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.EndpointCheck'
+          title: checks
+      title: ListEndpointChecksResponse
       additionalProperties: false
     veho.v1.ListEndpointsResponse:
       type: object
@@ -508,6 +619,28 @@ components:
             $ref: '#/components/schemas/veho.v1.Webhook'
           title: webhooks
       title: ListWebhooksResponse
+      additionalProperties: false
+    veho.v1.NodeCheck:
+      type: object
+      properties:
+        node:
+          type: string
+          title: node
+        region:
+          type: string
+          title: region
+        answered:
+          type: boolean
+          title: answered
+        checked_at:
+          title: checked_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.FlowResult'
+          title: results
+      title: NodeCheck
       additionalProperties: false
     veho.v1.ObjectRef:
       type: object
@@ -1095,6 +1228,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/endpoints/{name}/checks:
+    get:
+      tags:
+        - veho.v1.EndpointService
+      summary: ListEndpointChecks
+      description: ListEndpointChecks lists the endpoint's last checks, newest first.
+      operationId: veho.v1.EndpointService.ListEndpointChecks
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListEndpointChecksResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/endpoints/{name}/checks/{id}:
+    get:
+      tags:
+        - veho.v1.EndpointService
+      summary: GetEndpointCheck
+      operationId: veho.v1.EndpointService.GetEndpointCheck
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            title: id
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.EndpointCheck'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/endpoints/{name}:check:
+    post:
+      tags:
+        - veho.v1.EndpointService
+      summary: CheckEndpoint
+      description: |-
+        CheckEndpoint checks the endpoint's network flows from every executor
+         (veho-network-checks.md), or returns the check in flight.
+      operationId: veho.v1.EndpointService.CheckEndpoint
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.EndpointCheck'
         "4XX":
           $ref: '#/components/responses/Problem'
         "5XX":

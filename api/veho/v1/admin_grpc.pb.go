@@ -25,12 +25,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EndpointService_CreateEndpoint_FullMethodName = "/veho.v1.EndpointService/CreateEndpoint"
-	EndpointService_GetEndpoint_FullMethodName    = "/veho.v1.EndpointService/GetEndpoint"
-	EndpointService_ListEndpoints_FullMethodName  = "/veho.v1.EndpointService/ListEndpoints"
-	EndpointService_UpdateEndpoint_FullMethodName = "/veho.v1.EndpointService/UpdateEndpoint"
-	EndpointService_DeleteEndpoint_FullMethodName = "/veho.v1.EndpointService/DeleteEndpoint"
-	EndpointService_TestEndpoint_FullMethodName   = "/veho.v1.EndpointService/TestEndpoint"
+	EndpointService_CreateEndpoint_FullMethodName     = "/veho.v1.EndpointService/CreateEndpoint"
+	EndpointService_GetEndpoint_FullMethodName        = "/veho.v1.EndpointService/GetEndpoint"
+	EndpointService_ListEndpoints_FullMethodName      = "/veho.v1.EndpointService/ListEndpoints"
+	EndpointService_UpdateEndpoint_FullMethodName     = "/veho.v1.EndpointService/UpdateEndpoint"
+	EndpointService_DeleteEndpoint_FullMethodName     = "/veho.v1.EndpointService/DeleteEndpoint"
+	EndpointService_TestEndpoint_FullMethodName       = "/veho.v1.EndpointService/TestEndpoint"
+	EndpointService_CheckEndpoint_FullMethodName      = "/veho.v1.EndpointService/CheckEndpoint"
+	EndpointService_ListEndpointChecks_FullMethodName = "/veho.v1.EndpointService/ListEndpointChecks"
+	EndpointService_GetEndpointCheck_FullMethodName   = "/veho.v1.EndpointService/GetEndpointCheck"
 )
 
 // EndpointServiceClient is the client API for EndpointService service.
@@ -48,6 +51,12 @@ type EndpointServiceClient interface {
 	DeleteEndpoint(ctx context.Context, in *EndpointName, opts ...grpc.CallOption) (*Empty, error)
 	// TestEndpoint probes the endpoint with its credentials.
 	TestEndpoint(ctx context.Context, in *EndpointName, opts ...grpc.CallOption) (*EndpointTest, error)
+	// CheckEndpoint checks the endpoint's network flows from every executor
+	// (veho-network-checks.md), or returns the check in flight.
+	CheckEndpoint(ctx context.Context, in *EndpointName, opts ...grpc.CallOption) (*EndpointCheck, error)
+	// ListEndpointChecks lists the endpoint's last checks, newest first.
+	ListEndpointChecks(ctx context.Context, in *EndpointName, opts ...grpc.CallOption) (*ListEndpointChecksResponse, error)
+	GetEndpointCheck(ctx context.Context, in *EndpointCheckName, opts ...grpc.CallOption) (*EndpointCheck, error)
 }
 
 type endpointServiceClient struct {
@@ -118,6 +127,36 @@ func (c *endpointServiceClient) TestEndpoint(ctx context.Context, in *EndpointNa
 	return out, nil
 }
 
+func (c *endpointServiceClient) CheckEndpoint(ctx context.Context, in *EndpointName, opts ...grpc.CallOption) (*EndpointCheck, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndpointCheck)
+	err := c.cc.Invoke(ctx, EndpointService_CheckEndpoint_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *endpointServiceClient) ListEndpointChecks(ctx context.Context, in *EndpointName, opts ...grpc.CallOption) (*ListEndpointChecksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListEndpointChecksResponse)
+	err := c.cc.Invoke(ctx, EndpointService_ListEndpointChecks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *endpointServiceClient) GetEndpointCheck(ctx context.Context, in *EndpointCheckName, opts ...grpc.CallOption) (*EndpointCheck, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EndpointCheck)
+	err := c.cc.Invoke(ctx, EndpointService_GetEndpointCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EndpointServiceServer is the server API for EndpointService service.
 // All implementations must embed UnimplementedEndpointServiceServer
 // for forward compatibility.
@@ -133,6 +172,12 @@ type EndpointServiceServer interface {
 	DeleteEndpoint(context.Context, *EndpointName) (*Empty, error)
 	// TestEndpoint probes the endpoint with its credentials.
 	TestEndpoint(context.Context, *EndpointName) (*EndpointTest, error)
+	// CheckEndpoint checks the endpoint's network flows from every executor
+	// (veho-network-checks.md), or returns the check in flight.
+	CheckEndpoint(context.Context, *EndpointName) (*EndpointCheck, error)
+	// ListEndpointChecks lists the endpoint's last checks, newest first.
+	ListEndpointChecks(context.Context, *EndpointName) (*ListEndpointChecksResponse, error)
+	GetEndpointCheck(context.Context, *EndpointCheckName) (*EndpointCheck, error)
 	mustEmbedUnimplementedEndpointServiceServer()
 }
 
@@ -160,6 +205,15 @@ func (UnimplementedEndpointServiceServer) DeleteEndpoint(context.Context, *Endpo
 }
 func (UnimplementedEndpointServiceServer) TestEndpoint(context.Context, *EndpointName) (*EndpointTest, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TestEndpoint not implemented")
+}
+func (UnimplementedEndpointServiceServer) CheckEndpoint(context.Context, *EndpointName) (*EndpointCheck, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckEndpoint not implemented")
+}
+func (UnimplementedEndpointServiceServer) ListEndpointChecks(context.Context, *EndpointName) (*ListEndpointChecksResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListEndpointChecks not implemented")
+}
+func (UnimplementedEndpointServiceServer) GetEndpointCheck(context.Context, *EndpointCheckName) (*EndpointCheck, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetEndpointCheck not implemented")
 }
 func (UnimplementedEndpointServiceServer) mustEmbedUnimplementedEndpointServiceServer() {}
 func (UnimplementedEndpointServiceServer) testEmbeddedByValue()                         {}
@@ -290,6 +344,60 @@ func _EndpointService_TestEndpoint_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EndpointService_CheckEndpoint_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndpointName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EndpointServiceServer).CheckEndpoint(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EndpointService_CheckEndpoint_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EndpointServiceServer).CheckEndpoint(ctx, req.(*EndpointName))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EndpointService_ListEndpointChecks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndpointName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EndpointServiceServer).ListEndpointChecks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EndpointService_ListEndpointChecks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EndpointServiceServer).ListEndpointChecks(ctx, req.(*EndpointName))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _EndpointService_GetEndpointCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EndpointCheckName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EndpointServiceServer).GetEndpointCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EndpointService_GetEndpointCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EndpointServiceServer).GetEndpointCheck(ctx, req.(*EndpointCheckName))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EndpointService_ServiceDesc is the grpc.ServiceDesc for EndpointService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -320,6 +428,18 @@ var EndpointService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TestEndpoint",
 			Handler:    _EndpointService_TestEndpoint_Handler,
+		},
+		{
+			MethodName: "CheckEndpoint",
+			Handler:    _EndpointService_CheckEndpoint_Handler,
+		},
+		{
+			MethodName: "ListEndpointChecks",
+			Handler:    _EndpointService_ListEndpointChecks_Handler,
+		},
+		{
+			MethodName: "GetEndpointCheck",
+			Handler:    _EndpointService_GetEndpointCheck_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

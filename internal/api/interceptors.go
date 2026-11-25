@@ -42,6 +42,10 @@ var roles = map[string]string{
 	"/veho.v1.EndpointService/UpdateEndpoint": RoleAdmin,
 	"/veho.v1.EndpointService/DeleteEndpoint": RoleAdmin,
 	"/veho.v1.EndpointService/TestEndpoint":   RoleAdmin,
+	// NC-5: what TestEndpoint may see
+	"/veho.v1.EndpointService/CheckEndpoint":      RoleAdmin,
+	"/veho.v1.EndpointService/ListEndpointChecks": RoleAdmin,
+	"/veho.v1.EndpointService/GetEndpointCheck":   RoleAdmin,
 
 	"/veho.v1.SecretService/PutSecret":    RoleAdmin,
 	"/veho.v1.SecretService/GetSecret":    RoleAdmin,
