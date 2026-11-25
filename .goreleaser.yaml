@@ -180,6 +180,21 @@ nfpms:
         dst: /usr/share/veho/postgres/roles.sql
         file_info:
           mode: 0644
+      # the release's plugin-signing keys: a plain file, not a configuration
+      # one, so that an upgrade installs the current keys
+      # (.specs/veho-plugin-distribution.md §5, §11)
+      - dst: /etc/veho/plugin-keys
+        type: dir
+        file_info:
+          mode: 0755
+          owner: root
+          group: root
+      - src: ./packaging/plugin-signing.pub
+        dst: /etc/veho/plugin-keys/veho.pub
+        file_info:
+          mode: 0644
+          owner: root
+          group: root
     scripts:
       postinstall: ./packaging/postinstall.sh
 

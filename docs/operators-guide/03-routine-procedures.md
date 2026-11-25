@@ -68,18 +68,25 @@ An endpoint referenced by a job (settled ones included, until retention removes 
 
 ## Drivers
 
-A node offers the drivers `drivers[]` lists in `veho.yaml`, and no other: an endpoint of a driver no node lists cannot be created. List the same drivers on every node. A driver of the release other than `file` comes in its own package (`veho-plugin-<name>`). A third-party plugin is listed with its executable and SHA-256:
+A node offers the drivers `drivers[]` lists in `veho.yaml`, and no other: an endpoint of a driver no node lists cannot be created. List the same drivers on every node. A driver of the release other than `file` comes in its own package (`veho-plugin-<name>`), signed with the release's key. A third-party plugin is either signed by its publisher, whose key you name, or pinned by its executable and SHA-256:
 
 ```yaml
 drivers:
   - name: file
-  - name: s3
-  - name: acme
-    path: /opt/acme/veho-plugin-acme
+  - name: s3                # the release's key, /etc/veho/plugin-keys/veho.pub
+  - name: acme              # signed by its publisher
+    key: acme               # /etc/veho/plugin-keys/acme.pub
+  - name: beta              # pinned
+    path: /opt/beta/veho-plugin-beta
     sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
 ```
 
-Its file and directory must be root's and writable only by root. After you replace the file, update the SHA-256 and restart the node.
+- **A signed plugin.** The publisher's package installs `veho-plugin-<name>`, its `.manifest` and `.manifest.sig` in `/usr/libexec/veho/plugins/`, and its public key as `/etc/veho/plugin-keys/<publisher>.pub` (or you copy the key there). The key signs only the drivers that name it in `veho.yaml`. The manifest says which veho versions the plugin supports; upgrading veho outside that range stops the node until you upgrade the plugin.
+- **A pinned plugin.** After you replace the file, update the SHA-256 and restart the node.
+
+Plugin files, key files and their directories must be root's and writable only by root.
+
+A publisher signs its plugins with `plugin-manifest` from veho's sources: `go run ./tools/plugin-manifest genkey acme.key` writes the private key and prints the public one; `PLUGIN_SIGNING_KEY="$(cat acme.key)" go run ./tools/plugin-manifest sign -name acme -version 2.1.0 -veho '[0.5.0,0.6.0)' veho-plugin-acme` writes the manifest and its signature next to the binary. The range is in interval notation: `[` and `]` include the bound, `(` and `)` exclude it, an empty bound is unbounded (`[0.5.0,)`). Its parser is `github.com/dihedron/veho/pkg/semver`, for publishers' own tools.
 
 ## Storage classes
 

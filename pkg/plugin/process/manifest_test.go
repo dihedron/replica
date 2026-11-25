@@ -43,7 +43,7 @@ func TestManifest(t *testing.T) {
 	pub, priv := newKey(t)
 	other, otherPriv := newKey(t)
 	sum := hex.EncodeToString(binaries["file"].sum)
-	good := Manifest{Name: "file", Version: "1.2.3", SHA256: sum, Protocol: Handshake.ProtocolVersion}
+	good := Manifest{Name: "file", Version: "0.9.0", Veho: "[1.2.3]", SHA256: sum, Protocol: Handshake.ProtocolVersion}
 
 	dir := installed(t, priv, good)
 	opts, err := Installed(dir, "file", "1.2.3", []ed25519.PublicKey{other, pub}, false)
@@ -65,14 +65,22 @@ func TestManifest(t *testing.T) {
 		{"unknown key", "signature", func() string { return installed(t, otherPriv, good) }, "1.2.3", []ed25519.PublicKey{pub}},
 		{"no key", "signature", func() string { return dir }, "1.2.3", nil},
 		{"another version", "version", func() string { return dir }, "1.2.4", []ed25519.PublicKey{pub}},
+		{"a snapshot of veho", "version", func() string { return dir }, "1.2.3-SNAPSHOT-abc", []ed25519.PublicKey{pub}},
+		{"veho's version malformed", "version", func() string { return dir }, "dev", []ed25519.PublicKey{pub}},
+		{"outside the range", "version", func() string {
+			return installed(t, priv, Manifest{Name: "file", Version: "0.9.0", Veho: "[1.0.0,1.2.3)", SHA256: sum, Protocol: Handshake.ProtocolVersion})
+		}, "1.2.3", []ed25519.PublicKey{pub}},
+		{"malformed range", "version", func() string {
+			return installed(t, priv, Manifest{Name: "file", Version: "0.9.0", Veho: "1.2.3", SHA256: sum, Protocol: Handshake.ProtocolVersion})
+		}, "1.2.3", []ed25519.PublicKey{pub}},
 		{"another name", "name", func() string {
-			d := installed(t, priv, Manifest{Name: "s3", Version: "1.2.3", SHA256: sum, Protocol: Handshake.ProtocolVersion})
+			d := installed(t, priv, Manifest{Name: "s3", Version: "0.9.0", Veho: "[1.2.3]", SHA256: sum, Protocol: Handshake.ProtocolVersion})
 			_ = os.Rename(filepath.Join(d, "veho-plugin-s3.manifest"), filepath.Join(d, "veho-plugin-file.manifest"))
 			_ = os.Rename(filepath.Join(d, "veho-plugin-s3.manifest.sig"), filepath.Join(d, "veho-plugin-file.manifest.sig"))
 			return d
 		}, "1.2.3", []ed25519.PublicKey{pub}},
 		{"another protocol", "protocol", func() string {
-			return installed(t, priv, Manifest{Name: "file", Version: "1.2.3", SHA256: sum, Protocol: Handshake.ProtocolVersion + 1})
+			return installed(t, priv, Manifest{Name: "file", Version: "0.9.0", Veho: "[1.2.3]", SHA256: sum, Protocol: Handshake.ProtocolVersion + 1})
 		}, "1.2.3", []ed25519.PublicKey{pub}},
 		{"tampered manifest", "signature", func() string {
 			d := installed(t, priv, good)
@@ -92,8 +100,16 @@ func TestManifest(t *testing.T) {
 		}
 	}
 
+	// a range of versions
+	ranged := installed(t, priv, Manifest{Name: "file", Version: "0.9.0", Veho: "[1.0.0,2.0.0)", SHA256: sum, Protocol: Handshake.ProtocolVersion})
+	for _, v := range []string{"1.0.0", "1.2.3", "1.99.0"} {
+		if _, err := Installed(ranged, "file", v, []ed25519.PublicKey{pub}, false); err != nil {
+			t.Errorf("veho %s in [1.0.0,2.0.0): %v", v, err)
+		}
+	}
+
 	// another binary than the manifest's: refused by the checksum at start
-	d := installed(t, priv, Manifest{Name: "file", Version: "1.2.3", SHA256: strings.Repeat("0", 64), Protocol: Handshake.ProtocolVersion})
+	d := installed(t, priv, Manifest{Name: "file", Version: "0.9.0", Veho: "[1.2.3]", SHA256: strings.Repeat("0", 64), Protocol: Handshake.ProtocolVersion})
 	opts, err = Installed(d, "file", "1.2.3", []ed25519.PublicKey{pub}, false)
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +124,42 @@ func TestManifest(t *testing.T) {
 		if _, err := Installed(dir, "file", "1.2.3", []ed25519.PublicKey{pub}, true); err == nil || !strings.Contains(err.Error(), "root") {
 			t.Errorf("a user's directory: %v, want refused", err)
 		}
+	}
+}
+
+// TestLoadKeys: PD-T1, a publisher's key file in the key directory, one
+// key at least; a missing or empty file and a user's directory refused.
+func TestLoadKeys(t *testing.T) {
+	pub, _ := newKey(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "acme.pub"), []byte("# acme\n"+base64.StdEncoding.EncodeToString(pub)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "empty.pub"), []byte("# no key\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := LoadKeys(dir, "acme", false)
+	if err != nil || len(keys) != 1 || !keys[0].Equal(pub) {
+		t.Fatalf("acme: %v %v", keys, err)
+	}
+	for _, name := range []string{"nothere", "empty"} {
+		if _, err := LoadKeys(dir, name, false); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if os.Getuid() != 0 {
+		if _, err := LoadKeys(dir, "acme", true); err == nil || !strings.Contains(err.Error(), "root") {
+			t.Errorf("a user's key directory: %v, want refused", err)
+		}
+	}
+}
+
+// TestReleaseKey: the release's key file, which the veho package installs
+// as veho.pub, holds valid keys.
+func TestReleaseKey(t *testing.T) {
+	keys, err := LoadKeys("../../../packaging", "plugin-signing", false)
+	if err != nil || len(keys) == 0 {
+		t.Fatalf("packaging/plugin-signing.pub: %v %v", keys, err)
 	}
 }
 

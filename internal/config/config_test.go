@@ -77,6 +77,8 @@ func TestRefused(t *testing.T) {
 		"a name":              node + key + "drivers: [{name: s3, path: /a, sha256: " + zeros + "}, {name: s3}]\n",
 		"drivers[0]: a name":  node + key + "drivers: [{name: ../s3}]\n",
 		"go together":         node + key + "drivers: [{name: acme, path: /opt/acme}]\n",
+		"key must match":      node + key + "drivers: [{name: acme, key: ../acme}]\n",
+		"not one pinned":      node + key + "drivers: [{name: acme, key: acme, path: /a, sha256: " + zeros + "}]\n",
 		"metrics.listen":      node + key + "metrics: {listen: nowhere}\n",
 		"api.tls":             node + "secrets: {unwrap_key: \"file:/k\"}\n",
 		"checks.primary":      node + key + "checks: {primary: ignore}\n",

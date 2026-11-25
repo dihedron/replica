@@ -33,7 +33,7 @@
 ## Project Structure Overview
 * `cmd/` - Application entrypoints and main binaries; for details on how the application command lines are structured, see the paragraph on command line arguments
 * `internal/` - Private application and library code.
-* `pkg/` - Public library code (e.g. the build metadata injected at link time, `pkg/metadata`, and the storage plugin API).
+* `pkg/` - Public library code (e.g. the build metadata injected at link time, `pkg/metadata`, the storage plugin API, and `pkg/semver`, the version ranges of the plugin manifests).
 * `.specs/` - Feature design documents and architectural specifications; start from `veho_specification.md`, and see `veho-backlog.md` for the work agreed for later.
 * `test/` - Test tooling: the lab (`test/lab`), its Go helpers (`test/labtest`) and the DBOS regression suite (`test/dbos`, AC-21).
 * `docs/` - The Setup, Operator's and Architecture and Design guides, in Markdown (rule 12).

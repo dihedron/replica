@@ -17,8 +17,9 @@
 | `node.region` | The node's region is not a location of the topology | Create it (`veho.put_location`) or fix `node.region` |
 | `socket` and `syslog` | `audit.sink: syslog` without `/dev/log` | Start rsyslog or journald's socket, or use `stderr` |
 | `plugin` and `manifest` | The plugin's package is not installed, or a file of it was changed | Install `veho-plugin-<name>` of veho's version; check `/usr/libexec/veho/plugins/` |
-| `plugin`, `version` | The plugin is of another release than veho | Upgrade veho and its plugins together |
-| `plugin`, `signature` | The manifest is not signed by a key of this release | Reinstall the package from the release; never edit the manifest |
+| `plugin`, `version` | veho's version is not in the range of the plugin's manifest | Upgrade veho and the release's plugins together; for a third-party plugin, install the publisher's version for this veho |
+| `plugin`, `signature` | The manifest is not signed by the key the driver names (`drivers[].key`, `veho` by default) | Reinstall the package; check `key` and the file in `/etc/veho/plugin-keys/`; never edit the manifest |
+| `plugin key` | The key file is missing, holds no valid key, or is not root's | Reinstall `veho` for `veho.pub`, or the publisher's key; `chown root:root`, `chmod go-w` |
 | `plugin`, `owned by root` | A plugin file or its directory is writable by someone other than root | `chown root:root`, `chmod go-w` |
 | `settings refused` | A driver's `settings` has an unknown key or a bad value | Fix `drivers[].settings` (the message names the key) |
 
