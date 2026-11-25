@@ -536,3 +536,28 @@ func TestCommitRefusedBeginsAgain(t *testing.T) {
 	}
 	same(t, filepath.Join(srcDir, name), filepath.Join(fl, "copy", name))
 }
+
+// A copy that fails verification at its last attempt is deleted: a failed
+// transfer leaves no object that looks good (found 2026-11-25).
+func TestVerifyFailureUnpublishes(t *testing.T) {
+	f := setup(t)
+	ctx := context.Background()
+	srcDir := f.fileEndpoint(t, "source", "file", "lab-a")
+	dst := f.fileEndpoint(t, "f1", "file", "lab-a")
+	f.launch(t)
+	j := f.submit(t, srcDir, 2*mib, destPolicy(1, "", "f1"))
+	// another copy's digest: every verify of this one fails as Integrity
+	if err := store.InTenant(ctx, f.api, f.tenant, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `update veho.jobs set source_info = jsonb_set(source_info, '{digest}', to_jsonb(repeat('0', 64))) where id = $1`, j.id)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	j.run(t, "f1")
+	if s := j.state(t); s.Transfers["f1"] != "FAILED" || s.LastError["f1"] != "Integrity" || s.Attempts["f1"] != maxIntegrity {
+		t.Fatalf("job: %+v", s)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "copy", filepath.Base(j.src))); !os.IsNotExist(err) {
+		t.Fatalf("the unverified copy is in place: %v", err)
+	}
+}
