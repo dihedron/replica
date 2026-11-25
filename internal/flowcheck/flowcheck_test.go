@@ -49,6 +49,16 @@ func listen(t *testing.T) *listener {
 	return ln
 }
 
+// settled is the count of connections once the accepting goroutine has
+// caught up: a probe returns as soon as it connected, before the count.
+func (l *listener) settled() int32 {
+	for deadline := time.Now().Add(time.Second); l.n.Load() == 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond) // a second one, which must not come
+	return l.n.Load()
+}
+
 func port(t *testing.T, addr string) int {
 	t.Helper()
 	_, p, _ := net.SplitHostPort(addr)
@@ -149,7 +159,7 @@ func TestGuard(t *testing.T) {
 	public, _ := netguard.New(nil)
 	o := Options{Guard: public, Timeout: time.Second, Retries: 1}
 	r := one(t, plugin.Flow{Purpose: "x", Host: "127.0.0.1", Port: p}, o)
-	if r.Status != Skipped || r.Address != "" || l.n.Load() != 0 {
+	if r.Status != Skipped || r.Address != "" || l.settled() != 0 {
 		t.Fatalf("refused: %+v, %d connections", r, l.n.Load())
 	}
 	all, _ := netguard.New([]string{"0.0.0.0/0", "::/0"})
@@ -206,7 +216,7 @@ func TestSharedAndCancelled(t *testing.T) {
 	l := listen(t)
 	p := port(t, l.Addr().String())
 	rs := Check(context.Background(), []plugin.Flow{{Purpose: "keystone", Host: "127.0.0.1", Port: p}, {Purpose: "swift", Host: "127.0.0.1", Port: p}}, loopback(t))
-	if len(rs) != 2 || rs[0].Status != Reachable || rs[1].Status != Reachable || l.n.Load() != 1 {
+	if len(rs) != 2 || rs[0].Status != Reachable || rs[1].Status != Reachable || l.settled() != 1 {
 		t.Fatalf("%+v, %d connections", rs, l.n.Load())
 	}
 	ctx, cancel := context.WithCancel(context.Background())
