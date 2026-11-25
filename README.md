@@ -8,13 +8,15 @@ A client submits the URL of an object that is already available to the service (
 
 ## Status
 
-**0.1.0, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
+**0.2.0, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
+
+New in 0.2.0: the drivers with third-party dependencies are separate plugin binaries with packages of their own (`veho-plugin-s3`), trusted through manifests signed by their publisher; veho's own core links only the standard-library drivers. A third-party publisher signs its plugins with the same tool (`tools/plugin-manifest`), and a manifest declares the veho versions it supports as a range (`[0.2.0,0.3.0)`).
 
 Known limits of this version (numbers of `.specs/veho-backlog.md`):
 
 - No upgrade path: until a first deployment, the schema is changed in place, and a new version may need an empty database; rolling upgrades with transfers in flight are not validated yet (6).
 - The regions and zones of the topology are created with SQL (`veho.put_location`); no command manages them yet (17).
-- Drivers: `file` and S3 only; Glance is planned (21).
+- Drivers: `file` and S3 (a plugin) only; HTTP, SFTP and FTP sources and Glance are planned (34, 21).
 - The audit is lightweight: events go to the system log, are not tamper-evident and can be lost on a crash (32).
 - The unwrap key comes from a file or a systemd credential; Vault, HSM and Shamir unseal are planned (25, 26, 31).
 - The state store's stability over the real inter-region latency for 24 hours, the latency envelope and an eight-hour chaos soak are still to be run (3, 18, 28).
