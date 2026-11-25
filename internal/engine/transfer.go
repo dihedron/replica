@@ -788,9 +788,44 @@ func (e *Engine) end(ctx context.Context, in TransferInput, fence int64, state p
 func (e *Engine) failTransfer(ctx context.Context, in TransferInput, r result) result {
 	e.metrics.attempts.WithLabelValues(r.Class.String()).Inc()
 	return e.held(ctx, in, func(ctx context.Context, fence int64) result {
-		e.abort(ctx, in)
+		// a copy this transfer published but could not verify is not left
+		// in place as if it were good
+		if err := e.unpublish(ctx, in); err != nil {
+			slog.WarnContext(ctx, "cannot delete the unverified copy", "tenant_id", in.Tenant.String(), "transfer_id", in.Transfer.String(), "error", sanitize(err.Error()))
+		}
 		return e.end(ctx, in, fence, policy.Failed, &r)
 	})
+}
+
+// unpublish aborts the transfer's upload and, when the transfer is
+// VERIFYING (it published the object, which is not verified), deletes the
+// object. shortcut: a commit followed by a failure that waited (RETRY_WAIT)
+// leaves the state, so a later final failure keeps that copy; upgrade with
+// a committed-and-unverified flag on the transfer if it matters.
+func (e *Engine) unpublish(ctx context.Context, in TransferInput) error {
+	var (
+		state, path string
+		dest        uuid.UUID
+	)
+	if err := store.InTenant(ctx, e.worker, in.Tenant, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select state, dest_path, destination_endpoint_id from veho.transfers where id = $1", in.Transfer).Scan(&state, &path, &dest)
+	}); err != nil {
+		return err
+	}
+	e.abort(ctx, in)
+	if state != string(policy.Verifying) {
+		return nil
+	}
+	_, c, err := e.open(ctx, in.Tenant, dest)
+	if err != nil {
+		return err
+	}
+	err = c.Delete(ctx, plugin.Ref{Key: path})
+	_ = c.Close()
+	if err != nil && !errors.Is(err, plugin.ErrNotFound) {
+		return drv(err)
+	}
+	return nil
 }
 
 // cancelTransfer ends the transfer CANCELLED, aborting its upload.
@@ -856,26 +891,8 @@ func (e *Engine) abandon(ctx context.Context, in TransferInput) {
 // (ResumeInvalid, Integrity: §5).
 func (e *Engine) reset(ctx context.Context, in TransferInput) result {
 	return e.held(ctx, in, func(ctx context.Context, fence int64) result {
-		var (
-			state, path string
-			dest        uuid.UUID
-		)
-		if err := store.InTenant(ctx, e.worker, in.Tenant, func(tx pgx.Tx) error {
-			return tx.QueryRow(ctx, "select state, dest_path, destination_endpoint_id from veho.transfers where id = $1", in.Transfer).Scan(&state, &path, &dest)
-		}); err != nil {
+		if err := e.unpublish(ctx, in); err != nil {
 			return fail(err)
-		}
-		e.abort(ctx, in)
-		if state == string(policy.Verifying) { // this transfer published it
-			_, c, err := e.open(ctx, in.Tenant, dest)
-			if err != nil {
-				return fail(err)
-			}
-			err = c.Delete(ctx, plugin.Ref{Key: path})
-			_ = c.Close()
-			if err != nil && !errors.Is(err, plugin.ErrNotFound) {
-				return fail(drv(err))
-			}
 		}
 		return check(e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
 			if _, err := tx.Exec(ctx, "delete from veho.parts where transfer_id = $1", in.Transfer); err != nil {
