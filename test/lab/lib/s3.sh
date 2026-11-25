@@ -29,10 +29,12 @@ garage() {
 	inner_exec "$name" /usr/local/bin/garage -c /etc/garage.toml "$@"
 }
 
-# s3_install NAME: the binary, its configuration and its unit; started.
+# s3_install NAME [ADDRESS REGION]: the binary, its configuration and its
+# unit; started. ADDRESS and REGION default to the region's container's.
 s3_install() {
-	local name="$1" x
+	local name="$1" x addr region
 	x="${name#s3-}"
+	addr="${2:-$(inner_ip "$name")}" region="${3:-region-$x}"
 	if ! inner_exec "$name" test -x /usr/local/bin/garage; then
 		inner_push "$(garage_binary)" "$name" /usr/local/bin/garage 0755
 	fi
@@ -44,11 +46,11 @@ data_dir = "/var/lib/garage/data"
 db_engine = "lmdb"
 replication_factor = 1
 rpc_bind_addr = "0.0.0.0:3901"
-rpc_public_addr = "$(inner_ip "$name"):3901"
+rpc_public_addr = "$addr:3901"
 rpc_secret = "$(s3_secret "$name-rpc" 32)"
 
 [s3_api]
-s3_region = "region-$x"
+s3_region = "$region"
 api_bind_addr = "0.0.0.0:3900"
 
 [admin]

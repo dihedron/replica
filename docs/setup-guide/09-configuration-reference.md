@@ -33,6 +33,9 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `drivers[].sha256` | none | The SHA-256 of `path`'s file: a plugin whose file differs is not started |
 | `drivers[].settings` | `{}` | The driver's settings, a map; the driver refuses keys it does not know (*Operator's Guide*, drivers) |
 | `drivers[].settings.allow_cidrs` | none | `s3`, `http`, `sftp`, `ftp`, `glance`, `swift`, `nexus`: CIDRs the driver may reach although they are private, such as `10.20.0.0/16` for an S3 service on the platform's network; the cloud metadata addresses are never allowed |
+| `drivers[].settings.proxy.url` | none | `s3`, `http`, `nexus`: an `http://host:port` forward proxy, for the names of `proxy.hosts` (*Operator's Guide*, sources) |
+| `drivers[].settings.proxy.hosts` | none | The names whose `https` connections go through the proxy, unresolved by veho: exact names, or `*.` and a suffix of at least two labels (`*.amazonaws.com`); never IP addresses |
+| `drivers[].settings.proxy.credentials_file` | none | A file of `user:password` for the proxy's Basic authentication, mode 0600 |
 | `drivers[].settings.plaintext` | `false` | `ftp`: allow endpoints with `tls: none`, whose password crosses the network in clear; `glance`, `swift`: allow `http` for Keystone and the services; `nexus`: allow `http` for Nexus (a lab only) |
 | `drivers[].settings.max_segments` | `1000` | `swift`: the cluster's `max_manifest_segments`, the most parts of an object |
 | `drivers[].settings.roots` | none | `file`: the directories an endpoint's root may be or be under; empty, no `file` endpoint can be created |
