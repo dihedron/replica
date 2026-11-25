@@ -220,6 +220,28 @@ func (s *server) PresignRead(ctx context.Context, r *pb.PresignRequest) (*pb.Pre
 	return &pb.PresignedURL{Url: u}, nil
 }
 
+// Flows is the client's flows; none when the driver lists none.
+func (s *server) Flows(ctx context.Context, r *pb.Handle) (*pb.FlowList, error) {
+	c, err := s.client(r.GetId())
+	if err != nil {
+		return nil, err
+	}
+	l, ok := c.(plugin.FlowLister)
+	if !ok {
+		return &pb.FlowList{}, nil
+	}
+	flows, err := l.Flows(ctx)
+	if err != nil {
+		return nil, unary(ctx, err)
+	}
+	out := &pb.FlowList{}
+	for _, f := range flows {
+		out.Flows = append(out.Flows, &pb.Flow{Purpose: f.Purpose, Host: f.Host, Port: int32(f.Port), Tls: f.TLS, //nolint:gosec // a port
+			ServerName: f.ServerName, Handshake: f.Handshake, CaCert: f.CACert, Unprobed: f.Unprobed, Unguarded: f.Unguarded})
+	}
+	return out, nil
+}
+
 func (s *server) Pull(ctx context.Context, r *pb.PullRequest) (*pb.Ref, error) {
 	up, err := s.upload(r.GetUpload())
 	if err != nil {

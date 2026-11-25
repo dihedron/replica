@@ -180,6 +180,23 @@ func TestCLI(t *testing.T) {
 			if out := c.must(test); !strings.Contains(out, "ok: true") {
 				t.Errorf("endpoint test: %s", out)
 			}
+			// NC-T4: a check from every executor, waited for; a file
+			// endpoint has no flows, so the table is empty
+			check := &EndpointCheckCommand{apiOptions: c.opts("text"), Wait: true, Within: time.Minute}
+			check.Args.Name = "d1-" + s
+			if out := c.must(check); !strings.Contains(out, "state: complete") || !strings.Contains(out, "NODE") {
+				t.Errorf("endpoint check: %s", out)
+			}
+			checkJSON := &EndpointCheckCommand{apiOptions: c.opts("json")}
+			checkJSON.Args.Name = "d1-" + s
+			if out := c.must(checkJSON); field(t, out, "endpoint") != "d1-"+s || field(t, out, "id") == "" {
+				t.Errorf("endpoint check, json: %s", out)
+			}
+			show := &EndpointShowCommand{apiOptions: c.opts("text")}
+			show.Args.Name = "d1-" + s
+			if out := c.must(show); !strings.Contains(out, "last_check: ") {
+				t.Errorf("endpoint show: %s", out)
+			}
 			sec := &SecretSetCommand{apiOptions: c.opts("json"), FromFile: write("secret", "canary-value")}
 			sec.Args.Name = "s-" + s
 			if out := c.must(sec); strings.Contains(out, "canary") || field(t, out, "name") != "s-"+s {

@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"strconv"
 	"time"
 
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
@@ -160,6 +162,7 @@ type EndpointCommand struct {
 	Update EndpointUpdateCommand `command:"update" description:"Change an endpoint's location, configuration or credential reference"`
 	Delete EndpointDeleteCommand `command:"delete" description:"Delete an endpoint"`
 	Test   EndpointTestCommand   `command:"test" description:"Probe an endpoint with its credentials"`
+	Check  EndpointCheckCommand  `command:"check" description:"Check an endpoint's network flows from every executor"`
 }
 
 // endpointFlags are the parts of an endpoint a command sets.
@@ -196,9 +199,18 @@ type EndpointShowCommand struct {
 	nameArg
 }
 
-// Execute prints the endpoint.
+// Execute prints the endpoint and, as text, its last network check.
 func (cmd *EndpointShowCommand) Execute([]string) error {
-	return cmd.show("veho.v1.EndpointService.GetEndpoint", &vehov1.EndpointName{Name: cmd.Args.Name}, &vehov1.Endpoint{})
+	if err := cmd.show("veho.v1.EndpointService.GetEndpoint", &vehov1.EndpointName{Name: cmd.Args.Name}, &vehov1.Endpoint{}); err != nil || cmd.Output == "json" {
+		return err
+	}
+	checks := &vehov1.ListEndpointChecksResponse{}
+	if err := cmd.call("veho.v1.EndpointService.ListEndpointChecks", &vehov1.EndpointName{Name: cmd.Args.Name}, checks); err != nil || len(checks.GetChecks()) == 0 {
+		return nil //nolint:nilerr // a viewer may not see the checks: the endpoint is shown
+	}
+	c := checks.GetChecks()[0]
+	_, err := fmt.Fprintf(cmd.stdout(), "last_check: %s, %s, %d unreachable\n", c.GetCreatedAt().AsTime().Format(time.RFC3339), c.GetState(), unreachable(c))
+	return err
 }
 
 // EndpointListCommand is "veho endpoint list".
@@ -267,6 +279,77 @@ func (cmd *EndpointTestCommand) Execute([]string) error {
 		return &exitError{code: 1, msg: fmt.Sprintf("the %s step failed: %s: %s", resp.GetStep(), resp.GetCode(), resp.GetMessage())}
 	}
 	return nil
+}
+
+// EndpointCheckCommand is "veho endpoint check"; with --wait, a flow
+// unreachable from some node exits 1.
+type EndpointCheckCommand struct {
+	apiOptions
+	nameArg
+	Wait   bool          `long:"wait" description:"Wait until every executor has answered, or the check expired"`
+	Within time.Duration `long:"within" default:"3m" description:"How long --wait waits at most"`
+}
+
+// Execute starts the check (or finds the one in flight) and prints it.
+func (cmd *EndpointCheckCommand) Execute([]string) error {
+	c := &vehov1.EndpointCheck{}
+	if err := cmd.call("veho.v1.EndpointService.CheckEndpoint", &vehov1.EndpointName{Name: cmd.Args.Name}, c); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(cmd.Within)
+	for cmd.Wait && c.GetState() == "running" && time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+		if err := cmd.call("veho.v1.EndpointService.GetEndpointCheck", &vehov1.EndpointCheckName{Name: cmd.Args.Name, Id: c.GetId()}, c); err != nil {
+			return err
+		}
+	}
+	if cmd.Output == "json" {
+		if err := cmd.print(c); err != nil {
+			return err
+		}
+	} else if err := printCheck(cmd.stdout(), c); err != nil {
+		return err
+	}
+	if n := unreachable(c); cmd.Wait && n > 0 {
+		return &exitError{code: 1, msg: fmt.Sprintf("%d flows unreachable", n)}
+	}
+	return nil
+}
+
+// printCheck is a check as text: its state, then a row per node, flow and
+// address.
+func printCheck(w io.Writer, c *vehov1.EndpointCheck) error {
+	if _, err := fmt.Fprintf(w, "check: %s\nstate: %s\n", c.GetId(), c.GetState()); err != nil {
+		return err
+	}
+	if c.GetError() != "" {
+		_, _ = fmt.Fprintf(w, "error: %s\n", c.GetError())
+	}
+	var rows []any
+	for _, n := range c.GetNodes() {
+		if !n.GetAnswered() {
+			rows = append(rows, map[string]any{"node": n.GetNode(), "status": "no answer"})
+			continue
+		}
+		for _, r := range n.GetResults() {
+			rows = append(rows, map[string]any{"node": n.GetNode(), "region": n.GetRegion(), "flow": r.GetPurpose(),
+				"target": net.JoinHostPort(r.GetHost(), strconv.Itoa(int(r.GetPort()))), "address": r.GetAddress(),
+				"status": r.GetStatus(), "reason": r.GetReason()})
+		}
+	}
+	return table(w, rows, []string{"node", "region", "flow", "target", "address", "status", "reason"})
+}
+
+func unreachable(c *vehov1.EndpointCheck) int {
+	n := 0
+	for _, nc := range c.GetNodes() {
+		for _, r := range nc.GetResults() {
+			if r.GetStatus() == "unreachable" {
+				n++
+			}
+		}
+	}
+	return n
 }
 
 // SecretCommand is "veho secret".

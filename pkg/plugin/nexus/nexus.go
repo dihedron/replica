@@ -190,7 +190,7 @@ func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Creden
 	}
 	c := &client{
 		base: base, repo: cfg.Repository, format: cfg.Format, fm: fm, user: creds["username"], password: creds["password"],
-		maxNPMSize: d.maxNPMSize, distTag: cfg.NPMDistTag, assets: map[string]asset{}, verified: map[string]string{},
+		maxNPMSize: d.maxNPMSize, distTag: cfg.NPMDistTag, ca: cfg.CACert, assets: map[string]asset{}, verified: map[string]string{},
 		hc: &http.Client{
 			Transport: &http.Transport{
 				DialContext:           d.guard.Dialer(dialTimeout).DialContext,
@@ -226,6 +226,7 @@ type client struct {
 	user, password string
 	maxNPMSize     int64
 	distTag        string
+	ca             string // the endpoint's ca_cert
 	hc             *http.Client
 
 	once    sync.Once
@@ -235,6 +236,12 @@ type client struct {
 	mu       sync.Mutex
 	assets   map[string]asset  // resolved keys, by key
 	verified map[string]string // the ETag whose content matched the index's digest, by key
+}
+
+// Flows is Nexus's.
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	f, err := plugin.URLFlow("nexus", c.base.String(), c.ca)
+	return []plugin.Flow{f}, err
 }
 
 func (c *client) Close() error {

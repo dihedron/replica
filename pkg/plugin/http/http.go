@@ -184,6 +184,12 @@ func (c *client) Close() error {
 	return nil
 }
 
+// Flows is the base URL's.
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	f, err := plugin.URLFlow("http", c.base.String(), "")
+	return []plugin.Flow{f}, err
+}
+
 // PresignRead is the object's URL, for a destination that pulls it: only
 // when the endpoint sends no credentials or headers, which the destination
 // would not send. The version is not in the URL: the engine reads the copy

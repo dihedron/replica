@@ -55,6 +55,7 @@ secrets: {unwrap_key: "file:/nonexistent"}
 engine: {heartbeat: 1s, lease_ttl: 4s, part_size_mib: 5, parts_in_flight: 2}
 notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}
 api: {tls: {cert_file: /unused, key_file: /unused}}
+drivers: [{name: http, settings: {allow_cidrs: [127.0.0.0/8]}}]
 `))
 	if err != nil {
 		t.Fatal(err)

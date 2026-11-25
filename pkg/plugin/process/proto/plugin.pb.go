@@ -1290,6 +1290,158 @@ func (x *CommitRequest) GetParts() []*PartResult {
 	return nil
 }
 
+type Flow struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Purpose       string                 `protobuf:"bytes,1,opt,name=purpose,proto3" json:"purpose,omitempty"`
+	Host          string                 `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	Port          int32                  `protobuf:"varint,3,opt,name=port,proto3" json:"port,omitempty"`
+	Tls           bool                   `protobuf:"varint,4,opt,name=tls,proto3" json:"tls,omitempty"`
+	ServerName    string                 `protobuf:"bytes,5,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
+	Handshake     string                 `protobuf:"bytes,6,opt,name=handshake,proto3" json:"handshake,omitempty"`
+	CaCert        string                 `protobuf:"bytes,7,opt,name=ca_cert,json=caCert,proto3" json:"ca_cert,omitempty"`
+	Unprobed      string                 `protobuf:"bytes,8,opt,name=unprobed,proto3" json:"unprobed,omitempty"`
+	Unguarded     bool                   `protobuf:"varint,9,opt,name=unguarded,proto3" json:"unguarded,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Flow) Reset() {
+	*x = Flow{}
+	mi := &file_plugin_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Flow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Flow) ProtoMessage() {}
+
+func (x *Flow) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Flow.ProtoReflect.Descriptor instead.
+func (*Flow) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *Flow) GetPurpose() string {
+	if x != nil {
+		return x.Purpose
+	}
+	return ""
+}
+
+func (x *Flow) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *Flow) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *Flow) GetTls() bool {
+	if x != nil {
+		return x.Tls
+	}
+	return false
+}
+
+func (x *Flow) GetServerName() string {
+	if x != nil {
+		return x.ServerName
+	}
+	return ""
+}
+
+func (x *Flow) GetHandshake() string {
+	if x != nil {
+		return x.Handshake
+	}
+	return ""
+}
+
+func (x *Flow) GetCaCert() string {
+	if x != nil {
+		return x.CaCert
+	}
+	return ""
+}
+
+func (x *Flow) GetUnprobed() string {
+	if x != nil {
+		return x.Unprobed
+	}
+	return ""
+}
+
+func (x *Flow) GetUnguarded() bool {
+	if x != nil {
+		return x.Unguarded
+	}
+	return false
+}
+
+type FlowList struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Flows         []*Flow                `protobuf:"bytes,1,rep,name=flows,proto3" json:"flows,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FlowList) Reset() {
+	*x = FlowList{}
+	mi := &file_plugin_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FlowList) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FlowList) ProtoMessage() {}
+
+func (x *FlowList) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FlowList.ProtoReflect.Descriptor instead.
+func (*FlowList) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *FlowList) GetFlows() []*Flow {
+	if x != nil {
+		return x.Flows
+	}
+	return nil
+}
+
 type WritePartRequest_Header struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Upload        string                 `protobuf:"bytes,1,opt,name=upload,proto3" json:"upload,omitempty"`
@@ -1301,7 +1453,7 @@ type WritePartRequest_Header struct {
 
 func (x *WritePartRequest_Header) Reset() {
 	*x = WritePartRequest_Header{}
-	mi := &file_plugin_proto_msgTypes[25]
+	mi := &file_plugin_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1313,7 +1465,7 @@ func (x *WritePartRequest_Header) String() string {
 func (*WritePartRequest_Header) ProtoMessage() {}
 
 func (x *WritePartRequest_Header) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[25]
+	mi := &file_plugin_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1457,7 +1609,20 @@ const file_plugin_proto_rawDesc = "" +
 	"\x05parts\x18\x01 \x03(\v2\x1a.veho.plugin.v1.PartResultR\x05parts\"Y\n" +
 	"\rCommitRequest\x12\x16\n" +
 	"\x06upload\x18\x01 \x01(\tR\x06upload\x120\n" +
-	"\x05parts\x18\x02 \x03(\v2\x1a.veho.plugin.v1.PartResultR\x05parts2\xe2\a\n" +
+	"\x05parts\x18\x02 \x03(\v2\x1a.veho.plugin.v1.PartResultR\x05parts\"\xec\x01\n" +
+	"\x04Flow\x12\x18\n" +
+	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
+	"\x04port\x18\x03 \x01(\x05R\x04port\x12\x10\n" +
+	"\x03tls\x18\x04 \x01(\bR\x03tls\x12\x1f\n" +
+	"\vserver_name\x18\x05 \x01(\tR\n" +
+	"serverName\x12\x1c\n" +
+	"\thandshake\x18\x06 \x01(\tR\thandshake\x12\x17\n" +
+	"\aca_cert\x18\a \x01(\tR\x06caCert\x12\x1a\n" +
+	"\bunprobed\x18\b \x01(\tR\bunprobed\x12\x1c\n" +
+	"\tunguarded\x18\t \x01(\bR\tunguarded\"6\n" +
+	"\bFlowList\x12*\n" +
+	"\x05flows\x18\x01 \x03(\v2\x14.veho.plugin.v1.FlowR\x05flows2\x9d\b\n" +
 	"\x06Driver\x12>\n" +
 	"\bDescribe\x12\x15.veho.plugin.v1.Empty\x1a\x1b.veho.plugin.v1.Description\x12@\n" +
 	"\bParseRef\x12\x1f.veho.plugin.v1.ParseRefRequest\x1a\x13.veho.plugin.v1.Ref\x12;\n" +
@@ -1473,7 +1638,8 @@ const file_plugin_proto_rawDesc = "" +
 	"\x06Commit\x12\x1d.veho.plugin.v1.CommitRequest\x1a\x1a.veho.plugin.v1.ObjectInfo\x126\n" +
 	"\x05Abort\x12\x16.veho.plugin.v1.Handle\x1a\x15.veho.plugin.v1.Empty\x12K\n" +
 	"\vPresignRead\x12\x1e.veho.plugin.v1.PresignRequest\x1a\x1c.veho.plugin.v1.PresignedURL\x128\n" +
-	"\x04Pull\x12\x1b.veho.plugin.v1.PullRequest\x1a\x13.veho.plugin.v1.RefB3Z1github.com/dihedron/veho/pkg/plugin/process/protob\x06proto3"
+	"\x04Pull\x12\x1b.veho.plugin.v1.PullRequest\x1a\x13.veho.plugin.v1.Ref\x129\n" +
+	"\x05Flows\x12\x16.veho.plugin.v1.Handle\x1a\x18.veho.plugin.v1.FlowListB3Z1github.com/dihedron/veho/pkg/plugin/process/protob\x06proto3"
 
 var (
 	file_plugin_proto_rawDescOnce sync.Once
@@ -1487,7 +1653,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_plugin_proto_goTypes = []any{
 	(*Empty)(nil),                   // 0: veho.plugin.v1.Empty
 	(*Capabilities)(nil),            // 1: veho.plugin.v1.Capabilities
@@ -1510,62 +1676,67 @@ var file_plugin_proto_goTypes = []any{
 	(*PartResult)(nil),              // 18: veho.plugin.v1.PartResult
 	(*PartList)(nil),                // 19: veho.plugin.v1.PartList
 	(*CommitRequest)(nil),           // 20: veho.plugin.v1.CommitRequest
-	nil,                             // 21: veho.plugin.v1.OpenRequest.CredentialsEntry
-	nil,                             // 22: veho.plugin.v1.ObjectInfo.ChecksumsEntry
-	nil,                             // 23: veho.plugin.v1.ObjectInfo.MetadataEntry
-	nil,                             // 24: veho.plugin.v1.BeginRequest.MetadataEntry
-	(*WritePartRequest_Header)(nil), // 25: veho.plugin.v1.WritePartRequest.Header
+	(*Flow)(nil),                    // 21: veho.plugin.v1.Flow
+	(*FlowList)(nil),                // 22: veho.plugin.v1.FlowList
+	nil,                             // 23: veho.plugin.v1.OpenRequest.CredentialsEntry
+	nil,                             // 24: veho.plugin.v1.ObjectInfo.ChecksumsEntry
+	nil,                             // 25: veho.plugin.v1.ObjectInfo.MetadataEntry
+	nil,                             // 26: veho.plugin.v1.BeginRequest.MetadataEntry
+	(*WritePartRequest_Header)(nil), // 27: veho.plugin.v1.WritePartRequest.Header
 }
 var file_plugin_proto_depIdxs = []int32{
 	1,  // 0: veho.plugin.v1.Description.capabilities:type_name -> veho.plugin.v1.Capabilities
-	21, // 1: veho.plugin.v1.OpenRequest.credentials:type_name -> veho.plugin.v1.OpenRequest.CredentialsEntry
-	22, // 2: veho.plugin.v1.ObjectInfo.checksums:type_name -> veho.plugin.v1.ObjectInfo.ChecksumsEntry
-	23, // 3: veho.plugin.v1.ObjectInfo.metadata:type_name -> veho.plugin.v1.ObjectInfo.MetadataEntry
+	23, // 1: veho.plugin.v1.OpenRequest.credentials:type_name -> veho.plugin.v1.OpenRequest.CredentialsEntry
+	24, // 2: veho.plugin.v1.ObjectInfo.checksums:type_name -> veho.plugin.v1.ObjectInfo.ChecksumsEntry
+	25, // 3: veho.plugin.v1.ObjectInfo.metadata:type_name -> veho.plugin.v1.ObjectInfo.MetadataEntry
 	3,  // 4: veho.plugin.v1.StatRequest.ref:type_name -> veho.plugin.v1.Ref
 	3,  // 5: veho.plugin.v1.ReadRangeRequest.ref:type_name -> veho.plugin.v1.Ref
 	3,  // 6: veho.plugin.v1.BeginRequest.ref:type_name -> veho.plugin.v1.Ref
 	7,  // 7: veho.plugin.v1.BeginRequest.info:type_name -> veho.plugin.v1.ObjectInfo
-	24, // 8: veho.plugin.v1.BeginRequest.metadata:type_name -> veho.plugin.v1.BeginRequest.MetadataEntry
+	26, // 8: veho.plugin.v1.BeginRequest.metadata:type_name -> veho.plugin.v1.BeginRequest.MetadataEntry
 	3,  // 9: veho.plugin.v1.ResumeRequest.ref:type_name -> veho.plugin.v1.Ref
 	3,  // 10: veho.plugin.v1.PresignRequest.ref:type_name -> veho.plugin.v1.Ref
-	25, // 11: veho.plugin.v1.WritePartRequest.header:type_name -> veho.plugin.v1.WritePartRequest.Header
+	27, // 11: veho.plugin.v1.WritePartRequest.header:type_name -> veho.plugin.v1.WritePartRequest.Header
 	18, // 12: veho.plugin.v1.PartList.parts:type_name -> veho.plugin.v1.PartResult
 	18, // 13: veho.plugin.v1.CommitRequest.parts:type_name -> veho.plugin.v1.PartResult
-	0,  // 14: veho.plugin.v1.Driver.Describe:input_type -> veho.plugin.v1.Empty
-	4,  // 15: veho.plugin.v1.Driver.ParseRef:input_type -> veho.plugin.v1.ParseRefRequest
-	5,  // 16: veho.plugin.v1.Driver.Open:input_type -> veho.plugin.v1.OpenRequest
-	6,  // 17: veho.plugin.v1.Driver.Close:input_type -> veho.plugin.v1.Handle
-	8,  // 18: veho.plugin.v1.Driver.Stat:input_type -> veho.plugin.v1.StatRequest
-	9,  // 19: veho.plugin.v1.Driver.ReadRange:input_type -> veho.plugin.v1.ReadRangeRequest
-	8,  // 20: veho.plugin.v1.Driver.Delete:input_type -> veho.plugin.v1.StatRequest
-	11, // 21: veho.plugin.v1.Driver.Begin:input_type -> veho.plugin.v1.BeginRequest
-	12, // 22: veho.plugin.v1.Driver.Resume:input_type -> veho.plugin.v1.ResumeRequest
-	17, // 23: veho.plugin.v1.Driver.WritePart:input_type -> veho.plugin.v1.WritePartRequest
-	6,  // 24: veho.plugin.v1.Driver.ListParts:input_type -> veho.plugin.v1.Handle
-	20, // 25: veho.plugin.v1.Driver.Commit:input_type -> veho.plugin.v1.CommitRequest
-	6,  // 26: veho.plugin.v1.Driver.Abort:input_type -> veho.plugin.v1.Handle
-	14, // 27: veho.plugin.v1.Driver.PresignRead:input_type -> veho.plugin.v1.PresignRequest
-	16, // 28: veho.plugin.v1.Driver.Pull:input_type -> veho.plugin.v1.PullRequest
-	2,  // 29: veho.plugin.v1.Driver.Describe:output_type -> veho.plugin.v1.Description
-	3,  // 30: veho.plugin.v1.Driver.ParseRef:output_type -> veho.plugin.v1.Ref
-	6,  // 31: veho.plugin.v1.Driver.Open:output_type -> veho.plugin.v1.Handle
-	0,  // 32: veho.plugin.v1.Driver.Close:output_type -> veho.plugin.v1.Empty
-	7,  // 33: veho.plugin.v1.Driver.Stat:output_type -> veho.plugin.v1.ObjectInfo
-	10, // 34: veho.plugin.v1.Driver.ReadRange:output_type -> veho.plugin.v1.Chunk
-	0,  // 35: veho.plugin.v1.Driver.Delete:output_type -> veho.plugin.v1.Empty
-	13, // 36: veho.plugin.v1.Driver.Begin:output_type -> veho.plugin.v1.UploadHandle
-	13, // 37: veho.plugin.v1.Driver.Resume:output_type -> veho.plugin.v1.UploadHandle
-	18, // 38: veho.plugin.v1.Driver.WritePart:output_type -> veho.plugin.v1.PartResult
-	19, // 39: veho.plugin.v1.Driver.ListParts:output_type -> veho.plugin.v1.PartList
-	7,  // 40: veho.plugin.v1.Driver.Commit:output_type -> veho.plugin.v1.ObjectInfo
-	0,  // 41: veho.plugin.v1.Driver.Abort:output_type -> veho.plugin.v1.Empty
-	15, // 42: veho.plugin.v1.Driver.PresignRead:output_type -> veho.plugin.v1.PresignedURL
-	3,  // 43: veho.plugin.v1.Driver.Pull:output_type -> veho.plugin.v1.Ref
-	29, // [29:44] is the sub-list for method output_type
-	14, // [14:29] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	21, // 14: veho.plugin.v1.FlowList.flows:type_name -> veho.plugin.v1.Flow
+	0,  // 15: veho.plugin.v1.Driver.Describe:input_type -> veho.plugin.v1.Empty
+	4,  // 16: veho.plugin.v1.Driver.ParseRef:input_type -> veho.plugin.v1.ParseRefRequest
+	5,  // 17: veho.plugin.v1.Driver.Open:input_type -> veho.plugin.v1.OpenRequest
+	6,  // 18: veho.plugin.v1.Driver.Close:input_type -> veho.plugin.v1.Handle
+	8,  // 19: veho.plugin.v1.Driver.Stat:input_type -> veho.plugin.v1.StatRequest
+	9,  // 20: veho.plugin.v1.Driver.ReadRange:input_type -> veho.plugin.v1.ReadRangeRequest
+	8,  // 21: veho.plugin.v1.Driver.Delete:input_type -> veho.plugin.v1.StatRequest
+	11, // 22: veho.plugin.v1.Driver.Begin:input_type -> veho.plugin.v1.BeginRequest
+	12, // 23: veho.plugin.v1.Driver.Resume:input_type -> veho.plugin.v1.ResumeRequest
+	17, // 24: veho.plugin.v1.Driver.WritePart:input_type -> veho.plugin.v1.WritePartRequest
+	6,  // 25: veho.plugin.v1.Driver.ListParts:input_type -> veho.plugin.v1.Handle
+	20, // 26: veho.plugin.v1.Driver.Commit:input_type -> veho.plugin.v1.CommitRequest
+	6,  // 27: veho.plugin.v1.Driver.Abort:input_type -> veho.plugin.v1.Handle
+	14, // 28: veho.plugin.v1.Driver.PresignRead:input_type -> veho.plugin.v1.PresignRequest
+	16, // 29: veho.plugin.v1.Driver.Pull:input_type -> veho.plugin.v1.PullRequest
+	6,  // 30: veho.plugin.v1.Driver.Flows:input_type -> veho.plugin.v1.Handle
+	2,  // 31: veho.plugin.v1.Driver.Describe:output_type -> veho.plugin.v1.Description
+	3,  // 32: veho.plugin.v1.Driver.ParseRef:output_type -> veho.plugin.v1.Ref
+	6,  // 33: veho.plugin.v1.Driver.Open:output_type -> veho.plugin.v1.Handle
+	0,  // 34: veho.plugin.v1.Driver.Close:output_type -> veho.plugin.v1.Empty
+	7,  // 35: veho.plugin.v1.Driver.Stat:output_type -> veho.plugin.v1.ObjectInfo
+	10, // 36: veho.plugin.v1.Driver.ReadRange:output_type -> veho.plugin.v1.Chunk
+	0,  // 37: veho.plugin.v1.Driver.Delete:output_type -> veho.plugin.v1.Empty
+	13, // 38: veho.plugin.v1.Driver.Begin:output_type -> veho.plugin.v1.UploadHandle
+	13, // 39: veho.plugin.v1.Driver.Resume:output_type -> veho.plugin.v1.UploadHandle
+	18, // 40: veho.plugin.v1.Driver.WritePart:output_type -> veho.plugin.v1.PartResult
+	19, // 41: veho.plugin.v1.Driver.ListParts:output_type -> veho.plugin.v1.PartList
+	7,  // 42: veho.plugin.v1.Driver.Commit:output_type -> veho.plugin.v1.ObjectInfo
+	0,  // 43: veho.plugin.v1.Driver.Abort:output_type -> veho.plugin.v1.Empty
+	15, // 44: veho.plugin.v1.Driver.PresignRead:output_type -> veho.plugin.v1.PresignedURL
+	3,  // 45: veho.plugin.v1.Driver.Pull:output_type -> veho.plugin.v1.Ref
+	22, // 46: veho.plugin.v1.Driver.Flows:output_type -> veho.plugin.v1.FlowList
+	31, // [31:47] is the sub-list for method output_type
+	15, // [15:31] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -1583,7 +1754,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   26,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -42,6 +42,7 @@ const (
 	Driver_Abort_FullMethodName       = "/veho.plugin.v1.Driver/Abort"
 	Driver_PresignRead_FullMethodName = "/veho.plugin.v1.Driver/PresignRead"
 	Driver_Pull_FullMethodName        = "/veho.plugin.v1.Driver/Pull"
+	Driver_Flows_FullMethodName       = "/veho.plugin.v1.Driver/Flows"
 )
 
 // DriverClient is the client API for Driver service.
@@ -66,6 +67,9 @@ type DriverClient interface {
 	// driver does not offer it.
 	PresignRead(ctx context.Context, in *PresignRequest, opts ...grpc.CallOption) (*PresignedURL, error)
 	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*Ref, error)
+	// The client's network flows (veho-network-checks.md §3): empty when
+	// the driver lists none.
+	Flows(ctx context.Context, in *Handle, opts ...grpc.CallOption) (*FlowList, error)
 }
 
 type driverClient struct {
@@ -238,6 +242,16 @@ func (c *driverClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.C
 	return out, nil
 }
 
+func (c *driverClient) Flows(ctx context.Context, in *Handle, opts ...grpc.CallOption) (*FlowList, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FlowList)
+	err := c.cc.Invoke(ctx, Driver_Flows_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DriverServer is the server API for Driver service.
 // All implementations must embed UnimplementedDriverServer
 // for forward compatibility.
@@ -260,6 +274,9 @@ type DriverServer interface {
 	// driver does not offer it.
 	PresignRead(context.Context, *PresignRequest) (*PresignedURL, error)
 	Pull(context.Context, *PullRequest) (*Ref, error)
+	// The client's network flows (veho-network-checks.md §3): empty when
+	// the driver lists none.
+	Flows(context.Context, *Handle) (*FlowList, error)
 	mustEmbedUnimplementedDriverServer()
 }
 
@@ -314,6 +331,9 @@ func (UnimplementedDriverServer) PresignRead(context.Context, *PresignRequest) (
 }
 func (UnimplementedDriverServer) Pull(context.Context, *PullRequest) (*Ref, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Pull not implemented")
+}
+func (UnimplementedDriverServer) Flows(context.Context, *Handle) (*FlowList, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Flows not implemented")
 }
 func (UnimplementedDriverServer) mustEmbedUnimplementedDriverServer() {}
 func (UnimplementedDriverServer) testEmbeddedByValue()                {}
@@ -588,6 +608,24 @@ func _Driver_Pull_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Driver_Flows_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Handle)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DriverServer).Flows(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Driver_Flows_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DriverServer).Flows(ctx, req.(*Handle))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Driver_ServiceDesc is the grpc.ServiceDesc for Driver service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -646,6 +684,10 @@ var Driver_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Pull",
 			Handler:    _Driver_Pull_Handler,
+		},
+		{
+			MethodName: "Flows",
+			Handler:    _Driver_Flows_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

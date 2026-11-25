@@ -179,6 +179,11 @@ type client struct {
 	minorOK error
 }
 
+// Flows is Keystone's and Glance's.
+func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
+	return openstack.Flows(c.cfg.Endpoint, "glance", c.sc)
+}
+
 func (c *client) Close() error {
 	if t, ok := c.sc.HTTPClient.Transport.(*http.Transport); ok {
 		t.CloseIdleConnections()

@@ -152,6 +152,73 @@ func (es endpoints) TestEndpoint(ctx context.Context, r *vehov1.EndpointName) (*
 	return out, nil
 }
 
+// CheckEndpoint implements EndpointService.
+func (es endpoints) CheckEndpoint(ctx context.Context, r *vehov1.EndpointName) (*vehov1.EndpointCheck, error) {
+	t, err := tenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c, err := es.s.engine.CheckEndpoint(ctx, t, r.GetName())
+	if err != nil {
+		return nil, err
+	}
+	return toCheck(c), nil
+}
+
+// ListEndpointChecks implements EndpointService.
+func (es endpoints) ListEndpointChecks(ctx context.Context, r *vehov1.EndpointName) (*vehov1.ListEndpointChecksResponse, error) {
+	t, err := tenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cs, err := es.s.engine.ListEndpointChecks(ctx, t, r.GetName())
+	if err != nil {
+		return nil, err
+	}
+	out := &vehov1.ListEndpointChecksResponse{}
+	for _, c := range cs {
+		out.Checks = append(out.Checks, toCheck(c))
+	}
+	return out, nil
+}
+
+// GetEndpointCheck implements EndpointService.
+func (es endpoints) GetEndpointCheck(ctx context.Context, r *vehov1.EndpointCheckName) (*vehov1.EndpointCheck, error) {
+	t, err := tenant(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := uuid.Parse(r.GetId())
+	if err != nil {
+		return nil, engine.ErrNotFound
+	}
+	c, err := es.s.engine.GetEndpointCheck(ctx, t, r.GetName(), id)
+	if err != nil {
+		return nil, err
+	}
+	return toCheck(c), nil
+}
+
+func toCheck(c engine.EndpointCheck) *vehov1.EndpointCheck {
+	out := &vehov1.EndpointCheck{Id: c.ID.String(), Endpoint: c.Endpoint, CreatedAt: timestamppb.New(c.Created), State: c.State, Error: c.Error}
+	for _, f := range c.Flows {
+		out.Flows = append(out.Flows, &vehov1.Flow{Purpose: f.Purpose, Host: f.Host, Port: int32(f.Port), Tls: f.TLS, //nolint:gosec // a port
+			ServerName: f.ServerName, Handshake: f.Handshake, Unprobed: f.Unprobed, Unguarded: f.Unguarded})
+	}
+	for _, n := range c.Nodes {
+		nc := &vehov1.NodeCheck{Node: n.Node, Region: n.Region, Answered: n.Answered}
+		if n.Answered {
+			nc.CheckedAt = timestamppb.New(n.Checked)
+		}
+		for _, r := range n.Results {
+			nc.Results = append(nc.Results, &vehov1.FlowResult{Purpose: r.Purpose, Host: r.Host, Port: int32(r.Port), //nolint:gosec // a port
+				Address: r.Address, Protocol: r.Protocol, Status: string(r.Status), Reason: r.Reason, LatencyMs: r.LatencyMS})
+		}
+		out.Nodes = append(out.Nodes, nc)
+	}
+	return out
+}
+
 func toSecret(m secrets.Meta) *vehov1.Secret {
 	return &vehov1.Secret{Name: m.Name, Version: int32(m.Version), KekVersion: int32(m.KEKVersion), //nolint:gosec // small
 		CreatedAt: timestamppb.New(m.CreatedAt), UpdatedAt: timestamppb.New(m.UpdatedAt)}

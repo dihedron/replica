@@ -706,3 +706,56 @@ REVOKE ALL ON FUNCTION veho.job_settled_event(), veho.due_webhook_events(int),
 	veho.webhook_outbox_pending() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.due_webhook_events(int), veho.webhook_delivered(uuid, boolean, text, interval, int, int),
 	veho.purge_webhook_outbox(interval, interval, int), veho.webhook_outbox_pending() TO veho_worker;
+
+-- ---------------------------------------------------------------------------
+-- The endpoints' network checks (.specs/veho-network-checks.md §4): the
+-- flows, found by the API node, and each executor's results.
+
+CREATE TABLE veho.endpoint_checks (
+	id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+	tenant_id   uuid NOT NULL,
+	endpoint_id uuid NOT NULL,
+	flows       jsonb NOT NULL DEFAULT '[]',
+	error       text,
+	nodes       text[] NOT NULL,
+	created_at  timestamptz NOT NULL DEFAULT now(),
+	UNIQUE (tenant_id, id),
+	FOREIGN KEY (tenant_id, endpoint_id) REFERENCES veho.endpoints (tenant_id, id) ON DELETE CASCADE
+);
+CREATE INDEX endpoint_checks_endpoint ON veho.endpoint_checks (endpoint_id, created_at DESC);
+
+CREATE TABLE veho.endpoint_check_results (
+	check_id   uuid NOT NULL,
+	tenant_id  uuid NOT NULL,
+	node_id    text NOT NULL,
+	region     text NOT NULL,
+	results    jsonb NOT NULL,
+	checked_at timestamptz NOT NULL DEFAULT now(),
+	PRIMARY KEY (check_id, node_id),
+	FOREIGN KEY (tenant_id, check_id) REFERENCES veho.endpoint_checks (tenant_id, id) ON DELETE CASCADE
+);
+
+ALTER TABLE veho.endpoint_checks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE veho.endpoint_check_results ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON veho.endpoint_checks
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.endpoint_check_results
+	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+GRANT SELECT, INSERT, DELETE ON veho.endpoint_checks TO veho_api;
+GRANT SELECT ON veho.endpoint_check_results TO veho_api;
+GRANT SELECT ON veho.endpoint_checks TO veho_worker;
+GRANT SELECT, INSERT ON veho.endpoint_check_results TO veho_worker;
+
+-- The checks this executor has to answer, across tenants: it names it, the
+-- check is not older than p_within, and it has not answered.
+CREATE FUNCTION veho.pending_endpoint_checks(p_node text, p_within interval) RETURNS TABLE (tenant_id uuid, check_id uuid)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT c.tenant_id, c.id FROM veho.endpoint_checks c
+	WHERE p_node = ANY (c.nodes) AND c.created_at > now() - p_within
+	  AND NOT EXISTS (SELECT 1 FROM veho.endpoint_check_results r WHERE r.check_id = c.id AND r.node_id = p_node)
+	ORDER BY c.created_at
+	LIMIT 16
+$$;
+REVOKE ALL ON FUNCTION veho.pending_endpoint_checks(text, interval) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.pending_endpoint_checks(text, interval) TO veho_worker;

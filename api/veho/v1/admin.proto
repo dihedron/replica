@@ -38,6 +38,18 @@ service EndpointService {
   rpc TestEndpoint(EndpointName) returns (EndpointTest) {
     option (google.api.http) = {post: "/v1/endpoints/{name}:test" body: "*"};
   }
+  // CheckEndpoint checks the endpoint's network flows from every executor
+  // (veho-network-checks.md), or returns the check in flight.
+  rpc CheckEndpoint(EndpointName) returns (EndpointCheck) {
+    option (google.api.http) = {post: "/v1/endpoints/{name}:check" body: "*"};
+  }
+  // ListEndpointChecks lists the endpoint's last checks, newest first.
+  rpc ListEndpointChecks(EndpointName) returns (ListEndpointChecksResponse) {
+    option (google.api.http) = {get: "/v1/endpoints/{name}/checks"};
+  }
+  rpc GetEndpointCheck(EndpointCheckName) returns (EndpointCheck) {
+    option (google.api.http) = {get: "/v1/endpoints/{name}/checks/{id}"};
+  }
 }
 
 message Endpoint {
@@ -58,6 +70,65 @@ message ListEndpointsRequest {}
 
 message ListEndpointsResponse {
   repeated Endpoint endpoints = 1;
+}
+
+message EndpointCheckName {
+  string name = 1;
+  string id = 2;
+}
+
+// A network flow of an endpoint, from an executor to host:port.
+message Flow {
+  string purpose = 1;
+  string host = 2;
+  int32 port = 3;
+  bool tls = 4;
+  string server_name = 5;
+  // "": TCP, or TLS with tls; "ssh".
+  string handshake = 6;
+  // Why the flow is not probed, if so.
+  string unprobed = 7;
+  // The driver connects without the dial guard (s3).
+  bool unguarded = 8;
+}
+
+// One flow's outcome at one address, from one node.
+message FlowResult {
+  string purpose = 1;
+  string host = 2;
+  int32 port = 3;
+  // Empty when no address was probed.
+  string address = 4;
+  // tcp, tls, ssh.
+  string protocol = 5;
+  // reachable, unreachable, skipped.
+  string status = 6;
+  string reason = 7;
+  int64 latency_ms = 8;
+}
+
+message NodeCheck {
+  string node = 1;
+  string region = 2;
+  bool answered = 3;
+  google.protobuf.Timestamp checked_at = 4;
+  repeated FlowResult results = 5;
+}
+
+message EndpointCheck {
+  string id = 1;
+  string endpoint = 2;
+  google.protobuf.Timestamp created_at = 3;
+  // running, complete, expired.
+  string state = 4;
+  // Why the flows could not be found.
+  string error = 5;
+  repeated Flow flows = 6;
+  repeated NodeCheck nodes = 7;
+}
+
+message ListEndpointChecksResponse {
+  repeated EndpointCheck checks = 1;
 }
 
 message EndpointTest {

@@ -109,6 +109,7 @@ func (e *Engine) CreateEndpoint(ctx context.Context, tenant uuid.UUID, ep Endpoi
 	if err != nil {
 		return Endpoint{}, fmt.Errorf("engine: create endpoint: %w", err)
 	}
+	e.checkLater(tenant, ep.Name)
 	return out, nil
 }
 
@@ -182,6 +183,7 @@ func (e *Engine) UpdateEndpoint(ctx context.Context, tenant uuid.UUID, ep Endpoi
 	if err != nil {
 		return Endpoint{}, fmt.Errorf("engine: update endpoint: %w", err)
 	}
+	e.checkLater(tenant, ep.Name)
 	return out, nil
 }
 

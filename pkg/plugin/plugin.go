@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -45,6 +47,53 @@ type ConfigChecker interface {
 // (veho-openstack.md §3.2). An endpoint that cannot is a Permanent error.
 type Presigner interface {
 	PresignRead(ctx context.Context, ref Ref, version string, ttl time.Duration) (string, error)
+}
+
+// Flow is a network connection a client of an endpoint makes, from an
+// executor to Host:Port, for the endpoint's network checks
+// (veho-network-checks.md §3). A flow veho cannot probe (FTP's passive
+// data ports, chosen by the server) says why in Unprobed, Port 0.
+type Flow struct {
+	Purpose    string `json:"purpose"` // what it is for: "s3", "keystone", "glance", "ftp data", ...
+	Host       string `json:"host"`
+	Port       int    `json:"port,omitempty"`
+	TLS        bool   `json:"tls,omitempty"`
+	ServerName string `json:"server_name,omitempty"` // the name the certificate must carry; default Host
+	Handshake  string `json:"handshake,omitempty"`   // "": TCP, or TLS with TLS; "ssh"
+	CACert     string `json:"ca_cert,omitempty"`     // PEM certificates trusted besides the system's, for TLS
+	Unprobed   string `json:"unprobed,omitempty"`
+	// Unguarded: the driver connects without the dial guard (s3,
+	// veho-sources.md §9), so its probes refuse only the metadata
+	// addresses, never reaching further than its transfers.
+	Unguarded bool `json:"unguarded,omitempty"`
+}
+
+// URLFlow is the flow to a URL's host and port: TLS for https, verified
+// for the URL's host with ca besides the system's roots.
+func URLFlow(purpose, raw, ca string) (Flow, error) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Hostname() == "" || u.Scheme != "http" && u.Scheme != "https" {
+		return Flow{}, Wrapf(Permanent, "%s: %q is not an http or https URL", purpose, raw)
+	}
+	f := Flow{Purpose: purpose, Host: u.Hostname(), Port: 80}
+	if u.Scheme == "https" {
+		f.Port, f.TLS, f.ServerName, f.CACert = 443, true, u.Hostname(), ca
+	}
+	if p := u.Port(); p != "" {
+		if f.Port, err = strconv.Atoi(p); err != nil || f.Port < 1 || f.Port > 65535 {
+			return Flow{}, Wrapf(Permanent, "%s: port %q", purpose, p)
+		}
+	}
+	return f, nil
+}
+
+// MaxFlows bounds the flows of one endpoint (NC-3).
+const MaxFlows = 64
+
+// FlowLister is a client that says which flows it makes; a client without
+// it makes none that veho checks (a local file system).
+type FlowLister interface {
+	Flows(ctx context.Context) ([]Flow, error)
 }
 
 // Puller is an upload whose destination fetches the object itself from a
