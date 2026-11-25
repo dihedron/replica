@@ -182,7 +182,7 @@ func TestCLI(t *testing.T) {
 			}
 			// NC-T4: a check from every executor, waited for; a file
 			// endpoint has no flows, so the table is empty
-			check := &EndpointCheckCommand{apiOptions: c.opts("text"), Wait: true, Timeout: time.Minute}
+			check := &EndpointCheckCommand{apiOptions: c.opts("text"), Wait: true, Within: time.Minute}
 			check.Args.Name = "d1-" + s
 			if out := c.must(check); !strings.Contains(out, "state: complete") || !strings.Contains(out, "NODE") {
 				t.Errorf("endpoint check: %s", out)

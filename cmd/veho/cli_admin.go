@@ -286,8 +286,8 @@ func (cmd *EndpointTestCommand) Execute([]string) error {
 type EndpointCheckCommand struct {
 	apiOptions
 	nameArg
-	Wait    bool          `long:"wait" description:"Wait until every executor has answered, or the check expired"`
-	Timeout time.Duration `long:"timeout" default:"3m" description:"How long --wait waits"`
+	Wait   bool          `long:"wait" description:"Wait until every executor has answered, or the check expired"`
+	Within time.Duration `long:"within" default:"3m" description:"How long --wait waits at most"`
 }
 
 // Execute starts the check (or finds the one in flight) and prints it.
@@ -296,7 +296,7 @@ func (cmd *EndpointCheckCommand) Execute([]string) error {
 	if err := cmd.call("veho.v1.EndpointService.CheckEndpoint", &vehov1.EndpointName{Name: cmd.Args.Name}, c); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(cmd.Timeout)
+	deadline := time.Now().Add(cmd.Within)
 	for cmd.Wait && c.GetState() == "running" && time.Now().Before(deadline) {
 		time.Sleep(2 * time.Second)
 		if err := cmd.call("veho.v1.EndpointService.GetEndpointCheck", &vehov1.EndpointCheckName{Name: cmd.Args.Name, Id: c.GetId()}, c); err != nil {
