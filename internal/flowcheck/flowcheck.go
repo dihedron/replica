@@ -53,10 +53,6 @@ type Options struct {
 	Retries int           // attempts in total; default 2
 }
 
-// unguarded is the guard of a driver that connects without one (s3): it
-// refuses only the metadata addresses.
-var unguarded, _ = netguard.New([]string{"0.0.0.0/0", "::/0"})
-
 // Check probes the flows and returns, in their order, one result per flow
 // and address (one per flow when none was probed).
 func Check(ctx context.Context, flows []plugin.Flow, o Options) []Result {
@@ -83,9 +79,6 @@ func Check(ctx context.Context, flows []plugin.Flow, o Options) []Result {
 			continue
 		}
 		guard := o.Guard
-		if f.Unguarded {
-			guard = unguarded
-		}
 		for _, a := range addrs {
 			r := base
 			if guard == nil || !guard.Allowed(a) {

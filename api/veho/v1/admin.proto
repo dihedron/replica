@@ -88,8 +88,6 @@ message Flow {
   string handshake = 6;
   // Why the flow is not probed, if so.
   string unprobed = 7;
-  // The driver connects without the dial guard (s3).
-  bool unguarded = 8;
 }
 
 // One flow's outcome at one address, from one node.

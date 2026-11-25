@@ -303,9 +303,7 @@ type Flow struct {
 	// "": TCP, or TLS with tls; "ssh".
 	Handshake string `protobuf:"bytes,6,opt,name=handshake,proto3" json:"handshake,omitempty"`
 	// Why the flow is not probed, if so.
-	Unprobed string `protobuf:"bytes,7,opt,name=unprobed,proto3" json:"unprobed,omitempty"`
-	// The driver connects without the dial guard (s3).
-	Unguarded     bool `protobuf:"varint,8,opt,name=unguarded,proto3" json:"unguarded,omitempty"`
+	Unprobed      string `protobuf:"bytes,7,opt,name=unprobed,proto3" json:"unprobed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -387,13 +385,6 @@ func (x *Flow) GetUnprobed() string {
 		return x.Unprobed
 	}
 	return ""
-}
-
-func (x *Flow) GetUnguarded() bool {
-	if x != nil {
-		return x.Unguarded
-	}
-	return false
 }
 
 // One flow's outcome at one address, from one node.
@@ -2071,7 +2062,7 @@ const file_veho_v1_admin_proto_rawDesc = "" +
 	"\tendpoints\x18\x01 \x03(\v2\x11.veho.v1.EndpointR\tendpoints\"7\n" +
 	"\x11EndpointCheckName\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\"\xd3\x01\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\"\xb5\x01\n" +
 	"\x04Flow\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x12\n" +
@@ -2080,8 +2071,7 @@ const file_veho_v1_admin_proto_rawDesc = "" +
 	"\vserver_name\x18\x05 \x01(\tR\n" +
 	"serverName\x12\x1c\n" +
 	"\thandshake\x18\x06 \x01(\tR\thandshake\x12\x1a\n" +
-	"\bunprobed\x18\a \x01(\tR\bunprobed\x12\x1c\n" +
-	"\tunguarded\x18\b \x01(\bR\tunguarded\"\xd3\x01\n" +
+	"\bunprobed\x18\a \x01(\tR\bunprobed\"\xd3\x01\n" +
 	"\n" +
 	"FlowResult\x12\x18\n" +
 	"\apurpose\x18\x01 \x01(\tR\apurpose\x12\x12\n" +

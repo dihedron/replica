@@ -110,7 +110,8 @@ engine: {worker_concurrency: 4, parts_in_flight: 2, part_memory_mib: 512}
 secrets: {unwrap_key: "systemd-credential:unwrap-key"}
 drivers:
   - {name: file}
-  - {name: s3, path: /usr/libexec/veho/plugins/veho-plugin-s3, sha256: $2}
+  # the regions' Garage, on the lab's private network (the dial guard)
+  - {name: s3, path: /usr/libexec/veho/plugins/veho-plugin-s3, sha256: $2, settings: {allow_cidrs: [10.60.0.0/16]}}
 api:
   listen: "$(inner_ip "$name"):$NODE_API_PORT"
   tls: {cert_file: /etc/veho/tls/server.crt, key_file: /etc/veho/tls/server.key}

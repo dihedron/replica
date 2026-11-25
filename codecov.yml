@@ -1,8 +1,10 @@
-# Codecov: test tooling (the disposable DBOS spike) and generated code
+# Codecov: test tooling (the disposable DBOS spike, the lab's helpers, run
+# only by the lab's suites) and generated code
 # (protobuf, gRPC, the REST gateway) are left out of the coverage figures,
 # as in sonar-project.properties.
 ignore:
   - "test/spikes/**"
+  - "test/labtest/**"
   - "**/*.pb.go"
   - "**/*.pb.gw.go"
 

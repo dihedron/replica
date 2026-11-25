@@ -33,7 +33,7 @@ func fakeMsg(t *testing.T, status int, code, msg string) plugin.Client {
 	}))
 	t.Cleanup(srv.Close)
 	cfg, _ := json.Marshal(config{Endpoint: srv.URL, Region: "r", Bucket: "b", PathStyle: true})
-	c, err := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	c, err := loopback(t).Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestClassify(t *testing.T) {
 	}
 	// nothing listens: the network
 	cfg, _ := json.Marshal(config{Endpoint: "http://127.0.0.1:1", Region: "r", Bucket: "b", PathStyle: true})
-	cl, err := New().Open(ctx, cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	cl, err := loopback(t).Open(ctx, cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func open(t *testing.T, url string, extra map[string]any) (plugin.Client, error)
 		m[k] = v
 	}
 	cfg, _ := json.Marshal(m)
-	c, err := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	c, err := loopback(t).Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
 	if err == nil {
 		t.Cleanup(func() { _ = c.Close() })
 	}
@@ -273,7 +273,7 @@ func TestFactory(t *testing.T) {
 // OS-T5: a presigned GET for the destination that pulls; the TTL bounded.
 func TestPresignRead(t *testing.T) {
 	cfg, _ := json.Marshal(config{Endpoint: "https://s3.example", Region: "r", Bucket: "b", PathStyle: true})
-	c, err := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	c, err := loopback(t).Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestPresignRead(t *testing.T) {
 
 func TestPresignReadEmptyKey(t *testing.T) {
 	cfg, _ := json.Marshal(config{Endpoint: "https://s3.example", Region: "r", Bucket: "b"})
-	c, _ := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	c, _ := loopback(t).Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
 	if _, err := c.(plugin.Presigner).PresignRead(context.Background(), plugin.Ref{}, "", time.Hour); plugin.ClassOf(err) != plugin.Permanent {
 		t.Fatalf("empty key: %v", err)
 	}

@@ -22,7 +22,6 @@ import (
 	"github.com/dihedron/veho/migrations"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
-	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -55,7 +54,7 @@ secrets: {unwrap_key: "file:/nonexistent"}
 engine: {heartbeat: 1s, lease_ttl: 4s, part_size_mib: 5, parts_in_flight: 2}
 notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}
 api: {tls: {cert_file: /unused, key_file: /unused}}
-drivers: [{name: http, settings: {allow_cidrs: [127.0.0.0/8]}}]
+drivers: [{name: http, settings: {allow_cidrs: [127.0.0.0/8]}}, {name: s3, settings: {allow_cidrs: [10.0.0.0/8]}}]
 `))
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +105,7 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	f.secrets = secrets.NewStore(ring, f.api, f.worker, f.audit)
-	drivers := map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky, "presign": presigner{file.New()}, "puller": f.puller,
+	drivers := map[string]plugin.Driver{"file": file.New(), "s3": labS3(t), "flaky": f.flaky, "presign": presigner{file.New()}, "puller": f.puller,
 		"sinkonly": capsDriver{file.New(), "sinkonly", plugin.Capabilities{Sink: true}},
 		"srconly":  capsDriver{file.New(), "srconly", plugin.Capabilities{Source: true, RangeRead: true}},
 		"norange":  capsDriver{file.New(), "norange", plugin.Capabilities{Source: true, Sink: true}}}

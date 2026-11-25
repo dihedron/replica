@@ -32,7 +32,7 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `drivers[].path` | none | A plugin pinned by the operator, without a manifest: its executable, with `sha256` |
 | `drivers[].sha256` | none | The SHA-256 of `path`'s file: a plugin whose file differs is not started |
 | `drivers[].settings` | `{}` | The driver's settings, a map; the driver refuses keys it does not know (*Operator's Guide*, drivers) |
-| `drivers[].settings.allow_cidrs` | none | `http`, `sftp`, `ftp`, `glance`, `swift`, `nexus`: CIDRs a source may reach although they are private, such as `10.20.0.0/16`; the cloud metadata addresses are never allowed |
+| `drivers[].settings.allow_cidrs` | none | `s3`, `http`, `sftp`, `ftp`, `glance`, `swift`, `nexus`: CIDRs the driver may reach although they are private, such as `10.20.0.0/16` for an S3 service on the platform's network; the cloud metadata addresses are never allowed |
 | `drivers[].settings.plaintext` | `false` | `ftp`: allow endpoints with `tls: none`, whose password crosses the network in clear; `glance`, `swift`: allow `http` for Keystone and the services; `nexus`: allow `http` for Nexus (a lab only) |
 | `drivers[].settings.max_segments` | `1000` | `swift`: the cluster's `max_manifest_segments`, the most parts of an object |
 | `drivers[].settings.roots` | none | `file`: the directories an endpoint's root may be or be under; empty, no `file` endpoint can be created |

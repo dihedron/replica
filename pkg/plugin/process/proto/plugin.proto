@@ -179,7 +179,6 @@ message Flow {
   string handshake = 6;
   string ca_cert = 7;
   string unprobed = 8;
-  bool unguarded = 9;
 }
 
 message FlowList {

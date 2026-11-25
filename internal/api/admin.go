@@ -203,7 +203,7 @@ func toCheck(c engine.EndpointCheck) *vehov1.EndpointCheck {
 	out := &vehov1.EndpointCheck{Id: c.ID.String(), Endpoint: c.Endpoint, CreatedAt: timestamppb.New(c.Created), State: c.State, Error: c.Error}
 	for _, f := range c.Flows {
 		out.Flows = append(out.Flows, &vehov1.Flow{Purpose: f.Purpose, Host: f.Host, Port: int32(f.Port), Tls: f.TLS, //nolint:gosec // a port
-			ServerName: f.ServerName, Handshake: f.Handshake, Unprobed: f.Unprobed, Unguarded: f.Unguarded})
+			ServerName: f.ServerName, Handshake: f.Handshake, Unprobed: f.Unprobed})
 	}
 	for _, n := range c.Nodes {
 		nc := &vehov1.NodeCheck{Node: n.Node, Region: n.Region, Answered: n.Answered}

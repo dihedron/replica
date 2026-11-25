@@ -46,6 +46,10 @@ func node(t *testing.T) (string, string) {
 		"update veho.endpoints set credential_ref = null where credential_ref like 'db://%'",
 		"delete from veho.secrets", "delete from veho.kek",
 		"select veho.put_location('lab-a', 'region', null)",
+		// the nodes of earlier tests, and the lab's veho nodes that lab.sh
+		// test stops, are gone though they beat moments ago: an endpoint
+		// check waits for this node alone (tests run one at a time)
+		"update veho.executors set last_seen = now() - interval '1 day'",
 	} {
 		if _, err := conn.Exec(ctx, q); err != nil {
 			t.Fatal(err)

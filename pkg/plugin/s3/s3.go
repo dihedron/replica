@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 
+	"github.com/dihedron/veho/internal/netguard"
 	"github.com/dihedron/veho/pkg/plugin"
 )
 
@@ -43,19 +44,33 @@ const (
 )
 
 // Driver is the S3 driver.
-type Driver struct{}
+type Driver struct {
+	guard *netguard.Guard
+}
 
-// New returns the S3 driver.
-func New() Driver { return Driver{} }
+// public is the guard without allow_cidrs: public addresses only.
+var public, _ = netguard.New(nil) // cannot fail
 
-// Factory builds the driver from its settings; it has none yet, so any key
-// is refused (veho-plugin-distribution.md §4).
-func Factory(settings json.RawMessage) (plugin.Driver, error) {
-	var none struct{}
-	if err := plugin.DecodeSettings(settings, &none); err != nil {
+// New returns the S3 driver that reaches public addresses only.
+func New() Driver { return Driver{guard: public} }
+
+type settings struct {
+	AllowCIDRs []string `json:"allow_cidrs"`
+}
+
+// Factory builds the driver from its settings: allow_cidrs, the ranges the
+// dial guard allows besides the public addresses (an S3 service on a
+// private network, veho-sources.md §9, point 1).
+func Factory(raw json.RawMessage) (plugin.Driver, error) {
+	var s settings
+	if err := plugin.DecodeSettings(raw, &s); err != nil {
 		return nil, fmt.Errorf("s3: %w", err)
 	}
-	return New(), nil
+	g, err := netguard.New(s.AllowCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("s3: %w", err)
+	}
+	return Driver{guard: g}, nil
 }
 
 func (Driver) Name() string      { return "s3" }
@@ -101,7 +116,7 @@ var archive = []string{"GLACIER", "DEEP_ARCHIVE"}
 // Open builds a client with its own connections, closed by Close (no state
 // shared across tenants, PLG-6). The SDK does not retry: the core does, by
 // the class of the error.
-func (Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
+func (d Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credentials) (plugin.Client, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -117,12 +132,21 @@ func (Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credenti
 	if creds["access_key_id"] == "" || creds["secret_access_key"] == "" {
 		return nil, plugin.Wrapf(plugin.Permanent, "s3: the credentials need access_key_id and secret_access_key")
 	}
+	guard := d.guard
+	if guard == nil {
+		guard = public // the zero Driver
+	}
+	// every connection through the dial guard (SRC-3); no proxy, which the
+	// guard would see instead of the service, and no redirect (SEC-13)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = guard.Dialer(30 * time.Second).DialContext
 	opts := s3.Options{
-		Region:                     cfg.Region,
-		UsePathStyle:               cfg.PathStyle,
-		Credentials:                credentials.NewStaticCredentialsProvider(creds["access_key_id"], creds["secret_access_key"], creds["session_token"]),
-		HTTPClient:                 &http.Client{Transport: transport},
+		Region:       cfg.Region,
+		UsePathStyle: cfg.PathStyle,
+		Credentials:  credentials.NewStaticCredentialsProvider(creds["access_key_id"], creds["secret_access_key"], creds["session_token"]),
+		HTTPClient: &http.Client{Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		Retryer:                    aws.NopRetryer{},
 		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenRequired,
 		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenRequired,
@@ -141,11 +165,9 @@ func (Driver) Open(ctx context.Context, raw plugin.Config, creds plugin.Credenti
 	return &client{s3: s3.New(opts), bucket: cfg.Bucket, class: cfg.StorageClass, transport: transport, endpoint: endpoint}, nil
 }
 
-// Flows is the endpoint's: outside the dial guard, as the driver's
-// connections (veho-sources.md §9).
+// Flows is the endpoint's.
 func (c *client) Flows(context.Context) ([]plugin.Flow, error) {
 	f, err := plugin.URLFlow("s3", c.endpoint, "")
-	f.Unguarded = true
 	return []plugin.Flow{f}, err
 }
 
@@ -184,6 +206,9 @@ func classify(ctx context.Context, op string, err error) error {
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
+	}
+	if errors.Is(err, netguard.ErrForbidden) {
+		return plugin.Wrap(fmt.Errorf("s3: %s: %w", op, netguard.ErrForbidden), plugin.Permanent)
 	}
 	err = fmt.Errorf("s3: %s: %w", op, err)
 	code := ""

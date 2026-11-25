@@ -11,8 +11,20 @@ import (
 	"github.com/dihedron/veho/pkg/plugin/glance"
 	"github.com/dihedron/veho/pkg/plugin/http"
 	"github.com/dihedron/veho/pkg/plugin/nexus"
+	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/dihedron/veho/pkg/plugin/swift"
 )
+
+// labS3 is the s3 driver allowed to the lab's Garage, on its private
+// network (testConfig's drivers).
+func labS3(t *testing.T) plugin.Driver {
+	t.Helper()
+	d, err := s3.Factory(json.RawMessage(`{"allow_cidrs": ["10.0.0.0/8"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
 
 // labDrivers adds http on the loopback and the drivers of the optional
 // labs that are up: Nexus (lab.sh nexus up) and DevStack's Glance and

@@ -433,7 +433,11 @@ func s3Client(t *testing.T, x, bucket string) plugin.Client {
 	up := strings.ToUpper(x)
 	cfg, _ := json.Marshal(map[string]any{"endpoint": os.Getenv("VEHO_TEST_S3_" + up + "_ENDPOINT"), "region": "region-" + x,
 		"bucket": bucket, "path_style": true})
-	c, err := s3driver.Driver{}.Open(context.Background(), cfg, plugin.Credentials{
+	d, err := s3driver.Factory(json.RawMessage(`{"allow_cidrs": ["10.0.0.0/8"]}`)) // the lab's private network
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := d.Open(context.Background(), cfg, plugin.Credentials{
 		"access_key_id": os.Getenv("VEHO_TEST_S3_" + up + "_ACCESS_KEY"), "secret_access_key": os.Getenv("VEHO_TEST_S3_" + up + "_SECRET_KEY")})
 	if err != nil {
 		t.Fatalf("s3 %s/%s: %v", x, bucket, err)
