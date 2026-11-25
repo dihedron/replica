@@ -61,17 +61,18 @@ func (e *Engine) Housekeep(ctx context.Context) (bool, error) {
 	}
 	defer release()
 	var errs []error
-	for name, task := range map[string]func(context.Context) error{
-		"adopt":     e.adopt,
-		"deadlines": e.deadlines,
-		"zombies":   e.zombies,
-		"leases":    e.leases,
-		"retention": e.retain,
-		"rewrap":    e.rewrap,
+	// in this order: the repairs first, the periodic network checks last,
+	// which open endpoints and may take the rest of the pass
+	for _, t := range []struct {
+		name string
+		run  func(context.Context) error
+	}{
+		{"adopt", e.adopt}, {"deadlines", e.deadlines}, {"zombies", e.zombies}, {"leases", e.leases},
+		{"retention", e.retain}, {"rewrap", e.rewrap}, {"checks", e.periodicChecks},
 	} {
-		if err := task(ctx); err != nil {
-			slog.ErrorContext(ctx, "housekeeping task failed", "task", name, "error", err)
-			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+		if err := t.run(ctx); err != nil {
+			slog.ErrorContext(ctx, "housekeeping task failed", "task", t.name, "error", err)
+			errs = append(errs, fmt.Errorf("%s: %w", t.name, err))
 		}
 	}
 	return true, errors.Join(errs...)

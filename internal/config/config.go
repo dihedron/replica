@@ -33,6 +33,15 @@ type Config struct {
 	API           API           `yaml:"api"`
 	Checks        Checks        `yaml:"checks"`
 	Notifications Notifications `yaml:"notifications"`
+	NetworkChecks NetworkChecks `yaml:"network_checks"`
+}
+
+// NetworkChecks are the periodic checks of the endpoints' network flows
+// (veho-network-checks.md §11): every Interval (0: none), at most PerPass
+// endpoints per housekeeping pass.
+type NetworkChecks struct {
+	Interval *time.Duration `yaml:"interval"`
+	PerPass  int            `yaml:"per_pass"`
 }
 
 // Notifications are the webhooks (veho-webhooks.md): off unless enabled.
@@ -257,6 +266,8 @@ func (c *Config) complete() error {
 		}
 	}
 	setP(&c.Housekeeping.WorkflowRetention, 168*time.Hour)
+	setP(&c.NetworkChecks.Interval, 24*time.Hour)
+	setI(&c.NetworkChecks.PerPass, 20)
 	setP(&c.Housekeeping.JobsRetention, 90*24*time.Hour)
 	setP(&c.Notifications.DeliveredRetention, 24*time.Hour)
 	setP(&c.Notifications.AbandonedRetention, 720*time.Hour)
@@ -297,6 +308,9 @@ func (c *Config) validate() error {
 	for name, d := range map[string]time.Duration{"workflow_retention": *h.WorkflowRetention, "jobs_retention": *h.JobsRetention} {
 		check(d == 0 || d >= minRetention, "housekeeping.%s %v: want 0 (keep) or at least %v", name, d, minRetention)
 	}
+	nc := c.NetworkChecks
+	check(*nc.Interval == 0 || *nc.Interval >= time.Hour, "network_checks.interval %v: want 0 (off) or at least 1h", *nc.Interval)
+	check(nc.PerPass >= 1 && nc.PerPass <= 1000, "network_checks.per_pass %d: want 1 to 1000", nc.PerPass)
 	for _, cidr := range c.Notifications.AllowCIDRs {
 		_, err := netip.ParsePrefix(cidr)
 		check(err == nil, "notifications.allow_cidrs %q: want a CIDR such as 10.20.0.0/16", cidr)

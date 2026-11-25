@@ -42,4 +42,4 @@ Every change of state, every key operation and every repair by housekeeping emit
 
 ## The node
 
-The systemd unit runs veho as its own user with no capabilities, a read-only system, private devices and temporary files, a system-call filter and no core dumps. The node logs the SHA-256 of its configuration at start, so that a change shows.
+The systemd unit runs veho as its own user with no capabilities, a read-only system, private devices and temporary files, a system-call filter and no core dumps. Where AppArmor runs (Ubuntu, Debian), the package's profiles add mandatory access control: `veho` reads only its configuration, the CA roots and its plugins, and writes nothing but go-plugin's sockets and the system log; each plugin runs under `veho-plugin`, which denies `/etc/veho` and the systemd credentials, so a compromised plugin cannot read the unwrap key, the TLS key or the database DSNs (PK-1). The SELinux policy for Rocky Linux and AlmaLinux is planned. The node logs the SHA-256 of its configuration at start, so that a change shows.

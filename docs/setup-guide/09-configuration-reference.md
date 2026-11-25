@@ -27,6 +27,8 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `notifications.allow_cidrs` | none | CIDRs a webhook may reach although they are private, such as `10.20.0.0/16`; the cloud metadata addresses are never allowed |
 | `notifications.delivered_retention` | `24h` | How long delivered webhook events are kept; `0s` removes them at the next pass, else at least `1m` |
 | `notifications.abandoned_retention` | `720h` | How long abandoned and undelivered events are kept; at least `1h` |
+| `network_checks.interval` | `24h` | How often each endpoint's network flows are checked again from every node, in the background; `0` turns the periodic checks off; at least `1h` |
+| `network_checks.per_pass` | `20` | The most endpoints a housekeeping pass (every 30 s) checks, the oldest first: it bounds the load however many endpoints there are; 1 to 1000 |
 | `drivers[].name` | (required) | A driver this node offers, once: `file` and `http` are built in, any other name is a plugin, by default `/usr/libexec/veho/plugins/veho-plugin-<name>` with its signed manifest. A driver not listed is not available |
 | `drivers[].key` | `veho` | For an installed plugin, the key file `/etc/veho/plugin-keys/<key>.pub` whose keys must have signed its manifest: `veho` is the release's, another name a third-party publisher's. Not on a built-in driver or with `path` |
 | `drivers[].path` | none | A plugin pinned by the operator, without a manifest: its executable, with `sha256` |

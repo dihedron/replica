@@ -310,6 +310,18 @@ nfpms:
         dst: /usr/lib/systemd/system/veho.service
         file_info:
           mode: 0644
+      # confinement (.specs/veho-packaging.md): the AppArmor profiles of veho
+      # and its plugins, loaded by the postinstall; the firewalld service
+      - src: ./packaging/apparmor/veho
+        dst: /etc/apparmor.d/veho
+        packager: deb
+        type: config
+        file_info:
+          mode: 0644
+      - src: ./packaging/firewalld/veho.xml
+        dst: /usr/lib/firewalld/services/veho.xml
+        file_info:
+          mode: 0644
       # run once by the database administrator (the Setup Guide)
       - src: ./packaging/postgres/roles.sql
         dst: /usr/share/veho/postgres/roles.sql
@@ -330,8 +342,15 @@ nfpms:
           mode: 0644
           owner: root
           group: root
+    overrides:
+      deb:
+        dependencies: [ca-certificates]
+        recommends: [apparmor]
+      rpm:
+        dependencies: [ca-certificates]
     scripts:
       postinstall: ./packaging/postinstall.sh
+      preremove: ./packaging/preremove.sh
 
   - id: veho-plugin-s3
     package_name: veho-plugin-s3
