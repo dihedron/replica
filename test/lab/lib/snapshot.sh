@@ -63,6 +63,7 @@ lab_start() {
 	if ! vm_running lxd; then
 		# a stopped VM takes the settings' size (a running one would not)
 		lxd config set lxd limits.cpu="$LAB_LXD_CPUS" limits.memory="$LAB_LXD_MEMORY"
+		lxd config device set lxd root size="$LAB_LXD_DISK" # grown only; cloud-init grows the file system
 		lxd start lxd
 	fi
 	vm_wait lxd
