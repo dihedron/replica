@@ -4,10 +4,12 @@
 //
 //	plugin-manifest genkey FILE                    the private key to FILE (0600), the public key to stdout
 //	plugin-manifest pubkey                         the public key of $PLUGIN_SIGNING_KEY
-//	plugin-manifest sign -name N -version V [-out DIR] [-allow-unsigned] BINARY
+//	plugin-manifest sign -name N -version V [-veho RANGE] [-out DIR] [-allow-unsigned] BINARY
 //	    the manifest and signature into DIR (default: next to BINARY), signed
-//	    with the private key in $PLUGIN_SIGNING_KEY; with -allow-unsigned and
-//	    no key (snapshot builds), with a throwaway key no veho accepts
+//	    with the private key in $PLUGIN_SIGNING_KEY; RANGE is the versions of
+//	    veho the plugin supports, in interval notation (default [V], the
+//	    release's own); with -allow-unsigned and no key (snapshot builds),
+//	    with a throwaway key no veho accepts
 package main
 
 import (
@@ -25,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/dihedron/veho/pkg/plugin/process"
+	"github.com/dihedron/veho/pkg/semver"
 )
 
 func main() {
@@ -36,7 +39,7 @@ func main() {
 
 func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: plugin-manifest genkey FILE | pubkey | sign -name N -version V [-out DIR] [-allow-unsigned] BINARY")
+		return errors.New("usage: plugin-manifest genkey FILE | pubkey | sign -name N -version V [-veho RANGE] [-out DIR] [-allow-unsigned] BINARY")
 	}
 	switch args[0] {
 	case "genkey":
@@ -70,7 +73,8 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 	case "sign":
 		fs := flag.NewFlagSet("sign", flag.ContinueOnError)
 		name := fs.String("name", "", "the driver's name")
-		version := fs.String("version", "", "the release's version")
+		version := fs.String("version", "", "the plugin's version")
+		veho := fs.String("veho", "", "the versions of veho the plugin supports, e.g. [0.5.0,0.6.0) (default [VERSION])")
 		out := fs.String("out", "", "the directory of the manifest (default: the binary's)")
 		unsigned := fs.Bool("allow-unsigned", false, "without PLUGIN_SIGNING_KEY, sign with a throwaway key")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -78,6 +82,12 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 		}
 		if *name == "" || *version == "" || fs.NArg() != 1 {
 			return errors.New("usage: plugin-manifest sign -name N -version V BINARY")
+		}
+		if *veho == "" {
+			*veho = "[" + *version + "]"
+		}
+		if _, err := semver.ParseRange(*veho); err != nil {
+			return err
 		}
 		env := strings.TrimSpace(getenv("PLUGIN_SIGNING_KEY"))
 		var key ed25519.PrivateKey
@@ -108,7 +118,7 @@ func run(args []string, getenv func(string) string, stdout io.Writer) error {
 			return err
 		}
 		return process.WriteManifest(dir, key, process.Manifest{
-			Name: *name, Version: *version, SHA256: hex.EncodeToString(sum[:]), Protocol: process.Handshake.ProtocolVersion,
+			Name: *name, Version: *version, Veho: *veho, SHA256: hex.EncodeToString(sum[:]), Protocol: process.Handshake.ProtocolVersion,
 		})
 	}
 	return fmt.Errorf("unknown command %q", args[0])

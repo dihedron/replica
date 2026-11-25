@@ -28,7 +28,8 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `notifications.delivered_retention` | `24h` | How long delivered webhook events are kept; `0s` removes them at the next pass, else at least `1m` |
 | `notifications.abandoned_retention` | `720h` | How long abandoned and undelivered events are kept; at least `1h` |
 | `drivers[].name` | (required) | A driver this node offers, once: `file` and `http` are built in, any other name is a plugin, by default `/usr/libexec/veho/plugins/veho-plugin-<name>` with its signed manifest. A driver not listed is not available |
-| `drivers[].path` | none | A plugin outside veho's release (a third-party one): its executable, with `sha256` |
+| `drivers[].key` | `veho` | For an installed plugin, the key file `/etc/veho/plugin-keys/<key>.pub` whose keys must have signed its manifest: `veho` is the release's, another name a third-party publisher's. Not on a built-in driver or with `path` |
+| `drivers[].path` | none | A plugin pinned by the operator, without a manifest: its executable, with `sha256` |
 | `drivers[].sha256` | none | The SHA-256 of `path`'s file: a plugin whose file differs is not started |
 | `drivers[].settings` | `{}` | The driver's settings, a map; the driver refuses keys it does not know (*Operator's Guide*, drivers) |
 | `metrics.listen` | `127.0.0.1:9464` | The Prometheus listener, `host:port`, or `off` |

@@ -154,9 +154,12 @@ var validDriverName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 
 // Driver enables a storage driver (veho-plugin-distribution.md §2): a
 // built-in one, a plugin installed from its package (no Path), or a plugin
-// pinned by Path and SHA256. A driver not listed is not available.
+// pinned by Path and SHA256. A driver not listed is not available. Key
+// names the key file whose keys sign an installed plugin's manifest;
+// empty is the release's.
 type Driver struct {
 	Name     string         `yaml:"name"`
+	Key      string         `yaml:"key"`
 	Path     string         `yaml:"path"`
 	SHA256   string         `yaml:"sha256"`
 	Settings map[string]any `yaml:"settings"`
@@ -305,6 +308,8 @@ func (c *Config) validate() error {
 	for i, d := range c.Drivers {
 		check(validDriverName.MatchString(d.Name) && !names[d.Name], "drivers[%d]: a name (%s) is required, once", i, validDriverName)
 		check((d.Path == "") == (d.SHA256 == ""), "drivers[%d]: path and sha256 go together", i)
+		check(d.Key == "" || validDriverName.MatchString(d.Key), "drivers[%d]: key must match %s", i, validDriverName)
+		check(d.Key == "" || d.Path == "", "drivers[%d]: key is for an installed plugin, not one pinned by path", i)
 		if d.SHA256 != "" {
 			sum, err := hex.DecodeString(d.SHA256)
 			check(err == nil && len(sum) == sha256.Size, "drivers[%d]: sha256 must be 64 hexadecimal digits", i)

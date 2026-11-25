@@ -22,7 +22,6 @@ import (
 	"github.com/dihedron/veho/internal/secrets"
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/migrations"
-	"github.com/dihedron/veho/packaging"
 	"github.com/dihedron/veho/pkg/metadata"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
@@ -156,9 +155,13 @@ func connect(ctx context.Context, cfg *config.Config) (map[string]*pgxpool.Pool,
 // standard library (veho-plugin-distribution.md §1).
 var builtins = map[string]process.Factory{"file": file.Factory}
 
-// pluginsRootOwned requires plugin files to be root's (PD-1); tests turn it
-// off to start plugins they build.
-var pluginsRootOwned = true
+// The plugins' and keys' directories, and whether their files must be
+// root's (PD-1, PD-6); tests change them to start plugins they build.
+var (
+	pluginDir        = process.Dir
+	pluginKeyDir     = process.KeyDir
+	pluginsRootOwned = true
+)
 
 // loadDrivers returns the drivers the configuration lists: built-in ones,
 // plugins installed with their signed manifests, and plugins pinned by path
@@ -177,6 +180,9 @@ func loadDrivers(cfg *config.Config) (map[string]plugin.Driver, func(), error) {
 			settings = []byte("{}")
 		}
 		if factory, ok := builtins[d.Name]; ok && d.Path == "" {
+			if d.Key != "" {
+				return nil, stop, fmt.Errorf("serve: driver %s: built in, it takes no key", d.Name)
+			}
 			drv, err := factory(settings)
 			if err != nil {
 				return nil, stop, fmt.Errorf("serve: driver %s: %w", d.Name, err)
@@ -186,11 +192,15 @@ func loadDrivers(cfg *config.Config) (map[string]plugin.Driver, func(), error) {
 		}
 		opts := process.Options{Path: d.Path, RequireRootOwned: pluginsRootOwned}
 		if d.Path == "" {
-			keys, err := packaging.PluginKeys()
-			if err != nil {
-				return nil, stop, fmt.Errorf("serve: %w", err)
+			key := d.Key
+			if key == "" {
+				key = process.ReleaseKey
 			}
-			if opts, err = process.Installed(process.Dir, d.Name, metadata.Version, keys, pluginsRootOwned); err != nil {
+			keys, err := process.LoadKeys(pluginKeyDir, key, pluginsRootOwned)
+			if err != nil {
+				return nil, stop, fmt.Errorf("serve: driver %s: %w", d.Name, err)
+			}
+			if opts, err = process.Installed(pluginDir, d.Name, metadata.Version, keys, pluginsRootOwned); err != nil {
 				return nil, stop, fmt.Errorf("serve: %w", err)
 			}
 		} else {

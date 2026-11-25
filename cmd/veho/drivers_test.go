@@ -1,7 +1,10 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"os"
 	"os/exec"
@@ -10,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/dihedron/veho/internal/config"
+	"github.com/dihedron/veho/pkg/metadata"
+	"github.com/dihedron/veho/pkg/plugin/process"
 )
 
 // TestLoadDrivers: the drivers the configuration lists, built in, pinned
@@ -26,8 +31,28 @@ func TestLoadDrivers(t *testing.T) {
 	}
 	sum := sha256.Sum256(data)
 	pinned := hex.EncodeToString(sum[:])
-	pluginsRootOwned = false
-	t.Cleanup(func() { pluginsRootOwned = true })
+	// the file plugin installed as acme, signed with acme's key; another
+	// publisher's key, other, is installed too, and no veho.pub
+	plugins, keyDir := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(plugins, process.Binary("acme")), data, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"acme", "other"} {
+		pub, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(keyDir, k+".pub"), []byte(base64.StdEncoding.EncodeToString(pub)+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if k == "acme" {
+			if err := process.WriteManifest(plugins, priv, process.Manifest{Name: "acme", Version: "2.0.0", Veho: "[" + metadata.Version + ",)", SHA256: pinned, Protocol: process.Handshake.ProtocolVersion}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	pluginDir, pluginKeyDir, pluginsRootOwned = plugins, keyDir, false
+	t.Cleanup(func() { pluginDir, pluginKeyDir, pluginsRootOwned = process.Dir, process.KeyDir, true })
 
 	cases := []struct {
 		name    string
@@ -41,7 +66,13 @@ func TestLoadDrivers(t *testing.T) {
 		{"pinned, unknown setting", []config.Driver{{Name: "file", Path: bin, SHA256: pinned, Settings: map[string]any{"nope": 1}}}, nil, "settings refused"},
 		{"pinned, wrong checksum", []config.Driver{{Name: "file", Path: bin, SHA256: strings.Repeat("0", 64)}}, nil, "driver file"},
 		{"pinned, another name", []config.Driver{{Name: "acme", Path: bin, SHA256: pinned}}, nil, `the plugin serves "file"`},
-		{"installed, no manifest", []config.Driver{{Name: "nothere"}}, nil, "manifest"},
+		{"built in, with a key", []config.Driver{{Name: "file", Key: "acme"}}, nil, "takes no key"},
+		{"installed, no manifest", []config.Driver{{Name: "nothere", Key: "acme"}}, nil, "manifest"},
+		// acme's key verifies acme's manifest, so the plugin starts; it
+		// serves the file driver, which the name check then refuses
+		{"installed, its publisher's key", []config.Driver{{Name: "acme", Key: "acme"}}, nil, `the plugin serves "file"`},
+		{"installed, another publisher's key", []config.Driver{{Name: "acme", Key: "other"}}, nil, "signature"},
+		{"installed, the release key missing", []config.Driver{{Name: "acme"}}, nil, "plugin key veho"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

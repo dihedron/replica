@@ -50,6 +50,18 @@ func TestSignVerify(t *testing.T) {
 	if _, err := process.Installed(dir, "acme", "1.0.0", keys, false); err != nil {
 		t.Errorf("verify: %v", err)
 	}
+	if _, err := process.Installed(dir, "acme", "1.0.1", keys, false); err == nil {
+		t.Error("the default range is the plugin's version alone")
+	}
+	if err := run([]string{"sign", "-name", "acme", "-version", "2.0.0", "-veho", "[1.0.0,2.0.0)", bin}, env, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := process.Installed(dir, "acme", "1.5.0", keys, false); err != nil {
+		t.Errorf("veho 1.5.0 in [1.0.0,2.0.0): %v", err)
+	}
+	if err := run([]string{"sign", "-name", "acme", "-version", "2.0.0", "-veho", "1.0.0", bin}, env, &bytes.Buffer{}); err == nil {
+		t.Error("a malformed range was signed")
+	}
 	bad := func(string) string { return base64.StdEncoding.EncodeToString([]byte("x")) }
 	if err := run([]string{"sign", "-name", "acme", "-version", "1.0.0", bin}, bad, &bytes.Buffer{}); err == nil {
 		t.Error("a bad key signed")
