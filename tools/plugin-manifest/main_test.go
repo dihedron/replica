@@ -61,3 +61,41 @@ func TestSignVerify(t *testing.T) {
 		t.Error("genkey overwrote a key")
 	}
 }
+
+// TestUsage: the malformed command lines and keys are refused; a snapshot
+// build signs with a throwaway key into -out.
+func TestUsage(t *testing.T) {
+	none := func(string) string { return "" }
+	bad := func(string) string { return "not base64!" }
+	for _, args := range [][]string{
+		nil,
+		{"genkey"},
+		{"pubkey"},
+		{"sign"},
+		{"sign", "-bogus"},
+		{"sign", "-name", "acme", "BINARY"},
+		{"frobnicate"},
+	} {
+		if err := run(args, bad, &bytes.Buffer{}); err == nil {
+			t.Errorf("%q: accepted", args)
+		}
+	}
+	dir := t.TempDir()
+	if err := run([]string{"genkey", filepath.Join(dir, "missing", "key")}, none, &bytes.Buffer{}); err == nil {
+		t.Error("genkey into a missing directory")
+	}
+	if err := run([]string{"sign", "-name", "acme", "-version", "1.0.0", "-allow-unsigned", filepath.Join(dir, "nothere")}, none, &bytes.Buffer{}); err == nil {
+		t.Error("signed a missing binary")
+	}
+	bin := filepath.Join(dir, "veho-plugin-acme")
+	if err := os.WriteFile(bin, []byte("#!/bin/true\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	if err := run([]string{"sign", "-name", "acme", "-version", "1.0.0", "-allow-unsigned", "-out", out, bin}, none, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(out, process.Binary("acme")+".manifest")); err != nil {
+		t.Errorf("no manifest in -out: %v", err)
+	}
+}
