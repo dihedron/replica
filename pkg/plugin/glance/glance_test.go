@@ -412,3 +412,24 @@ func TestWebDownload(t *testing.T) {
 		t.Fatalf("no web-download: %v", err)
 	}
 }
+
+// web-download needs the import API (v2.6); an import Glance refuses fails
+// the pull.
+func TestWebDownloadRefused(t *testing.T) {
+	ctx := context.Background()
+	old := newFakeGlance(t, 5)
+	if _, err := open(t, old, `, "upload": "web-download"`).Begin(ctx, plugin.Ref{Key: "x"}, plugin.ObjectInfo{}, plugin.PutOptions{}); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("v2.5: %v", err)
+	}
+	f := newFakeGlance(t, 9)
+	u, err := open(t, f, `, "upload": "web-download"`).Begin(ctx, plugin.Ref{Key: "x"}, plugin.ObjectInfo{Size: 1}, plugin.PutOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	clear(f.images)
+	f.mu.Unlock()
+	if _, err := u.(plugin.Puller).Pull(ctx, "http://example.com/x"); !errors.Is(err, plugin.ErrNotFound) {
+		t.Fatalf("image gone: %v", err)
+	}
+}
