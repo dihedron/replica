@@ -8,15 +8,24 @@ A client submits the URL of an object that is already available to the service (
 
 ## Status
 
-**0.2.0, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
+**0.3.0, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
 
-New in 0.2.0: the drivers with third-party dependencies are separate plugin binaries with packages of their own (`veho-plugin-s3`), trusted through manifests signed by their publisher; veho's own core links only the standard-library drivers. A third-party publisher signs its plugins with the same tool (`tools/plugin-manifest`), and a manifest declares the veho versions it supports as a range (`[0.2.0,0.3.0)`).
+New in 0.3.0:
+
+- **Sources and destinations.** HTTP (built in), SFTP and FTP sources; OpenStack Glance (`put`, `glance-direct` to chosen stores, and `web-download`, where Glance fetches the image itself from a presigned URL and veho reads it back before publishing) and Swift (static large objects) as sources and destinations, from Queens on, each feature at the release it needs; Sonatype Nexus 3 with its `raw`, `maven2`, `npm` and `pypi` formats. Every driver with dependencies is a plugin of its own.
+- **The dial guard on every driver, `s3` included.** A connection to a private, loopback or link-local address needs the driver's `allow_cidrs`, and the cloud metadata addresses are never reachable: an S3 service on a private network must now be listed (see below).
+- **A forward proxy for chosen names.** `s3`, `http` and `nexus` send `https` to the names the operator lists through a corporate proxy, unresolved by veho, TLS verified end to end: a backup from an on-premise source to AWS works where only the proxy reaches the Internet.
+- **Network checks.** `veho endpoint check` probes, from every executor, the connections an endpoint needs (and runs after every endpoint create and update), so a firewall rule missing in one region shows before a transfer fails there.
+- **A wrong copy is never left published.** A copy that fails its final verification is deleted, and a pulled copy is compared with the source before it becomes visible.
+
+**Before upgrading from 0.2.0:** list every private S3 service in the `s3` driver's `allow_cidrs` (`drivers: [{name: s3, settings: {allow_cidrs: [10.20.0.0/16]}}]`), or its transfers fail with "the target address is not allowed"; `HTTP_PROXY` and `HTTPS_PROXY` are no longer used by any driver (use `proxy` in the driver's settings). The schema changed in place: start from an empty database.
 
 Known limits of this version (numbers of `.specs/veho-backlog.md`):
 
-- No upgrade path: until a first deployment, the schema is changed in place, and a new version may need an empty database; rolling upgrades with transfers in flight are not validated yet (6).
+- No upgrade path for the schema: until a first deployment it is changed in place, and a new version may need an empty database.
 - The regions and zones of the topology are created with SQL (`veho.put_location`); no command manages them yet (17).
-- Drivers: `file` and S3 (a plugin) only; HTTP, SFTP and FTP sources and Glance are planned (34, 21).
+- An endpoint's configuration is checked against its driver's schema only for built-in drivers (39).
+- Network checks run on demand and after changes only, not periodically (41).
 - The audit is lightweight: events go to the system log, are not tamper-evident and can be lost on a crash (32).
 - The unwrap key comes from a file or a systemd credential; Vault, HSM and Shamir unseal are planned (25, 26, 31).
 - The state store's stability over the real inter-region latency for 24 hours, the latency envelope and an eight-hour chaos soak are still to be run (3, 18, 28).

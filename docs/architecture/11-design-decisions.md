@@ -15,7 +15,7 @@
 | Tenant isolation by row-level security in one cluster | Simple operation; enforced by the database, not only the code | A database per tenant |
 | gRPC first, REST generated from the same definitions | One implementation of authentication, authorisation and audit; streams for watching jobs | Two hand-written APIs |
 | Secrets in PostgreSQL under envelope encryption, the unwrap key outside the database | No extra service to run; unattended restarts | Vault from the start (planned as an option) |
-| Clients poll, long-poll or watch; veho never calls clients | No inbound path to clients, no calls to tenant-supplied URLs | Webhooks (planned as an option, off by default) |
+| Clients poll, long-poll or watch; webhooks only as an optional hint | No inbound path to clients is needed; a webhook tells a client to look, never carries the state of record | Webhooks as the primary channel: lost or forged notifications would decide what a client believes |
 | Fail fast: a job that can no longer meet its policy fails at once and cancels its other transfers | No bandwidth spent on a job that has failed; `retry` restarts everything | Letting the other transfers finish |
 | A node-wide memory budget for parts | A node's memory stays bounded whatever the object size and the number of transfers | Per-transfer bounds only (which grow with the object above 640 GiB) |
 

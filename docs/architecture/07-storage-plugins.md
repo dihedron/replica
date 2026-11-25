@@ -17,6 +17,8 @@ A transfer's bytes flow from the source driver, through the core, to the destina
 
 ## The shipped drivers
 
+Each driver of the release, with an endpoint's configuration and what the driver does with it. A driver with dependencies of its own is a plugin process (§7.5); `file` and `http` are built in.
+
 | Driver | Configuration | Notes |
 | :------- | :-------------------------------------------- | :-------------------------------------------------------- |
 | `file` | `{"root": "/srv/replicas"}` | A directory on the node, typically an NFS mount; uploads are staged and renamed into place; the root must be under the driver's `roots` setting |
@@ -24,9 +26,11 @@ A transfer's bytes flow from the source driver, through the core, to the destina
 | `sftp` (plugin) | `{"host": ..., "port": 22, "root": "/srv/images", "host_key": "ssh-ed25519 AAAA..."}` | A source and a destination, also for `scp://`; the host key pinned; uploads staged and renamed into place with `posix-rename`; symbolic links not followed |
 | `ftp` (plugin) | `{"host": ..., "port": 21, "root": "/pub/images", "tls": "explicit"}` | A source only; FTPS by default; passive mode, the data connection only to the control connection's address |
 | `glance` (plugin) | `{"auth_url": ..., "region": ..., "upload": "put", "disk_format": "qcow2", "container_format": "bare"}` | A source by image ID (the version is Glance's hash), a destination by image name: one request per attempt (`put` or `glance-direct` with `stores`), the image hidden until active and its hash compared with the bytes sent; not resumable |
-| `nexus` (plugin) | `{"url": ..., "repository": "images", "format": "raw"}` | A source of any repository by content path (the version is the `ETag`, the content's SHA-1), a destination of raw hosted repositories: one `PUT` per attempt, the SHA-1 compared after it; not resumable. The endpoint's `format` decides what a key means; Maven, npm and PyPI are planned |
+| `nexus` (plugin) | `{"url": ..., "repository": "images", "format": "raw"}` | A source and a destination of hosted repositories, one request per attempt, not resumable; the version is the asset's `ETag` (its SHA-1), checked on every range and after every upload; the formats below |
 | `swift` (plugin) | `{"auth_url": ..., "region": ..., "container": "images"}` | A source and a destination: static large objects, each part a segment of the upload, the manifest written at commit; resumable and parallel |
-| `s3` (plugin) | `{"endpoint": ..., "region": ..., "bucket": ..., "path_style": ...}` | Any S3-compatible service; multipart uploads; each part's MD5 is sent as `Content-MD5`, so the service verifies it; parts of 5 to 512 MiB, at most 10,000; an optional `storage_class` is sent on every write and read back after every commit, so a backend that ignores it is caught; archive classes refused |
+| `s3` (plugin) | `{"endpoint": ..., "region": ..., "bucket": ..., "path_style": ...}` | Any S3-compatible service, through the dial guard (a private service in `allow_cidrs`); multipart uploads; each part's MD5 is sent as `Content-MD5`, so the service verifies it; parts of 5 to 512 MiB, at most 10,000; an optional `storage_class` is sent on every write and read back after every commit, so a backend that ignores it is caught; archive classes refused |
+
+**Nexus's formats.** The endpoint's `format` decides what a key means and how an asset is written: none or `raw`, the content path; `maven2`, a Maven path or `group:artifact:version[:classifier]@ext`, the checksums and the metadata left to Nexus; `npm`, `package@version`, published as npm's document (the tarball held in memory up to `max_npm_size`, its `package.json` checked against the key); `pypi`, a wheel's or an sdist's file name, uploaded as `twine` does. An npm or PyPI source is found through its packument or simple index, whose links must stay in the repository, and its content is compared once with the index's digest.
 
 All pass the same **conformance suite**, which any driver must pass: idempotent commits, resumes from a token in another process, refusal of a changed source, classification of errors, keys confined to the endpoint's root, and the rest of the contract; a source-only driver runs its source cases. The S3 driver passes it on Garage, an S3-compatible service, in the lab.
 
@@ -38,6 +42,8 @@ A source is an endpoint of any driver that can read ranges, and a path in it. Th
 - **SRC-2** `ReadRange` returns exactly the bytes asked for, of that version, or fails as `SourceChanged`; SFTP and FTP check the version again after each read.
 - **SRC-3** Every connection to a host a tenant names goes through the **dial guard** (`internal/netguard`, shared with the webhooks): the address actually dialled, after resolution, must not be loopback, link-local, private, CGNAT or multicast, unless the driver's `allow_cidrs` setting opens it; the cloud metadata addresses never.
 - **SRC-4** The driver passes the conformance suite as a source.
+
+**Through a forward proxy.** The `s3`, `http` and `nexus` drivers can send chosen names through the operator's forward proxy, for nodes that reach the Internet, and resolve external names, only through it (`drivers[].settings.proxy`). `internal/netguard.Proxy` routes a request: `https` to a name the operator lists in `proxy.hosts` goes through `CONNECT`, not resolved by veho, with TLS verified end to end for that name; an IP address, any other name and plain `http` are dialled directly through the guard. A tenant's endpoint therefore cannot make the proxy reach the metadata service or an internal address by its number; a listed name that the proxy resolves to an internal host is the residual risk R-20. The environment's `HTTP_PROXY` and `HTTPS_PROXY` are never used.
 
 A job is refused at submission, with `invalid_endpoint`, when its source's driver cannot be a source that reads ranges, or a destination's cannot be a destination. Sources that cannot read ranges or give a version (an HTTP server without `Accept-Ranges` or validators) are refused: a copy of a 10 GB image that restarts from zero at every failure is not acceptable.
 

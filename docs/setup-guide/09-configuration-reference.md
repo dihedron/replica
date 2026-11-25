@@ -37,6 +37,7 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `drivers[].settings.proxy.hosts` | none | The names whose `https` connections go through the proxy, unresolved by veho: exact names, or `*.` and a suffix of at least two labels (`*.amazonaws.com`); never IP addresses |
 | `drivers[].settings.proxy.credentials_file` | none | A file of `user:password` for the proxy's Basic authentication, mode 0600 |
 | `drivers[].settings.plaintext` | `false` | `ftp`: allow endpoints with `tls: none`, whose password crosses the network in clear; `glance`, `swift`: allow `http` for Keystone and the services; `nexus`: allow `http` for Nexus (a lab only) |
+| `drivers[].settings.max_npm_size` | `104857600` | `nexus`: the largest npm package an upload takes, held in the plugin's memory |
 | `drivers[].settings.max_segments` | `1000` | `swift`: the cluster's `max_manifest_segments`, the most parts of an object |
 | `drivers[].settings.roots` | none | `file`: the directories an endpoint's root may be or be under; empty, no `file` endpoint can be created |
 | `metrics.listen` | `127.0.0.1:9464` | The Prometheus listener, `host:port`, or `off` |
