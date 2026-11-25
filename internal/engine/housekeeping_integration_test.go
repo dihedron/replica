@@ -17,7 +17,6 @@ import (
 	"github.com/dihedron/veho/internal/store"
 	"github.com/dihedron/veho/pkg/plugin"
 	"github.com/dihedron/veho/pkg/plugin/file"
-	"github.com/dihedron/veho/pkg/plugin/s3"
 	"github.com/dihedron/veho/test/labtest"
 	"github.com/jackc/pgx/v5"
 )
@@ -71,7 +70,7 @@ func TestAdoption(t *testing.T) {
 
 	other, err := New(ctx, Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
 		Version: "test", Audit: &audit.Recorder{}, Secrets: f.secrets,
-		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}})
+		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": labS3(t), "flaky": f.flaky}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +126,7 @@ func TestStopLeavesWorkPending(t *testing.T) {
 	defer stop()
 	other, err := New(sig, Deps{Config: testConfig(t), API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
 		Version: "test", Audit: &audit.Recorder{}, Secrets: f.secrets,
-		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}})
+		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": labS3(t), "flaky": f.flaky}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +310,7 @@ func TestRecoverOwn(t *testing.T) {
 	cfg.Node.ID = f.e.executor // the same node, in its previous life
 	other, err := New(ctx, Deps{Config: cfg, API: f.api, Worker: f.worker, DBOSURL: dsn(t, "VEHO_TEST_DBOS_DATABASE_URL"),
 		Version: "test", Audit: &audit.Recorder{}, Secrets: f.secrets,
-		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": s3.New(), "flaky": f.flaky}})
+		Drivers: map[string]plugin.Driver{"file": file.New(), "s3": labS3(t), "flaky": f.flaky}})
 	if err != nil {
 		t.Fatal(err)
 	}

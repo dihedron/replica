@@ -117,7 +117,7 @@ Periodic checks (a background check of every endpoint: backlog item 41); checks 
 ## 10. Changes from the implementation (2026-11-25)
 
 - **`FlowLister` is on the client** (`Flows(ctx)`), not on the driver with the configuration and credentials: `Open` already reads both, and authenticates where it must (an OpenStack catalog). Forwarded over gRPC as `Flows(Handle)`.
-- **`Flow.Unguarded`**: the `s3` driver connects without the dial guard (`veho-sources.md` §9), so its probes refuse only the metadata addresses and reach no further than its transfers. Every other driver's probes use its `allow_cidrs`.
+- **Every driver's probes use its `allow_cidrs`**: a `Flow.Unguarded`, for the `s3` driver while it connected without the dial guard, was removed when `s3` went through the guard (`veho-sources.md` §9, point 1, 2026-11-25).
 - **The last ten checks are kept by the insert of a new one**, not by housekeeping: the same transaction deletes the older ones.
 - **Explicit FTPS** is probed over TCP only: the TLS upgrade follows `AUTH TLS` inside the protocol; the result says so.
 - **Data model** as §4, with `pending_endpoint_checks(node, window)` the one function that crosses tenants (identifiers only).

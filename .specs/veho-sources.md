@@ -80,7 +80,7 @@ The dial guard of the webhooks (`internal/webhook`, `Guard`) moves to a package 
 - refused: loopback, link-local, private (RFC 1918, ULA), CGNAT, multicast, unspecified, and the metadata addresses (`169.254.169.254`, `fd00:ec2::254`), these last ones always;
 - the driver's `allow_cidrs` setting opens extra ranges, for storage on a private network; it never opens the metadata addresses.
 
-The `s3` driver stays outside the guard in this item: its endpoints are on private networks in most deployments (Garage in the lab), and guarding it is a separate decision (§9, point 1).
+The `s3` driver goes through the guard too (decided 2026-11-25, §9 point 1): an S3 service on a private network (Garage in the lab) is listed in the driver's `allow_cidrs`. Without that, a tenant's S3 endpoint at the metadata address could copy the node's cloud credentials (IMDSv1, OpenStack's metadata service). Its connections use no proxy (the guard would see the proxy, not the service) and follow no redirect, as every guarded driver's.
 
 ## 5. Configuration
 
@@ -131,6 +131,6 @@ New residual risk:
 
 ## 9. Open points
 
-1. Whether the `s3` driver should go through the dial guard too (it would need `allow_cidrs` in its settings for every private S3 service).
+1. ~~Whether the `s3` driver should go through the dial guard too.~~ Decided 2026-11-25: yes, with `allow_cidrs` in its settings for every private S3 service (§4).
 2. Sources that cannot range-read (decision 2): if one is needed later, it needs its own design (a whole-object stream, restarted from zero, and a staging copy on the node).
 3. Swift, Glance, Azure Blob and GCS, as in decision 3.

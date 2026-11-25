@@ -386,10 +386,6 @@ components:
           type: string
           title: unprobed
           description: Why the flow is not probed, if so.
-        unguarded:
-          type: boolean
-          title: unguarded
-          description: The driver connects without the dial guard (s3).
       title: Flow
       additionalProperties: false
       description: A network flow of an endpoint, from an executor to host:port.

@@ -62,10 +62,6 @@ type Flow struct {
 	Handshake  string `json:"handshake,omitempty"`   // "": TCP, or TLS with TLS; "ssh"
 	CACert     string `json:"ca_cert,omitempty"`     // PEM certificates trusted besides the system's, for TLS
 	Unprobed   string `json:"unprobed,omitempty"`
-	// Unguarded: the driver connects without the dial guard (s3,
-	// veho-sources.md §9), so its probes refuse only the metadata
-	// addresses, never reaching further than its transfers.
-	Unguarded bool `json:"unguarded,omitempty"`
 }
 
 // URLFlow is the flow to a URL's host and port: TLS for https, verified

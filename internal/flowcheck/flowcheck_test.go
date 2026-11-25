@@ -141,8 +141,8 @@ func TestSSH(t *testing.T) {
 }
 
 // NC-T2, NC-1: an address the guard refuses is skipped, never dialled, and
-// its result does not name it; an unguarded flow refuses only the metadata
-// addresses.
+// its result does not name it; the metadata addresses even when every
+// range is allowed.
 func TestGuard(t *testing.T) {
 	l := listen(t)
 	p := port(t, l.Addr().String())
@@ -152,11 +152,13 @@ func TestGuard(t *testing.T) {
 	if r.Status != Skipped || r.Address != "" || l.n.Load() != 0 {
 		t.Fatalf("refused: %+v, %d connections", r, l.n.Load())
 	}
-	if r := one(t, plugin.Flow{Purpose: "s3", Host: "127.0.0.1", Port: p, Unguarded: true}, o); r.Status != Reachable {
-		t.Fatalf("unguarded: %+v", r)
+	all, _ := netguard.New([]string{"0.0.0.0/0", "::/0"})
+	o.Guard = all
+	if r := one(t, plugin.Flow{Purpose: "s3", Host: "127.0.0.1", Port: p}, o); r.Status != Reachable {
+		t.Fatalf("every range allowed: %+v", r)
 	}
-	if r := one(t, plugin.Flow{Purpose: "s3", Host: "169.254.169.254", Port: 80, Unguarded: true}, o); r.Status != Skipped {
-		t.Fatalf("metadata, unguarded: %+v", r)
+	if r := one(t, plugin.Flow{Purpose: "s3", Host: "169.254.169.254", Port: 80}, o); r.Status != Skipped {
+		t.Fatalf("metadata, every range allowed: %+v", r)
 	}
 }
 

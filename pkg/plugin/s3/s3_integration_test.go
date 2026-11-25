@@ -23,7 +23,7 @@ func TestConformance(t *testing.T) {
 			}
 			cfg, _ := json.Marshal(config{Endpoint: env("ENDPOINT"), Region: env("REGION"), Bucket: "dest-1", PathStyle: true})
 			conformance.Run(t, conformance.Target{
-				Driver:         New(),
+				Driver:         lab(t),
 				Config:         cfg,
 				Credentials:    plugin.Credentials{"access_key_id": env("ACCESS_KEY"), "secret_access_key": env("SECRET_KEY")},
 				BadCredentials: plugin.Credentials{"access_key_id": env("ACCESS_KEY"), "secret_access_key": strings.Repeat("0", 64)},
@@ -44,7 +44,7 @@ func TestGarageStorageClass(t *testing.T) {
 	ctx := t.Context()
 	for _, class := range []string{"STANDARD", "STANDARD_IA"} {
 		cfg, _ := json.Marshal(config{Endpoint: env("ENDPOINT"), Region: env("REGION"), Bucket: "dest-1", PathStyle: true, StorageClass: class})
-		c, err := New().Open(ctx, cfg, plugin.Credentials{"access_key_id": env("ACCESS_KEY"), "secret_access_key": env("SECRET_KEY")})
+		c, err := lab(t).Open(ctx, cfg, plugin.Credentials{"access_key_id": env("ACCESS_KEY"), "secret_access_key": env("SECRET_KEY")})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -64,4 +64,14 @@ func TestGarageStorageClass(t *testing.T) {
 		_ = c.Delete(ctx, ref)
 		_ = c.Close()
 	}
+}
+
+// lab is the driver allowed to the lab's Garage, on its private network.
+func lab(t *testing.T) plugin.Driver {
+	t.Helper()
+	d, err := Factory(json.RawMessage(`{"allow_cidrs": ["10.0.0.0/8"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }

@@ -161,7 +161,7 @@ func (c *remoteClient) Flows(ctx context.Context) ([]plugin.Flow, error) {
 	var flows []plugin.Flow
 	for _, f := range l.GetFlows() {
 		flows = append(flows, plugin.Flow{Purpose: f.GetPurpose(), Host: f.GetHost(), Port: int(f.GetPort()), TLS: f.GetTls(),
-			ServerName: f.GetServerName(), Handshake: f.GetHandshake(), CACert: f.GetCaCert(), Unprobed: f.GetUnprobed(), Unguarded: f.GetUnguarded()})
+			ServerName: f.GetServerName(), Handshake: f.GetHandshake(), CACert: f.GetCaCert(), Unprobed: f.GetUnprobed()})
 	}
 	return flows, nil
 }

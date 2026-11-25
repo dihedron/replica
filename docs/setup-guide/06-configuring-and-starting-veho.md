@@ -19,6 +19,8 @@ secrets:
   unwrap_key: "systemd-credential:unwrap-key"
 drivers:                    # the storage drivers this node offers: no other
   - name: s3                # the plugin of its package (veho-plugin-s3)
+    settings:               # an S3 service on a private network: its range,
+      allow_cidrs: [10.20.0.0/16]  # which the dial guard refuses otherwise
 api:
   listen: ":8443"
   tls:
