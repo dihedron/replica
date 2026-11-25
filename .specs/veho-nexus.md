@@ -2,7 +2,7 @@
 
 This file specifies the `nexus` driver: Sonatype Nexus Repository 3 as a source and a destination. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`. It follows the `http` driver (`veho-sources.md`) and the Glance `put` method (`veho-openstack.md` §3.2), whose patterns it reuses.
 
-Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1); §2.2 and §2.3 (the `maven2`, `npm` and `pypi` formats), NX-6 to NX-11, R-19 and NX-T6 to NX-T8 proposed the same day, awaiting approval. Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
+Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1); §2.2 and §2.3 (the `maven2`, `npm` and `pypi` formats), NX-6 to NX-11, R-19 and NX-T6 to NX-T8 approved the same day, with the index's digests checked (§2.2) and `npm_dist_tag` defaulting to `latest`. Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
 
 ## 1. Decisions (2026-11-25)
 
@@ -45,11 +45,11 @@ Status: approved, 2026-11-25; revised the same day with the repository formats (
 - `ParseRef` takes `nexus://<repository>/<key>`; a key's syntax is checked by the endpoint's format at `Open`'s client, not by `ParseRef`, which does not know the endpoint.
 - Adding a format is a change to the driver and its tests only: its key mapping, its source lookup, its upload, and a lab repository of that format.
 
-### 2.2 The formats in the driver (revision of 2026-11-25, proposed)
+### 2.2 The formats in the driver (revision of 2026-11-25)
 
 Every format is two functions in the driver: **resolve**, a key to the content URL of one asset, and **publish**, the upload of one asset. Everything else is shared with `raw`:
 
-- **The version is the asset's `ETag`** in every format (its SHA-1), and every range answer is checked against it (NX-4), as for `raw`. This revises the table above, which named `dist.integrity` (npm) and `#sha256=` (PyPI): one mechanism, which the range checks already need. Where the index gives the same SHA-1 (npm's `dist.shasum`), `Stat` compares it with the `ETag`, and a mismatch is `Integrity`. PyPI's `#sha256=` is not compared: the driver would have to read the whole file, and the engine's own SHA-256 already guards the copy.
+- **The version is the asset's `ETag`** in every format (its SHA-1), and every range answer is checked against it (NX-4), as for `raw`. This revises the table above, which named `dist.integrity` (npm) and `#sha256=` (PyPI): one mechanism, which the range checks already need. **The index's digest is checked too** (decided 2026-11-25): it is the publisher's word for the content, and the engine's digest, over the parts, cannot be compared with it. As a source, `Stat` reads an npm or PyPI asset once whole and compares it with the index's digest (npm `dist.integrity`, its SHA-512, else `dist.shasum`; PyPI `#sha256=`); the result is kept by the client per key and `ETag`, so one client reads an asset at most once more; a mismatch is `Integrity`. As a destination, `Commit` compares the index's digest of the new version with the one computed while sending, at no cost. A `maven2` asset's `.sha1` is Nexus's own, the `ETag`'s.
 - **A resolved URL must lie under the endpoint's repository** (`<url>/repository/<repo>/`), after resolving a relative link: else `Permanent` (NX-6). The driver never fetches another host, nor sends the credentials there.
 - `PresignRead` gives the resolved URL, only without credentials, as for `raw`.
 - `Commit` checks the new asset: a `HEAD` of its resolved URL and its `ETag` against the SHA-1 of the bytes sent (NX-3).
