@@ -9,12 +9,20 @@
 
 NEXUS=nexus-a
 
+# nexus_curl USER:PASSWORD ARGS: curl in the container, the credentials on
+# its stdin (curl -K), never on a command line.
+nexus_curl() {
+	local auth="$1"
+	shift
+	printf 'user = "%s"\n' "$auth" | inner_exec "$NEXUS" curl -fsS -K - "$@"
+}
+
 # nexus_api METHOD PATH [CURL ARGS]: Nexus's REST API as admin, from inside
 # the container.
 nexus_api() {
 	local method="$1" path="$2"
 	shift 2
-	inner_exec "$NEXUS" curl -fsS -u "admin:$(password nexus-admin)" -X "$method" \
+	nexus_curl "admin:$(password nexus-admin)" -X "$method" \
 		-H 'Content-Type: application/json' "http://127.0.0.1:8081/service/rest/v1/$path" "$@"
 }
 
@@ -100,8 +108,10 @@ nexus_configure() {
 	if inner_exec "$NEXUS" test -f /opt/sonatype-work/nexus3/admin.password; then
 		local initial
 		initial="$(inner_exec "$NEXUS" cat /opt/sonatype-work/nexus3/admin.password)"
-		inner_exec "$NEXUS" curl -fsS -u "admin:$initial" -X PUT -H 'Content-Type: text/plain' \
-			--data "$(password nexus-admin)" http://127.0.0.1:8081/service/rest/v1/security/users/admin/change-password
+		# the old and the new password both on curl's stdin
+		printf 'user = "admin:%s"\ndata-binary = "%s"\n' "$initial" "$(password nexus-admin)" |
+			inner_exec "$NEXUS" curl -fsS -K - -X PUT -H 'Content-Type: text/plain' \
+				http://127.0.0.1:8081/service/rest/v1/security/users/admin/change-password
 		inner_exec "$NEXUS" rm -f /opt/sonatype-work/nexus3/admin.password
 	fi
 	local eula
