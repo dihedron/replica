@@ -57,19 +57,9 @@ nexus_install() {
 			mkdir -p /opt/nexus /opt/sonatype-work
 			tar -xzf /root/nexus.tar.gz -C /opt/nexus --strip-components=1 --wildcards "nexus-*/"
 			rm /root/nexus.tar.gz
-			chown -R nexus:nexus /opt/sonatype-work'
-		inner_write "$NEXUS" /opt/nexus/bin/nexus.vmoptions 0644 <<'OPTIONS'
--Xms1024m
--Xmx1024m
--XX:MaxDirectMemorySize=1024m
--XX:+UnlockDiagnosticVMOptions
--XX:+LogVMOutput
--XX:LogFile=../sonatype-work/nexus3/log/jvm.log
--XX:-OmitStackTraceInLastException
--Djava.io.tmpdir=../sonatype-work/nexus3/tmp
--Dkaraf.data=../sonatype-work/nexus3
--Dkaraf.log=../sonatype-work/nexus3/log
-OPTIONS
+			chown -R nexus:nexus /opt/sonatype-work
+			# Sonatype'"'"'s options (its Java needs their --add-opens), a 1 GiB heap
+			sed -i -e "s/^-Xms.*/-Xms1024m/" -e "s/^-Xmx.*/-Xmx1024m/" /opt/nexus/bin/nexus.vmoptions'
 		inner_write "$NEXUS" /etc/systemd/system/nexus.service 0644 <<'UNIT'
 [Unit]
 Description=Nexus Repository (veho lab)
@@ -140,7 +130,7 @@ nexus_configure() {
 # for the lab VM's address (where the tests reach it) and the container's.
 nexus_tls() {
 	pki_issue "$NEXUS" "DNS:$NEXUS.veho.lab,IP:$(lxd_ip),IP:$(inner_ip "$NEXUS")"
-	inner_exec "$NEXUS" sh -c 'command -v nginx >/dev/null || DEBIAN_FRONTEND=noninteractive apt-get install -y -q nginx-light >/dev/null'
+	inner_exec "$NEXUS" sh -c 'export DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1; command -v nginx >/dev/null || { apt-get update -q && apt-get install -y -q nginx; } >/dev/null'
 	inner_push "$LAB_STATE_DIR/pki/$NEXUS.crt" "$NEXUS" /etc/nginx/nexus.crt 0644
 	inner_push "$LAB_STATE_DIR/pki/$NEXUS.key" "$NEXUS" /etc/nginx/nexus.key 0600
 	inner_write "$NEXUS" /etc/nginx/sites-enabled/default 0644 <<'NGINX'
