@@ -2,7 +2,7 @@
 
 This file specifies the `nexus` driver: Sonatype Nexus Repository 3 as a source and a destination. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`. It follows the `http` driver (`veho-sources.md`) and the Glance `put` method (`veho-openstack.md` §3.2), whose patterns it reuses.
 
-Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1). Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
+Status: approved, 2026-11-25; revised the same day with the repository formats (§2.1); §2.2 and §2.3 (the `maven2`, `npm` and `pypi` formats), NX-6 to NX-11, R-19 and NX-T6 to NX-T8 proposed the same day, awaiting approval. Implemented the same day for `raw` (and no format) with NX-T1 to NX-T3 and the conformance suite against a fake Nexus; the lab node (§6: `test/lab/lib/nexus.sh`, `lab.sh nexus up|down`, Nexus 3.98.1-01) and NX-T4 (`nexus_integration_test.go`) passing against it, the refused redeploy of `veho-raw-once` included; NX-T5 (`internal/engine/nexus_integration_test.go`: a file to Garage, Garage to Nexus, Nexus to Garage, one digest throughout) passing.
 
 ## 1. Decisions (2026-11-25)
 
@@ -45,6 +45,41 @@ Status: approved, 2026-11-25; revised the same day with the repository formats (
 - `ParseRef` takes `nexus://<repository>/<key>`; a key's syntax is checked by the endpoint's format at `Open`'s client, not by `ParseRef`, which does not know the endpoint.
 - Adding a format is a change to the driver and its tests only: its key mapping, its source lookup, its upload, and a lab repository of that format.
 
+### 2.2 The formats in the driver (revision of 2026-11-25, proposed)
+
+Every format is two functions in the driver: **resolve**, a key to the content URL of one asset, and **publish**, the upload of one asset. Everything else is shared with `raw`:
+
+- **The version is the asset's `ETag`** in every format (its SHA-1), and every range answer is checked against it (NX-4), as for `raw`. This revises the table above, which named `dist.integrity` (npm) and `#sha256=` (PyPI): one mechanism, which the range checks already need. Where the index gives the same SHA-1 (npm's `dist.shasum`), `Stat` compares it with the `ETag`, and a mismatch is `Integrity`. PyPI's `#sha256=` is not compared: the driver would have to read the whole file, and the engine's own SHA-256 already guards the copy.
+- **A resolved URL must lie under the endpoint's repository** (`<url>/repository/<repo>/`), after resolving a relative link: else `Permanent` (NX-6). The driver never fetches another host, nor sends the credentials there.
+- `PresignRead` gives the resolved URL, only without credentials, as for `raw`.
+- `Commit` checks the new asset: a `HEAD` of its resolved URL and its `ETag` against the SHA-1 of the bytes sent (NX-3).
+- `Delete` deletes the asset by its path (`maven2`, `pypi`), or the npm version as a component (below).
+- `Begin` checks, once per client, that the repository is `hosted` and of the endpoint's format.
+
+**`maven2`**
+
+- Key: a path in the Maven layout, `<group as directories>/<artifact>/<version>/<artifact>-<version>[-<classifier>].<extension>`, or the coordinates `<group>:<artifact>:<version>[:<classifier>]@<extension>`, mapped to that path. Group, artifact, version and classifier: `[A-Za-z0-9._-]+`, not starting with `.`; the extension `[A-Za-z0-9.]+`. A path that does not parse back to its coordinates is refused.
+- Source: resolve is the path.
+- Destination: `PUT` of the path, streamed, as `raw`. Keys of `maven-metadata.xml` and of checksum files (`.md5`, `.sha1`, `.sha256`, `.sha512`, `.asc` is allowed) are refused as a destination: Nexus generates them (NX-8). A version ending in `-SNAPSHOT` into a release repository, or the reverse, is refused by Nexus (`400`): `Permanent`, naming the version policy. A POM is its own job (`@pom`).
+
+**`npm`**
+
+- Key: `<package>@<version>` or `@<scope>/<package>@<version>`; names as npm's (lower case, `[a-z0-9._~-]`, at most 214 characters), the version semver.
+- Source: resolve reads the packument (`GET /repository/<repo>/<package>`, scoped as `@scope%2fpackage`, at most 32 MiB), takes `versions[<version>].dist.tarball`, and checks NX-6. A version the packument lacks is `ErrNotFound`.
+- Destination: the tarball is held in memory (the setting `max_npm_size`, default 100 MiB; a larger object is refused at `Begin` when its size is known, else at the part that passes it, `Permanent`; NX-10). At `Commit` the driver reads `package/package.json` from it (at most 1 MiB, and the gzip stream read at most `4 × max_npm_size`: NX-7), checks that its `name` and `version` are the key's, and sends `PUT /repository/<repo>/<package>` with the publish document npm sends: `versions` with that `package.json` and `dist` (`shasum`, `integrity`, `tarball`), `_attachments` with the tarball in base64, and `dist-tags` with the endpoint's `npm_dist_tag` (default `latest`, as `npm publish`).
+- `Delete`: the component (`GET /service/rest/v1/search?repository=<repo>&format=npm&name=…&version=…`, then `DELETE /service/rest/v1/components/<id>`), so the version leaves the packument too.
+
+**`pypi`**
+
+- Key: a distribution's file name: a wheel (PEP 427: `<name>-<version>(-<build>)?-<python>-<abi>-<platform>.whl`) or an sdist (PEP 625: `<name>-<version>.tar.gz`), each part checked by its PEP's grammar; the project is the normalised name (PEP 503).
+- Source: resolve reads the simple index (`GET /repository/<repo>/simple/<project>/`, at most 8 MiB, parsed with `golang.org/x/net/html`, already a dependency), takes the link whose file name is the key, and checks NX-6.
+- Destination: `POST /repository/<repo>/` as `twine upload` sends it, multipart and streamed (no memory held): `:action=file_upload`, `protocol_version=1`, `metadata_version`, `name`, `version`, `filetype` (`bdist_wheel` or `sdist`), `pyversion`, then the file, then `sha256_digest`, computed as the file is sent (multipart allows any order). Every value comes from the checked file name, written by `mime/multipart` (NX-9). Nexus reads the rest of the metadata from the file.
+
+### 2.3 Settings and endpoint fields added
+
+- Setting `max_npm_size` (bytes; default 104857600).
+- Endpoint field `npm_dist_tag` (default `latest`; only with `format: npm`).
+
 ## 3. Source
 
 - `Stat`: `HEAD /repository/<repo>/<path>`: the size from `Content-Length`; the version is the `ETag`, which Nexus derives from the content's SHA-1 (`"{SHA1{<hex>}}"`), so it changes with the content. A `HEAD` without an `ETag` is a `Permanent` error.
@@ -70,14 +105,21 @@ Status: approved, 2026-11-25; revised the same day with the repository formats (
 | NX-3 | **A half-written asset is used.** | Nexus creates the asset only when the `PUT` ends; the driver checks the SHA-1 after it. |
 | NX-4 | **The content changes while it is read** (a redeploy, a proxy refreshing from upstream). | The `ETag` of every range answer is compared with the version: `SourceChanged`. |
 | NX-5 | **Path traversal** in the key. | `locate`'s checks (§2), fuzzed. |
+| NX-6 | **An index points elsewhere**: a packument's `dist.tarball` or a simple index's link names another host or path, to reach an internal service or to receive the endpoint's credentials. | The resolved URL must lie under the endpoint's repository (§2.2), after resolving relative links; the dial guard and no redirects still apply. |
+| NX-7 | **A hostile tarball** (npm): a gzip bomb, a huge or missing `package.json`, a `package.json` for another package. | `package/package.json` only, at most 1 MiB, the gzip stream read at most `4 × max_npm_size`; its `name` and `version` must be the key's. |
+| NX-8 | **Forged Maven metadata or checksums** copied into a repository. | `maven-metadata.xml` and checksum files are refused as destination keys; Nexus generates them. |
+| NX-9 | **Injection into the PyPI form or the npm document** through a key. | Every value comes from a key checked by its grammar (PEP 427, PEP 625, npm's names, semver); the form is written by `mime/multipart` and the document by `encoding/json`. |
+| NX-10 | **Memory exhaustion** by npm uploads held in memory, beside the engine's part budget. | `max_npm_size` per upload, refused before it is passed. The plugin's memory is outside the engine's part budget: R-19. |
+| NX-11 | **A large index** (packument, simple index) read into memory. | Read bounded (32 MiB, 8 MiB); a larger one is `Permanent`. |
 
-New residual risk:
+New residual risks:
 
 - **R-18** Nexus cannot resume an upload: a failed attempt restarts from zero. Mitigated by the engine's retries; accepted (as R-17 for Glance).
+- **R-19** An npm upload is held in memory in the plugin, outside the engine's part budget: up to `max_npm_size` per concurrent npm transfer. Mitigated by the setting and the engine's concurrency limits; accepted (npm packages are small: the registry's own limit is far below the default).
 
 ## 6. Lab
 
-A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD container `nexus` from Sonatype's Unix archive (with its bundled Java), a `raw` hosted repository with redeploy allowed and one with it refused, a test user with a user token, and Nexus's own TLS through a reverse proxy with the lab's CA. `lab.sh nexus up|down` builds and removes it, so the rest of the lab does not need its memory (about 3 GiB).
+A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD container `nexus` from Sonatype's Unix archive (with its bundled Java), a `raw` hosted repository with redeploy allowed and one with it refused, a test user with a user token, and Nexus's own TLS through a reverse proxy with the lab's CA. `lab.sh nexus up|down` builds and removes it, so the rest of the lab does not need its memory (about 3 GiB). With the formats (§2.2): Nexus's own `maven-releases` (redeploy refused) and `maven-snapshots`, and the hosted repositories `veho-npm` and `veho-pypi` (redeploy allowed); the role `veho-writer` gains `nx-repository-view-maven2-*-*`, `nx-repository-view-npm-*-*` and `nx-repository-view-pypi-*-*`, whose `delete` action covers deleting an npm component.
 
 ### 6.1 Order of the formats
 
@@ -92,6 +134,9 @@ A Nexus Repository Community Edition node in the veho lab (`test/lab`): an LXD c
 | NX-T3 | Destination against a fake: the stream in order, the SHA-1 compared, `overwrite: never` and a refused redeploy, a repository not `raw` or not `hosted` refused | unit |
 | NX-T4 | The conformance suite, source and sink, against the lab's Nexus | lab |
 | NX-T5 | End to end: a job from Nexus to Garage, and from S3 to Nexus | lab |
+| NX-T6 | `maven2`: coordinates and paths both ways (fuzzed), metadata and checksum keys refused, the version policy's `400`; source and destination against a fake, then the conformance suite (its keys mapped by a new `conformance.Target.Key`, since any bytes are a valid jar) and a snapshot refused by `maven-releases` in the lab | unit, fuzz, lab |
+| NX-T7 | `npm`: keys (fuzzed), the packument's tarball resolved and NX-6 refused, `max_npm_size`, a hostile tarball (bomb, no `package.json`, another name) refused, the publish document's fields, the component deleted; then in the lab a generated package published, read back by its packument and digest, refused again with redeploy off, and deleted (not the conformance suite: its random bytes are no tarball) | unit, fuzz, lab |
+| NX-T8 | `pypi`: wheel and sdist names (fuzzed), the index link resolved and NX-6 refused, the multipart form's fields and order; then in the lab a generated wheel and sdist uploaded, found in the simple index, read back by range and digest, and deleted (not the conformance suite, for the same reason) | unit, fuzz, lab |
 
 ## 8. Documentation
 
