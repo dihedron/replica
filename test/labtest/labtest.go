@@ -37,11 +37,12 @@ func members(t *testing.T) []member {
 }
 
 // Switchover moves the primary to a quorum standby and waits until the new
-// primary runs; it skips the test without the lab.
+// primary runs; it skips the test without the lab, or on test/ci's single
+// PostgreSQL.
 func Switchover(t *testing.T) string {
 	t.Helper()
-	if os.Getenv("VEHO_TEST_DATABASE_URL") == "" {
-		t.Skip("the lab is not running: run with test/lab/lab.sh test")
+	if os.Getenv("VEHO_TEST_DATABASE_URL") == "" || os.Getenv("VEHO_TEST_STANDALONE") != "" {
+		t.Skip("the lab's Patroni cluster is not the database: run with test/lab/lab.sh test")
 	}
 	var leader, candidate string
 	for _, m := range members(t) {

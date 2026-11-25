@@ -54,7 +54,7 @@ func TestServe(t *testing.T) {
 	}
 	crt, keyFile := selfSigned(t, dir)
 	cfg := filepath.Join(dir, "veho.yaml")
-	if err := os.WriteFile(cfg, []byte(`
+	if err := os.WriteFile(cfg, []byte(standaloneChecks()+`
 node: {id: test-serve, region: lab-a}
 database:
   api: {dsn_env: VEHO_TEST_API_DATABASE_URL}
