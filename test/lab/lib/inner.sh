@@ -176,5 +176,5 @@ lxd_vm_check_size() {
 	cpus="$(lxd config get lxd limits.cpu)"
 	memory="$(lxd config get lxd limits.memory)"
 	[[ "$cpus" == "$LAB_LXD_CPUS" && "$memory" == "$LAB_LXD_MEMORY" ]] ||
-		warn "VM lxd has $cpus vCPU(s) and $memory, the settings ask for $LAB_LXD_CPUS and $LAB_LXD_MEMORY: \"down\" then \"up\" to apply them"
+		warn "VM lxd has $cpus vCPU(s) and $memory, the settings ask for $LAB_LXD_CPUS and $LAB_LXD_MEMORY: \"stop\" then \"start\" to apply them"
 }

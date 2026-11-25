@@ -60,7 +60,11 @@ lab_stop() {
 # lab_start boots the lab VM, starts the inner instances, applies the WAN and
 # waits until every server answers.
 lab_start() {
-	vm_running lxd || lxd start lxd
+	if ! vm_running lxd; then
+		# a stopped VM takes the settings' size (a running one would not)
+		lxd config set lxd limits.cpu="$LAB_LXD_CPUS" limits.memory="$LAB_LXD_MEMORY"
+		lxd start lxd
+	fi
 	vm_wait lxd
 	local name x
 	for name in $(inner list -c n -f csv); do
