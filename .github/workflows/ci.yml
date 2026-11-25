@@ -1,7 +1,8 @@
 name: CI
 
 # One workflow, three parallel jobs: the build (gofmt, go vet,
-# golangci-lint with gosec, compile, tests and coverage, all through
+# golangci-lint with gosec, compile, tests and coverage, the integration
+# tests on a PostgreSQL started by test/ci/postgres.sh, all through
 # "make", then the SonarQube Cloud analysis of the same checkout and
 # coverage), the secret scans, and, on pull requests, the dependency review.
 # Jobs run side by side on their own runners, so the run takes as long as
@@ -70,10 +71,21 @@ jobs:
       - name: Lint and build
         run: make
 
+      # PostgreSQL with TLS, the roles of packaging/postgres/roles.sql and the
+      # tests' DSNs, so that the integration tests (the engine, the API, the
+      # store) run here too; the lab's own (Patroni, the WAN, S3, the nodes)
+      # skip without it
+      - name: Start PostgreSQL for the integration tests
+        run: test/ci/postgres.sh up "$RUNNER_TEMP/postgres"
+
       - name: Test with coverage
         # -coverpkg credits code with the coverage of every package's tests,
-        # not only its own
-        run: go test -tags integration ./... -coverpkg=./... -coverprofile=coverage.txt
+        # not only its own; -p 1: the integration tests share the database
+        run: |
+          set -a
+          . "$RUNNER_TEMP/postgres/env.sh"
+          set +a
+          go test -tags integration -p 1 -timeout 20m ./... -coverpkg=./... -coverprofile=coverage.txt
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

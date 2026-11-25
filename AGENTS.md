@@ -35,7 +35,7 @@
 * `internal/` - Private application and library code.
 * `pkg/` - Public library code (e.g. the build metadata injected at link time, `pkg/metadata`, the storage plugin API, and `pkg/semver`, the version ranges of the plugin manifests).
 * `.specs/` - Feature design documents and architectural specifications; start from `veho_specification.md`, and see `veho-backlog.md` for the work agreed for later.
-* `test/` - Test tooling: the lab (`test/lab`), its Go helpers (`test/labtest`) and the DBOS regression suite (`test/dbos`, AC-21).
+* `test/` - Test tooling: the lab (`test/lab`), its Go helpers (`test/labtest`), the DevStack lab of the OpenStack drivers (`test/devstack`), CI's database for the integration tests (`test/ci/postgres.sh`) and the DBOS regression suite (`test/dbos`, AC-21).
 * `docs/` - The Setup, Operator's and Architecture and Design guides, in Markdown (rule 12).
 * `packaging/` - Post-install script, service unit and the public packaging key.
 * `*.mk` - The build: `go.mk`, `help.mk` and `release.mk` are identical in ligo and netcheck (keep them in sync with those copies); `Makefile` and `custom.mk` hold this project's settings and targets. Run `make help`.

@@ -280,8 +280,10 @@ func TestChecks(t *testing.T) {
 	migrated(t)
 	ctx := context.Background()
 	worker := dsn(t, "VEHO_TEST_WORKER_DATABASE_URL")
-	if errs := Checks(ctx, open(t, "VEHO_TEST_WORKER_DATABASE_URL"), migrations.FS, time.Second); len(errs) != 0 {
-		t.Errorf("Checks on the lab: %v", errs)
+	errs := Checks(ctx, open(t, "VEHO_TEST_WORKER_DATABASE_URL"), migrations.FS, time.Second)
+	standalone := os.Getenv("VEHO_TEST_STANDALONE") != "" // one PostgreSQL, no standby (test/ci)
+	if standalone && (len(errs) != 1 || !containsErr(errs, ErrNoQuorum)) || !standalone && len(errs) != 0 {
+		t.Errorf("Checks: %v", errs)
 	}
 	local, err := Open(ctx, worker+"&synchronous_commit=local", Options{})
 	if err != nil {
@@ -290,6 +292,9 @@ func TestChecks(t *testing.T) {
 	defer local.Close()
 	if errs := Checks(ctx, local, migrations.FS, time.Second); !containsErr(errs, ErrSyncCommit) {
 		t.Errorf("Checks with synchronous_commit = local: %v", errs)
+	}
+	if standalone {
+		return // no standby to check against
 	}
 	standby := standbyDSN(t, worker)
 	sp, err := Open(ctx, standby, Options{})

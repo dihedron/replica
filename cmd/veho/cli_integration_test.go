@@ -56,7 +56,7 @@ func node(t *testing.T) (string, string) {
 	}
 	crt, keyFile := selfSigned(t, dir)
 	cfg := filepath.Join(dir, "veho.yaml")
-	if err := os.WriteFile(cfg, []byte(`
+	if err := os.WriteFile(cfg, []byte(standaloneChecks()+`
 node: {id: test-cli-`+uuid.New().String()[:8]+`, region: lab-a}
 database:
   api: {dsn_env: VEHO_TEST_API_DATABASE_URL}
@@ -80,11 +80,21 @@ api: {listen: "127.0.0.1:18445", tls: {cert_file: "`+crt+`", key_file: "`+keyFil
 	select {
 	case <-ready:
 	case err := <-done:
+		done <- err // for the cleanup, which waits for serve to end
 		t.Fatalf("serve stopped: %v", err)
 	case <-time.After(60 * time.Second):
 		t.Fatal("serve did not start")
 	}
 	return "https://localhost:18445", crt
+}
+
+// standaloneChecks relaxes STO-C3 on one PostgreSQL without a standby
+// (test/ci/postgres.sh); the lab keeps every check.
+func standaloneChecks() string {
+	if os.Getenv("VEHO_TEST_STANDALONE") == "" {
+		return ""
+	}
+	return "checks: {quorum: warn}\n"
 }
 
 // cli runs commands against the node, capturing their output.
