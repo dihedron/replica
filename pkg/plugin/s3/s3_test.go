@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/dihedron/veho/pkg/plugin"
 )
@@ -265,5 +267,32 @@ func TestFactory(t *testing.T) {
 	}
 	if _, err := Factory(json.RawMessage(`{"nope": 1}`)); err == nil {
 		t.Error("an unknown setting was accepted")
+	}
+}
+
+// OS-T5: a presigned GET for the destination that pulls; the TTL bounded.
+func TestPresignRead(t *testing.T) {
+	cfg, _ := json.Marshal(config{Endpoint: "https://s3.example", Region: "r", Bucket: "b", PathStyle: true})
+	c, err := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := c.(plugin.Presigner)
+	u, err := p.PresignRead(context.Background(), plugin.Ref{Key: "dir/img"}, `"etag"`, time.Hour)
+	if err != nil || !strings.HasPrefix(u, "https://s3.example/b/dir/img?") || !strings.Contains(u, "X-Amz-Expires=3600") {
+		t.Fatalf("%s, %v", u, err)
+	}
+	for _, ttl := range []time.Duration{0, 8 * 24 * time.Hour} {
+		if _, err := p.PresignRead(context.Background(), plugin.Ref{Key: "k"}, "", ttl); plugin.ClassOf(err) != plugin.Permanent {
+			t.Errorf("ttl %s: %v", ttl, err)
+		}
+	}
+}
+
+func TestPresignReadEmptyKey(t *testing.T) {
+	cfg, _ := json.Marshal(config{Endpoint: "https://s3.example", Region: "r", Bucket: "b"})
+	c, _ := New().Open(context.Background(), cfg, plugin.Credentials{"access_key_id": "a", "secret_access_key": "s"})
+	if _, err := c.(plugin.Presigner).PresignRead(context.Background(), plugin.Ref{}, "", time.Hour); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("empty key: %v", err)
 	}
 }

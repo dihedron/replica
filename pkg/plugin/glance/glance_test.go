@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -317,7 +319,7 @@ func TestOpen(t *testing.T) {
 	f := newFakeGlance(t, 9)
 	d := driver(t)
 	for _, extra := range []string{
-		`, "upload": "copy"`, `, "upload": "web-download"`, `, "stores": ["fast"]`,
+		`, "upload": "copy"`, `, "upload": "web-download", "web_download_url_ttl": "10s"`, `, "web_download_url_ttl": "x"`, `, "stores": ["fast"]`,
 		`, "properties": {"os_hidden": "true"}`, `, "properties": {"os_glance_x": "1"}`, `, "nope": 1`,
 	} {
 		if _, err := d.Open(context.Background(), f.config(extra), good); plugin.ClassOf(err) != plugin.Permanent {
@@ -332,5 +334,102 @@ func TestOpen(t *testing.T) {
 	var s map[string]any
 	if err := json.Unmarshal(d.ConfigSchema(), &s); err != nil || s["properties"].(map[string]any)["auth_url"] == nil {
 		t.Errorf("schema: %v", err)
+	}
+}
+
+// OS-T5: web-download: Glance fetches the URL; the image stays hidden while
+// it is read back by its ID, and Commit publishes it.
+func TestWebDownload(t *testing.T) {
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "pulled bytes") }))
+	t.Cleanup(src.Close)
+	f := newFakeGlance(t, 9)
+	c := open(t, f, `, "upload": "web-download", "web_download_url_ttl": "30m"`)
+	ctx := context.Background()
+	u, err := c.Begin(ctx, plugin.Ref{Key: "img"}, plugin.ObjectInfo{Size: 12}, plugin.PutOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, ok := u.(plugin.Puller)
+	if !ok || p.PullTTL() != 30*time.Minute {
+		t.Fatalf("not a puller: %v", ok)
+	}
+	if _, err := u.WritePart(ctx, 0, strings.NewReader("x"), 1); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("a part: %v", err)
+	}
+	if _, err := u.Commit(ctx, nil); plugin.ClassOf(err) != plugin.ResumeInvalid {
+		t.Fatalf("commit before the pull: %v", err)
+	}
+	ref, err := p.Pull(ctx, src.URL+"/img")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := p.Pull(ctx, src.URL+"/img"); err != nil || again != ref {
+		t.Fatalf("pull again: %+v, %v", again, err)
+	}
+	if _, err := c.Stat(ctx, plugin.Ref{Key: "img"}); !errors.Is(err, plugin.ErrNotFound) {
+		t.Fatalf("visible before commit: %v", err)
+	}
+	r, err := c.ReadRange(ctx, ref, 7, 5, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(r)
+	_ = r.Close()
+	if string(b) != "bytes" {
+		t.Fatalf("read back %q", b)
+	}
+	info, err := u.Commit(ctx, nil)
+	if err != nil || info.Size != 12 {
+		t.Fatalf("commit: %+v, %v", info, err)
+	}
+	if _, err := c.Stat(ctx, plugin.Ref{Key: "img"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Pull(ctx, src.URL); plugin.ClassOf(err) != plugin.ResumeInvalid {
+		t.Fatalf("pull after commit: %v", err)
+	}
+	// Glance cannot fetch the URL: the import fails
+	bad, err := c.Begin(ctx, plugin.Ref{Key: "unreachable"}, plugin.ObjectInfo{Size: 1}, plugin.PutOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bad.(plugin.Puller).Pull(ctx, "http://127.0.0.1:1/none"); plugin.ClassOf(err) != plugin.Transient {
+		t.Fatalf("failed import: %v", err)
+	}
+	_ = bad.Abort(ctx)
+	// a put endpoint's upload does not pull
+	put, _ := open(t, f, "").Begin(ctx, plugin.Ref{Key: "other"}, plugin.ObjectInfo{Size: 1}, plugin.PutOptions{})
+	if put.(plugin.Puller).PullTTL() != 0 {
+		t.Fatal("a put upload pulls")
+	}
+	if _, err := put.(plugin.Puller).Pull(ctx, src.URL); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("pull on put: %v", err)
+	}
+	f.mu.Lock()
+	f.methods = []string{"glance-direct"}
+	f.mu.Unlock()
+	if _, err := c.Begin(ctx, plugin.Ref{Key: "x"}, plugin.ObjectInfo{}, plugin.PutOptions{}); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("no web-download: %v", err)
+	}
+}
+
+// web-download needs the import API (v2.6); an import Glance refuses fails
+// the pull.
+func TestWebDownloadRefused(t *testing.T) {
+	ctx := context.Background()
+	old := newFakeGlance(t, 5)
+	if _, err := open(t, old, `, "upload": "web-download"`).Begin(ctx, plugin.Ref{Key: "x"}, plugin.ObjectInfo{}, plugin.PutOptions{}); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("v2.5: %v", err)
+	}
+	f := newFakeGlance(t, 9)
+	u, err := open(t, f, `, "upload": "web-download"`).Begin(ctx, plugin.Ref{Key: "x"}, plugin.ObjectInfo{Size: 1}, plugin.PutOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	clear(f.images)
+	f.mu.Unlock()
+	if _, err := u.(plugin.Puller).Pull(ctx, "http://example.com/x"); !errors.Is(err, plugin.ErrNotFound) {
+		t.Fatalf("image gone: %v", err)
 	}
 }

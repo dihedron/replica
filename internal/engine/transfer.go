@@ -527,6 +527,13 @@ func (e *Engine) copyAll(ctx context.Context, in TransferInput, a attempt) resul
 			return check(err)
 		}
 		defer up.close()
+		if p, ok := up.Upload.(plugin.Puller); ok && p.PullTTL() > 0 {
+			if err := e.pull(ctx, in, a, fence, up, p); err != nil {
+				_ = up.Abort(ctx)
+				return check(err)
+			}
+			return e.commit(ctx, in, a, up)
+		}
 		for {
 			r := e.batch(ctx, in, a, up)
 			if r.failed() || r.Done {
@@ -538,6 +545,116 @@ func (e *Engine) copyAll(ctx context.Context, in TransferInput, a attempt) resul
 			}
 		}
 	})
+}
+
+// pull is the copy of a destination that fetches the object itself from a
+// URL (Glance's web-download, veho-openstack.md §3.2): the bytes do not cross
+// veho, so the job's digest is first recorded from the source when no other
+// destination has, and the pulled object, still invisible, is read back by
+// parts, whose sums are the transfer's parts; verify then compares them with
+// the source's before Commit, and again by verify as for every destination
+// (FR-8).
+func (e *Engine) pull(ctx context.Context, in TransferInput, a attempt, fence int64, up *openUpload, p plugin.Puller) error {
+	_, src, err := e.open(ctx, in.Tenant, a.Source)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = src.Close() }()
+	var known string
+	if err := store.InTenant(ctx, e.worker, in.Tenant, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, "select coalesce(source_info->>'digest', '') from veho.jobs where id = $1", in.Job).Scan(&known)
+	}); err != nil {
+		return err
+	}
+	// the digest is recorded unless another destination recorded one meanwhile
+	sums, err := pullChecked(ctx, src, up.client, p, a, known, func(d string) (recorded string, err error) {
+		return recorded, e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `update veho.jobs set source_info = case when source_info ? 'digest' then source_info
+				else jsonb_set(source_info, '{digest}', to_jsonb($2::text)) end where id = $1 returning source_info->>'digest'`, in.Job, d).Scan(&recorded)
+		})
+	})
+	if err != nil {
+		return err
+	}
+	e.metrics.bytes.Add(float64(a.Size))
+	// the parts as plan cuts them: part i at i * part size
+	return e.guarded(ctx, in, fence, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `with p as (insert into veho.parts (tenant_id, transfer_id, part_no, "offset", length, sha256)
+				select veho.current_tenant(), $1, ord - 1, $3 * (ord - 1), least($3, $2 - $3 * (ord - 1)), s
+				from unnest($4::bytea[]) with ordinality as p(s, ord)
+				on conflict (transfer_id, part_no) do nothing)
+			update veho.transfers set bytes_done = $2 where id = $1`, in.Transfer, a.Size, a.PartSize, sums)
+		return err
+	})
+}
+
+// pullChecked is pull without the database: the job's digest from the
+// source when none is recorded (record stores it and returns the one
+// recorded), the URL, the pull, and the read-back compared with the job's
+// digest before Commit, so a wrong copy is never published (OS-5). It
+// returns the parts' sums of the copy.
+func pullChecked(ctx context.Context, src, dst plugin.Client, p plugin.Puller, a attempt, recorded string, record func(string) (string, error)) ([][]byte, error) {
+	presigner, ok := src.(plugin.Presigner)
+	if !ok {
+		return nil, plugin.Wrapf(plugin.Permanent, "engine: the source cannot give the URL a pulling destination needs")
+	}
+	srcRef := plugin.Ref{Key: a.SourcePath}
+	if recorded == "" {
+		sums, err := readSums(ctx, src, srcRef, a, a.Version)
+		if err != nil {
+			return nil, err
+		}
+		d, err := digest(a.PartSize, a.Size, sums)
+		if err != nil {
+			return nil, plugin.Wrap(err, plugin.Integrity)
+		}
+		if recorded, err = record(d); err != nil {
+			return nil, err
+		}
+	}
+	u, err := presigner.PresignRead(ctx, srcRef, a.Version, p.PullTTL())
+	if err != nil {
+		return nil, drv(fmt.Errorf("presign the source: %w", err))
+	}
+	ref, err := p.Pull(ctx, u)
+	if err != nil {
+		return nil, drv(fmt.Errorf("pull: %w", err))
+	}
+	sums, err := readSums(ctx, dst, ref, a, "")
+	if err != nil {
+		return nil, fmt.Errorf("read the pulled object back: %w", err)
+	}
+	d, err := digest(a.PartSize, a.Size, sums)
+	if err != nil {
+		return nil, plugin.Wrap(err, plugin.Integrity)
+	}
+	if d != recorded {
+		return nil, plugin.Wrapf(plugin.Integrity, "engine: the pulled copy's digest differs from the source's")
+	}
+	return sums, nil
+}
+
+// readSums reads every part of ref by ranges and returns their SHA-256s.
+func readSums(ctx context.Context, c plugin.Client, ref plugin.Ref, a attempt, version string) ([][]byte, error) {
+	parts := plan(a.Size, a.PartSize)
+	sums := make([][]byte, len(parts))
+	for i, p := range parts {
+		rc, err := c.ReadRange(ctx, ref, p.Offset, p.Length, version)
+		if err != nil {
+			return nil, drv(fmt.Errorf("read part %d: %w", p.No, err))
+		}
+		h := sha256.New()
+		n, err := io.Copy(h, rc)
+		_ = rc.Close()
+		if err != nil {
+			return nil, drv(fmt.Errorf("read part %d: %w", p.No, err))
+		}
+		if n != p.Length {
+			return nil, plugin.Wrapf(plugin.Integrity, "part %d: %d bytes read, want %d", p.No, n, p.Length)
+		}
+		sums[i] = h.Sum(nil)
+	}
+	return sums, nil
 }
 
 // commit publishes the object (FR-9); the transfer is VERIFYING.

@@ -2,7 +2,7 @@
 
 This file specifies the `glance` and `swift` drivers (backlog 21 and 34, OI-6) and the lab that tests them against DevStack. It is part of `veho_specification.md`; the driver contract is `veho-plugins.md`, the source rules `veho-sources.md`, the plugin distribution `veho-plugin-distribution.md`.
 
-Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1). Steps 1 to 3 implemented the same day (§10 records what the implementation changed); `web-download` (step 4) next.
+Status: approved, 2026-11-25 (revised the same day: the minimum release per feature, §1.1). Steps 1 to 4 implemented the same day (§10 records what the implementation changed); the end-to-end tests of step 5 next.
 
 ## 1. Decisions (2026-11-25)
 
@@ -163,4 +163,5 @@ A lab of its own, **self-contained in this repository** (`test/devstack/`), so i
 - **Replacement:** the engine checks `overwrite` before `Begin` (`fail`, `skip`), so `Commit` deletes the project's other active images of the name after publishing the new one.
 - **Swift:** `max_segments` is a driver setting (capabilities are the driver's, not the endpoint's); an upload has a marker object (`<name>/<upload id>/upload` among the segments) that `Begin` writes and `Commit` and `Abort` remove, so a write into an aborted or committed upload is `ResumeInvalid`; overwriting an SLO deletes the old one's segments; a `HEAD` whose `Content-Length` a proxy dropped (Apache drops `0`) takes the size from the container listing.
 - **The lab:** DevStack configures Glance's file stores only without Swift, so the lab adds `fast` and `cheap` itself (`lib/devstack.sh`, `glance_stores_conf`); Glance's `allowed_ports` must be `[]`.
-- **Verified on DevStack stable/2026.2:** the authentication with both kinds of credentials, the conformance suite on Swift (both credentials) and on Glance (`put`, and `glance-direct` to the store `cheap`).
+- **`web-download`:** `plugin.Puller` is an optional interface of the upload (`PullTTL`, `Pull(ctx, url) (Ref, error)`) rather than a capability: the method is the endpoint's, the capabilities the driver's. `Pull` returns a reference (the image ID) that reads the image back while it is hidden. The engine compares the read-back digest with the job's before `Commit`, so a wrong image is never published, and `verify` compares it again. A source that cannot presign fails the transfer as `Permanent`, not at submission: the destination's method is known only once its upload begins (a submission check needs the driver to describe an endpoint: later). The presigned URL carries no condition on the version (Glance would not send it); the read-back covers it.
+- **Verified on DevStack stable/2026.2:** the authentication with both kinds of credentials, the conformance suite on Swift (both credentials) and on Glance (`put`, and `glance-direct` to the store `cheap`); `web-download` from an HTTP source on the lab host, read back while hidden, then published.

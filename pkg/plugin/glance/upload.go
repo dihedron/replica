@@ -48,6 +48,42 @@ type upload struct {
 	md5       hash.Hash
 	broken    error // the stream failed: the upload must begin again
 	committed *plugin.ObjectInfo
+	pull      bool // web-download: Glance fetches the data
+	pulled    *image
+}
+
+// PullTTL: a web-download upload pulls from a URL that must live that long.
+func (u *upload) PullTTL() time.Duration {
+	if !u.pull {
+		return 0
+	}
+	return u.c.ttl
+}
+
+// Pull imports the image from url with web-download and waits for it to be
+// active; the image is still hidden, and the reference (its ID) reads it
+// back before Commit. The URL is a credential: it is in no error or log.
+func (u *upload) Pull(ctx context.Context, src string) (plugin.Ref, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	switch {
+	case !u.pull:
+		return plugin.Ref{}, plugin.Wrapf(plugin.Permanent, "glance: the endpoint's upload is %s, not web-download", u.c.cfg.Upload)
+	case u.committed != nil:
+		return plugin.Ref{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: the upload of %s is committed", u.t.Name)
+	case u.pulled != nil:
+		return plugin.Ref{Key: u.t.ImageID}, nil
+	}
+	body := map[string]any{"method": map[string]string{"name": "web-download", "uri": src}}
+	if err := u.c.call(ctx, http.MethodPost, "images/"+url.PathEscape(u.t.ImageID)+"/import", nil, body, nil, http.StatusAccepted); err != nil {
+		return plugin.Ref{}, classify(ctx, "web-download of "+u.t.Name, err)
+	}
+	im, err := u.active(ctx)
+	if err != nil {
+		return plugin.Ref{}, err
+	}
+	u.pulled = &im
+	return plugin.Ref{Key: u.t.ImageID}, nil
 }
 
 // tempName is an image's name while it uploads, on a Glance without
@@ -57,11 +93,12 @@ func tempName(uploadID string) string { return "veho-upload-" + uploadID }
 // methods checks that Glance offers the endpoint's upload method and stores
 // (§3.3): before any image is created.
 func (c *client) methods(ctx context.Context, minor int) error {
-	if c.cfg.Upload != "glance-direct" {
+	method := c.cfg.Upload
+	if method == "put" {
 		return nil
 	}
 	if minor < 6 {
-		return plugin.Wrapf(plugin.Permanent, "glance: glance-direct needs the image import API (v2.6, Queens); this Glance has v2.%d", minor)
+		return plugin.Wrapf(plugin.Permanent, "glance: %s needs the image import API (v2.6, Queens); this Glance has v2.%d", method, minor)
 	}
 	var info struct {
 		Methods struct {
@@ -71,8 +108,8 @@ func (c *client) methods(ctx context.Context, minor int) error {
 	if err := c.call(ctx, http.MethodGet, "info/import", nil, nil, &info, http.StatusOK); err != nil {
 		return classify(ctx, "import methods", err)
 	}
-	if !slices.Contains(info.Methods.Value, "glance-direct") {
-		return plugin.Wrapf(plugin.Permanent, "glance: this Glance does not offer glance-direct (it offers %v)", info.Methods.Value)
+	if !slices.Contains(info.Methods.Value, method) {
+		return plugin.Wrapf(plugin.Permanent, "glance: this Glance does not offer %s (it offers %v)", method, info.Methods.Value)
 	}
 	if len(c.cfg.Stores) == 0 || slices.Equal(c.cfg.Stores, []string{"*"}) {
 		return nil
@@ -122,7 +159,7 @@ func (c *client) Begin(ctx context.Context, ref plugin.Ref, info plugin.ObjectIn
 	if err := c.methods(ctx, minor); err != nil {
 		return nil, err
 	}
-	u := &upload{c: c, size: info.Size, hidden: minor >= 7, sha512: sha512.New(), md5: md5.New()} //nolint:gosec // Glance's checksum
+	u := &upload{c: c, size: info.Size, hidden: minor >= 7, sha512: sha512.New(), md5: md5.New(), pull: c.cfg.Upload == "web-download"} //nolint:gosec // Glance's checksum
 	u.t = token{ImageID: uuid.NewString(), Name: ref.Key, UploadID: uuid.NewString()}
 	body := map[string]any{
 		"id": u.t.ImageID, "name": ref.Key, "disk_format": c.cfg.DiskFormat, "container_format": c.cfg.ContainerFormat,
@@ -244,6 +281,8 @@ func (u *upload) WritePart(ctx context.Context, partNo int, r io.Reader, length 
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	switch {
+	case u.pull:
+		return plugin.PartResult{}, plugin.Wrapf(plugin.Permanent, "glance: a web-download upload takes no parts")
 	case u.committed != nil:
 		return plugin.PartResult{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: the upload of %s is committed", u.t.Name)
 	case u.broken != nil:
@@ -335,6 +374,12 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 	if u.broken != nil {
 		return plugin.ObjectInfo{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: the upload of %s broke: begin again", u.t.Name)
 	}
+	if u.pull { // the engine has read the pulled image back and checked it
+		if u.pulled == nil {
+			return plugin.ObjectInfo{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: commit of %s before its web-download", u.t.Name)
+		}
+		return u.publish(ctx, *u.pulled)
+	}
 	if len(parts) != len(u.parts) {
 		return plugin.ObjectInfo{}, plugin.Wrapf(plugin.ResumeInvalid, "glance: commit of %d parts, %d written", len(parts), len(u.parts))
 	}
@@ -376,6 +421,12 @@ func (u *upload) Commit(ctx context.Context, parts []plugin.PartResult) (plugin.
 	if sum != want {
 		return plugin.ObjectInfo{}, u.fail(plugin.Wrapf(plugin.Integrity, "glance: %s: Glance's hash is not that of the bytes sent", u.t.Name))
 	}
+	return u.publish(ctx, im)
+}
+
+// publish shows the image under its name and removes the project's other
+// images of that name.
+func (u *upload) publish(ctx context.Context, im image) (plugin.ObjectInfo, error) {
 	older, err := u.c.named(ctx, u.t.Name)
 	if err != nil {
 		return plugin.ObjectInfo{}, err

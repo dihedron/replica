@@ -376,3 +376,26 @@ func FuzzLocate(f *testing.F) {
 }
 
 var _ = tls.VersionTLS12
+
+// OS-T5: the object's URL, only for an endpoint without credentials or
+// headers.
+func TestPresignRead(t *testing.T) {
+	s := newServer(t)
+	ctx := context.Background()
+	c, err := s.driver(t).Open(ctx, s.config(""), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := c.(plugin.Presigner).PresignRead(ctx, plugin.Ref{Key: "a b/img"}, "", time.Hour)
+	if err != nil || u != s.URL+"/pub/a%20b/img" {
+		t.Fatalf("%s, %v", u, err)
+	}
+	if _, err := s.open(t).(plugin.Presigner).PresignRead(ctx, plugin.Ref{Key: "img"}, "", time.Hour); plugin.ClassOf(err) != plugin.Permanent {
+		t.Fatalf("with credentials: %v", err)
+	}
+	done, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := c.(plugin.Presigner).PresignRead(done, plugin.Ref{Key: "img"}, "", time.Hour); err == nil {
+		t.Fatal("presign with a cancelled context")
+	}
+}

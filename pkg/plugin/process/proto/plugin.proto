@@ -28,6 +28,11 @@ service Driver {
   rpc ListParts(Handle) returns (PartList);
   rpc Commit(CommitRequest) returns (ObjectInfo);
   rpc Abort(Handle) returns (Empty);
+
+  // web-download (veho-openstack.md §3.2): optional, Unimplemented when the
+  // driver does not offer it.
+  rpc PresignRead(PresignRequest) returns (PresignedURL);
+  rpc Pull(PullRequest) returns (Ref);
 }
 
 message Empty {}
@@ -112,6 +117,25 @@ message ResumeRequest {
 message UploadHandle {
   string id = 1;
   bytes token = 2;
+  // pull_ttl_seconds: the upload pulls from a URL (Puller), which must live
+  // that long; zero, it takes parts.
+  int64 pull_ttl_seconds = 3;
+}
+
+message PresignRequest {
+  string client = 1;
+  Ref ref = 2;
+  string version = 3;
+  int64 ttl_seconds = 4;
+}
+
+message PresignedURL {
+  string url = 1;
+}
+
+message PullRequest {
+  string upload = 1;
+  string url = 2;
 }
 
 message WritePartRequest {
