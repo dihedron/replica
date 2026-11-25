@@ -2,15 +2,15 @@
 
 This file specifies backlog item 40: veho records the network flows each endpoint needs and checks them from every executor node, with netcheck, as ligo's client SDK does (`ligo/.specs/ligo-network-checks.md`, `ligo/pkg/client/flowcheck.go`). It is part of `veho_specification.md`; it extends the driver contract (`veho-plugins.md`), the endpoint API (`veho-api.md`) and the command line (`veho-cli.md`).
 
-Status: proposed, 2026-11-25; awaiting approval.
+Status: approved, 2026-11-25, as proposed: the executors answer at their heartbeat (decision 3; LISTEN/NOTIFY was the alternative), and periodic checks go to the backlog (item 41).
 
 ## 1. Why
 
 An endpoint works from the node that created it (`endpoint test`, which runs on the API node), yet a transfer fails later on a node in another region whose firewall does not let it reach the storage system. The flows an endpoint needs (each executor to the storage system: Keystone and the services of its catalog, an S3 endpoint, an FTP server and its data connections) are known from its configuration; checking them from every node shows a missing rule before a transfer fails there.
 
-## 2. Decisions (proposed)
+## 2. Decisions (approved 2026-11-25)
 
-| # | Question | Proposal |
+| # | Question | Decision |
 | :--- | :--- | :--- |
 | 1 | Who says what the flows are | The driver, through a new optional interface `plugin.FlowLister`: `Flows(ctx, config, credentials) ([]Flow, error)`, forwarded over gRPC for plugins. A driver without it has no flows (`file`). |
 | 2 | Where the flows are found | Once per check, on the API node that receives the request, with the endpoint's credentials (an OpenStack catalog needs a token); the flows are stored with the check. The executors only probe: they never authenticate nor send credentials. |
@@ -112,4 +112,4 @@ The Operator's Guide (endpoint checks, what `Skipped` means, the firewall rules 
 
 ## 9. Out of scope
 
-Periodic checks (a background check of every endpoint); checks of the flows a destination opens itself (Glance's `web-download` fetches its source from Glance's network, not veho's); ICMP; the flows of the state store and of the notifications (webhooks), which are the platform's, not an endpoint's.
+Periodic checks (a background check of every endpoint: backlog item 41); checks of the flows a destination opens itself (Glance's `web-download` fetches its source from Glance's network, not veho's); ICMP; the flows of the state store and of the notifications (webhooks), which are the platform's, not an endpoint's.

@@ -47,6 +47,30 @@ type Presigner interface {
 	PresignRead(ctx context.Context, ref Ref, version string, ttl time.Duration) (string, error)
 }
 
+// Flow is a network connection a client of an endpoint makes, from an
+// executor to Host:Port, for the endpoint's network checks
+// (veho-network-checks.md §3). A flow veho cannot probe (FTP's passive
+// data ports, chosen by the server) says why in Unprobed, Port 0.
+type Flow struct {
+	Purpose    string `json:"purpose"` // what it is for: "s3", "keystone", "glance", "ftp data", ...
+	Host       string `json:"host"`
+	Port       int    `json:"port,omitempty"`
+	TLS        bool   `json:"tls,omitempty"`
+	ServerName string `json:"server_name,omitempty"` // the name the certificate must carry; default Host
+	Handshake  string `json:"handshake,omitempty"`   // "": TCP, or TLS with TLS; "ssh"
+	CACert     string `json:"ca_cert,omitempty"`     // PEM certificates trusted besides the system's, for TLS
+	Unprobed   string `json:"unprobed,omitempty"`
+}
+
+// MaxFlows bounds the flows of one endpoint (NC-3).
+const MaxFlows = 64
+
+// FlowLister is a client that says which flows it makes; a client without
+// it makes none that veho checks (a local file system).
+type FlowLister interface {
+	Flows(ctx context.Context) ([]Flow, error)
+}
+
 // Puller is an upload whose destination fetches the object itself from a
 // URL (Glance's web-download): the engine gives it the source's presigned
 // URL in place of the parts, then reads the object back to check it.

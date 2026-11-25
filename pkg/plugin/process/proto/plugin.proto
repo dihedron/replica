@@ -33,6 +33,10 @@ service Driver {
   // driver does not offer it.
   rpc PresignRead(PresignRequest) returns (PresignedURL);
   rpc Pull(PullRequest) returns (Ref);
+
+  // The client's network flows (veho-network-checks.md §3): empty when
+  // the driver lists none.
+  rpc Flows(Handle) returns (FlowList);
 }
 
 message Empty {}
@@ -164,4 +168,19 @@ message PartList {
 message CommitRequest {
   string upload = 1;
   repeated PartResult parts = 2;
+}
+
+message Flow {
+  string purpose = 1;
+  string host = 2;
+  int32 port = 3;
+  bool tls = 4;
+  string server_name = 5;
+  string handshake = 6;
+  string ca_cert = 7;
+  string unprobed = 8;
+}
+
+message FlowList {
+  repeated Flow flows = 1;
 }

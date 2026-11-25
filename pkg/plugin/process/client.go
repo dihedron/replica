@@ -148,6 +148,24 @@ type remoteUpload struct {
 	pullTTL time.Duration
 }
 
+// Flows asks the plugin; a driver without flows answers none.
+func (c *remoteClient) Flows(ctx context.Context) ([]plugin.Flow, error) {
+	var md metadata.MD
+	l, err := c.rpc.Flows(ctx, &pb.Handle{Id: c.id}, trailerOf(&md))
+	if err != nil {
+		return nil, fromStatus(ctx, err, md)
+	}
+	if len(l.GetFlows()) > plugin.MaxFlows {
+		return nil, plugin.Wrapf(plugin.Permanent, "the plugin lists %d flows, more than %d", len(l.GetFlows()), plugin.MaxFlows)
+	}
+	var flows []plugin.Flow
+	for _, f := range l.GetFlows() {
+		flows = append(flows, plugin.Flow{Purpose: f.GetPurpose(), Host: f.GetHost(), Port: int(f.GetPort()), TLS: f.GetTls(),
+			ServerName: f.GetServerName(), Handshake: f.GetHandshake(), CACert: f.GetCaCert(), Unprobed: f.GetUnprobed()})
+	}
+	return flows, nil
+}
+
 // PresignRead asks the plugin; a driver without it answers Permanent.
 func (c *remoteClient) PresignRead(ctx context.Context, ref plugin.Ref, version string, ttl time.Duration) (string, error) {
 	var md metadata.MD
