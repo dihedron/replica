@@ -246,9 +246,11 @@ func TestEnvelopeCell(t *testing.T) {
 	t.Logf("observed: %d samples, terms %v, %d probes, timelines %d to %d", len(samples), terms, len(latencies), tl0, tl1)
 	mu.Unlock()
 
-	// the injections: their elections are on purpose, never counted
+	// the injections, the node first (its adoption over this cell's WAN),
+	// then the Patroni leader; their elections are on purpose, never counted
 	injectEnd := time.Now().Add(inject)
 	lab := true // false: a lab failure invalidates the cell
+	row.Adoption = adoption(t, l, tn, r)
 	if leader := l.Leader(); leader != "" {
 		t0 := time.Now()
 		l.Sh("db", "kill", leader[len("db-"):])
@@ -267,6 +269,10 @@ func TestEnvelopeCell(t *testing.T) {
 			time.Sleep(time.Second)
 		}
 		t.Logf("failover: %d s after killing %s", row.Failover, leader)
+		// the killed member rejoins over the lab's usual WAN: over this
+		// cell's (a lossy link moves a base backup at about 150 kB/s) it
+		// would take hours, and its rejoin is not what the cell measures
+		l.Sh("wan", "set", os.Getenv("VEHO_ENVELOPE_RESTORE_PROFILE"))
 		if out, err := l.TrySh("db", "start", leader[len("db-"):]); err != nil {
 			// the lab, not the product: the killed member did not rejoin in
 			// time over this WAN; the campaign waits for it before the next
@@ -275,7 +281,6 @@ func TestEnvelopeCell(t *testing.T) {
 			lab = false
 		}
 	}
-	row.Adoption = adoption(t, l, tn, r)
 	if wait := time.Until(injectEnd); wait > 0 {
 		time.Sleep(wait)
 	}
