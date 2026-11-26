@@ -107,8 +107,11 @@ func (p painter) style(header bool, col, value string) lipgloss.Style {
 
 // table draws rows under headers (none when nil); in a table of fields
 // (kv), a value is coloured as its row's field names it.
-func (p painter) table(headers []string, rows [][]string, kv bool) string {
-	t := table.New().Border(lipgloss.RoundedBorder()).Rows(rows...)
+// widths, when given, are the columns' widths, so that tables one after the
+// other line up.
+func (p painter) table(headers []string, rows [][]string, kv bool, widths []int) string {
+	// a line between the rows, as a nested table makes a row many lines high
+	t := table.New().Border(lipgloss.RoundedBorder()).BorderRow(true).Rows(rows...)
 	if headers != nil {
 		t = t.Headers(headers...)
 	}
@@ -118,27 +121,33 @@ func (p painter) table(headers []string, rows [][]string, kv bool) string {
 		t = t.BorderStyle(lipgloss.NewStyle().Faint(true))
 	}
 	return t.StyleFunc(func(row, col int) lipgloss.Style {
-		if row == table.HeaderRow {
-			return p.style(true, "", "")
+		s := p.cell(row, col, headers, rows, kv)
+		if col < len(widths) {
+			s = s.Width(widths[col])
 		}
-		name := ""
-		switch {
-		case kv && col == 1:
-			name = rows[row][0]
-		case !kv:
-			name = headers[col]
-		}
-		return p.style(false, name, rows[row][col])
+		return s
 	}).String()
+}
+
+// cell styles a cell: the header, or a value coloured as its column, or in
+// a table of fields (kv) its row's field, names it.
+func (p painter) cell(row, col int, headers []string, rows [][]string, kv bool) lipgloss.Style {
+	if row == table.HeaderRow {
+		return p.style(true, "", "")
+	}
+	name := ""
+	switch {
+	case kv && col == 1:
+		name = rows[row][0]
+	case !kv:
+		name = headers[col]
+	}
+	return p.style(false, name, rows[row][col])
 }
 
 // list is a table of rows (JSON objects) in columns, one line each: nested
 // values are their text.
-func (p painter) list(rows []any, columns []string) string { return p.rows(rows, columns, text) }
-
-// rows is list with each cell drawn by cell: embedded in a table of fields,
-// p.value, so that nested values are tables in their turn.
-func (p painter) rows(rows []any, columns []string, cell func(any) string) string {
+func (p painter) list(rows []any, columns []string) string {
 	headers := make([]string, len(columns))
 	for i, c := range columns {
 		headers[i] = strings.ToUpper(c)
@@ -148,11 +157,11 @@ func (p painter) rows(rows []any, columns []string, cell func(any) string) strin
 		row, _ := r.(map[string]any)
 		line := make([]string, len(columns))
 		for i, c := range columns {
-			line[i] = cell(row[c])
+			line[i] = text(row[c])
 		}
 		cells = append(cells, line)
 	}
-	return p.table(headers, cells, false)
+	return p.table(headers, cells, false, nil)
 }
 
 // first are the fields shown before the others, which are sorted.
@@ -177,33 +186,51 @@ func ordered(m map[string]any) []string {
 }
 
 // object is a table of an object's fields.
-func (p painter) object(fields map[string]any) string { return p.fields(fields, true) }
+func (p painter) object(fields map[string]any) string { return p.fields(fields, true, nil) }
 
 // fields is a table of fields and values, with its FIELD/VALUE header or,
 // embedded in another table's cell, without.
-func (p painter) fields(fields map[string]any, header bool) string {
-	rows := make([][]string, 0, len(fields))
-	for _, k := range ordered(fields) {
-		rows = append(rows, []string{k, p.value(fields[k])})
-	}
+func (p painter) fields(fields map[string]any, header bool, widths []int) string {
+	rows := p.fieldRows(fields)
 	var headers []string
 	if header {
 		headers = []string{"FIELD", "VALUE"}
 	}
-	return p.table(headers, rows, true)
+	return p.table(headers, rows, true, widths)
 }
 
-// value is a cell of a table of fields: a nested object, or a list of
-// objects, is a table embedded in it; anything else its text.
+func (p painter) fieldRows(fields map[string]any) [][]string {
+	rows := make([][]string, 0, len(fields))
+	for _, k := range ordered(fields) {
+		rows = append(rows, []string{k, p.value(fields[k])})
+	}
+	return rows
+}
+
+// value is a cell of a table of fields: a nested object is a table of its
+// fields embedded in it, and so on within; a list of objects one such table
+// per object, as wide as the widest, one after the other; anything else
+// its text.
 func (p painter) value(v any) string {
 	switch x := v.(type) {
 	case map[string]any:
 		if len(x) > 0 {
-			return p.fields(x, false)
+			return p.fields(x, false, nil)
 		}
 	case []any:
 		if len(x) > 0 && isObjects(x) {
-			return p.rows(x, allColumns(x, nil), p.value)
+			// the widest field and value of all, padded, for every table
+			widths := []int{0, 0}
+			for _, e := range x {
+				for _, r := range p.fieldRows(e.(map[string]any)) {
+					widths[0], widths[1] = max(widths[0], lipgloss.Width(r[0])+2), max(widths[1], lipgloss.Width(r[1])+2)
+				}
+			}
+			tables := make([]string, len(x))
+			for i, e := range x {
+				tables[i] = p.fields(e.(map[string]any), false, widths)
+			}
+			return strings.Join(tables, "\n")
 		}
 	}
 	return text(v)

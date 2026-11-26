@@ -47,10 +47,14 @@ func TestFormatTable(t *testing.T) {
 		t.Errorf("colours without a terminal:\n%q", list)
 	}
 	obj := printed(t, "table", false, failedJob())
-	for _, want := range []string{"FIELD", "VALUE", "a-source", "demo/big.bin", "try", "transfers", "STATE", "b-dest-1", "c-dest-1", "region-b"} {
+	for _, want := range []string{"FIELD", "VALUE", "a-source", "demo/big.bin", "try", "transfers", "b-dest-1", "c-dest-1", "region-b"} {
 		if !strings.Contains(obj, want) {
 			t.Errorf("the object lacks %q:\n%s", want, obj)
 		}
+	}
+	// each transfer is a table of its own, the rows apart by a line
+	if strings.Count(obj, "│ id ") != 3 || !strings.Contains(obj, "├") {
+		t.Errorf("not one table per transfer, or no line between rows:\n%s", obj)
 	}
 	// nested values are tables in the value's cell, and so on within them
 	if strings.Contains(obj, "endpoint=a-source") || strings.Contains(obj, "region=region-b") {
