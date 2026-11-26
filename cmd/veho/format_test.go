@@ -17,7 +17,7 @@ import (
 func failedJob() *vehov1.Job {
 	return &vehov1.Job{Id: "j1", State: "FAILED", Source: &vehov1.Source{Endpoint: "a-source", Path: "demo/big.bin"},
 		Labels:    map[string]string{"try": "1"},
-		Transfers: []*vehov1.Transfer{{Id: "t1", Endpoint: "b-dest-1", State: "SUCCEEDED"}, {Id: "t2", Endpoint: "c-dest-1", State: "FAILED"}}}
+		Transfers: []*vehov1.Transfer{{Id: "t1", Endpoint: "b-dest-1", State: "SUCCEEDED", Position: map[string]string{"region": "region-b"}}, {Id: "t2", Endpoint: "c-dest-1", State: "FAILED"}}}
 }
 
 func printed(t *testing.T, format string, colours bool, msg proto.Message, columns ...string) string {
@@ -47,13 +47,36 @@ func TestFormatTable(t *testing.T) {
 		t.Errorf("colours without a terminal:\n%q", list)
 	}
 	obj := printed(t, "table", false, failedJob())
-	for _, want := range []string{"FIELD", "VALUE", "endpoint=a-source path=demo/big.bin", "try=1", "TRANSFERS", "b-dest-1", "c-dest-1"} {
+	for _, want := range []string{"FIELD", "VALUE", "a-source", "demo/big.bin", "try", "transfers", "STATE", "b-dest-1", "c-dest-1", "region-b"} {
 		if !strings.Contains(obj, want) {
 			t.Errorf("the object lacks %q:\n%s", want, obj)
 		}
 	}
+	// nested values are tables in the value's cell, and so on within them
+	if strings.Contains(obj, "endpoint=a-source") || strings.Contains(obj, "region=region-b") {
+		t.Errorf("a nested object as text, not as a table:\n%s", obj)
+	}
+	for _, line := range strings.Split(obj, "\n") {
+		if strings.Contains(line, "region-b") && strings.Count(line, "│") < 6 {
+			t.Errorf("the transfer's position is not a table within the transfers' table within the job's:\n%s", obj)
+		}
+	}
 	if i, j := strings.Index(obj, "id "), strings.Index(obj, "labels"); i < 0 || i > j {
 		t.Errorf("id is not the first field:\n%s", obj)
+	}
+	o := apiOptions{Format: "table", Wide: true}
+	var wide bytes.Buffer
+	o.out = &wide
+	if err := o.print(&vehov1.ListJobsResponse{Jobs: []*vehov1.Job{failedJob()}}, "id", "state"); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ID", "STATE", "SOURCE", "LABELS", "TRANSFERS", "endpoint=a-source path=demo/big.bin"} {
+		if !strings.Contains(wide.String(), want) {
+			t.Errorf("--wide lacks %q:\n%s", want, wide.String())
+		}
+	}
+	if i, j := strings.Index(wide.String(), "ID"), strings.Index(wide.String(), "LABELS"); i < 0 || i > j {
+		t.Errorf("--wide does not begin with the main columns:\n%s", wide.String())
 	}
 	if empty := printed(t, "table", false, &vehov1.ListJobsResponse{}, "id", "state"); !strings.Contains(empty, "ID") {
 		t.Errorf("an empty list: %q", empty)

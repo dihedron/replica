@@ -22,6 +22,7 @@ type apiOptions struct {
 	Tenant    string        `long:"tenant" env:"VEHO_TENANT" description:"The tenant to act in, or platform (required without an API key)"`
 	API       string        `long:"api" env:"VEHO_API" default:"grpc" choice:"grpc" choice:"rest" description:"The transport"`
 	Format    string        `short:"F" long:"format" default:"table" choice:"table" choice:"json" choice:"yaml" description:"The output's format"`
+	Wide      bool          `short:"w" long:"wide" description:"Lists as tables of all their fields, not only the main columns"`
 	Timeout   time.Duration `long:"timeout" default:"30s" description:"The timeout of each call"`
 
 	out io.Writer // tests only; default os.Stdout

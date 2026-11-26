@@ -26,7 +26,7 @@ export VEHO_TOKEN_FILE=$PWD/alice.key       # or VEHO_TOKEN, or --cert-file/--ke
 veho endpoint list
 ```
 
-`--api rest` uses the REST API instead of gRPC; `-F json` (`--format`) prints the API's JSON, `-F yaml` the same as YAML; the default, `-F table`, draws tables, coloured on a terminal unless `NO_COLOR` is set.
+`--api rest` uses the REST API instead of gRPC; `-F json` (`--format`) prints the API's JSON, `-F yaml` the same as YAML; the default, `-F table`, draws tables, coloured on a terminal unless `NO_COLOR` is set. A list shows its main columns; `--wide` (`-w`) adds all the others.
 
 ## Credentials, as a secret
 

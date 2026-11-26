@@ -63,6 +63,9 @@ func (o *apiOptions) print(msg proto.Message, columns ...string) error {
 				rows = list
 			}
 		}
+		if o.Wide {
+			columns = allColumns(rows, columns)
+		}
 		_, err := fmt.Fprintln(w, p.list(rows, columns))
 		return err
 	}
@@ -102,8 +105,13 @@ func (p painter) style(header bool, col, value string) lipgloss.Style {
 	return s
 }
 
-func (p painter) table(headers []string, rows [][]string) string {
-	t := table.New().Border(lipgloss.RoundedBorder()).Headers(headers...).Rows(rows...)
+// table draws rows under headers (none when nil); in a table of fields
+// (kv), a value is coloured as its row's field names it.
+func (p painter) table(headers []string, rows [][]string, kv bool) string {
+	t := table.New().Border(lipgloss.RoundedBorder()).Rows(rows...)
+	if headers != nil {
+		t = t.Headers(headers...)
+	}
 	if !p.on {
 		t = t.BorderStyle(lipgloss.NewStyle())
 	} else {
@@ -113,16 +121,24 @@ func (p painter) table(headers []string, rows [][]string) string {
 		if row == table.HeaderRow {
 			return p.style(true, "", "")
 		}
-		name := headers[col]
-		if name == "VALUE" { // a table of fields: the row's field names the value
+		name := ""
+		switch {
+		case kv && col == 1:
 			name = rows[row][0]
+		case !kv:
+			name = headers[col]
 		}
 		return p.style(false, name, rows[row][col])
 	}).String()
 }
 
-// list is a table of rows (JSON objects) in columns.
-func (p painter) list(rows []any, columns []string) string {
+// list is a table of rows (JSON objects) in columns, one line each: nested
+// values are their text.
+func (p painter) list(rows []any, columns []string) string { return p.rows(rows, columns, text) }
+
+// rows is list with each cell drawn by cell: embedded in a table of fields,
+// p.value, so that nested values are tables in their turn.
+func (p painter) rows(rows []any, columns []string, cell func(any) string) string {
 	headers := make([]string, len(columns))
 	for i, c := range columns {
 		headers[i] = strings.ToUpper(c)
@@ -132,11 +148,11 @@ func (p painter) list(rows []any, columns []string) string {
 		row, _ := r.(map[string]any)
 		line := make([]string, len(columns))
 		for i, c := range columns {
-			line[i] = text(row[c])
+			line[i] = cell(row[c])
 		}
 		cells = append(cells, line)
 	}
-	return p.table(headers, cells)
+	return p.table(headers, cells, false)
 }
 
 // first are the fields shown before the others, which are sorted.
@@ -160,29 +176,55 @@ func ordered(m map[string]any) []string {
 	return keys
 }
 
-// object is a table of an object's fields; each list of objects in it is a
-// table of its own, below.
-func (p painter) object(fields map[string]any) string {
-	var rows [][]string
-	var below []string
+// object is a table of an object's fields.
+func (p painter) object(fields map[string]any) string { return p.fields(fields, true) }
+
+// fields is a table of fields and values, with its FIELD/VALUE header or,
+// embedded in another table's cell, without.
+func (p painter) fields(fields map[string]any, header bool) string {
+	rows := make([][]string, 0, len(fields))
 	for _, k := range ordered(fields) {
-		if list, ok := fields[k].([]any); ok && len(list) > 0 && isObjects(list) {
-			cols := map[string]any{}
-			for _, r := range list {
-				for c := range r.(map[string]any) {
-					cols[c] = nil
-				}
-			}
-			below = append(below, strings.ToUpper(k)+"\n"+p.list(list, ordered(cols)))
-			continue
+		rows = append(rows, []string{k, p.value(fields[k])})
+	}
+	var headers []string
+	if header {
+		headers = []string{"FIELD", "VALUE"}
+	}
+	return p.table(headers, rows, true)
+}
+
+// value is a cell of a table of fields: a nested object, or a list of
+// objects, is a table embedded in it; anything else its text.
+func (p painter) value(v any) string {
+	switch x := v.(type) {
+	case map[string]any:
+		if len(x) > 0 {
+			return p.fields(x, false)
 		}
-		rows = append(rows, []string{k, text(fields[k])})
+	case []any:
+		if len(x) > 0 && isObjects(x) {
+			return p.rows(x, allColumns(x, nil), p.value)
+		}
 	}
-	out := p.table([]string{"FIELD", "VALUE"}, rows)
-	for _, b := range below {
-		out += "\n" + b
+	return text(v)
+}
+
+// allColumns are every field of rows, the main columns first in their
+// order, then the others as an object's fields are ordered (--wide).
+func allColumns(rows []any, main []string) []string {
+	seen, rest := map[string]bool{}, map[string]any{}
+	for _, c := range main {
+		seen[c] = true
 	}
-	return out
+	for _, r := range rows {
+		row, _ := r.(map[string]any)
+		for c := range row {
+			if !seen[c] {
+				rest[c] = nil
+			}
+		}
+	}
+	return append(append([]string{}, main...), ordered(rest)...)
 }
 
 func isObjects(list []any) bool {

@@ -29,7 +29,8 @@
 ## 3. Output
 
 - **`--format` (`-F`) `table|json|yaml`**, on every command that calls the API (**amended** 2026-11-26 with the maintainer; it replaces `--output`/`-o`, dropped as pre-v1 allows):
-  - `table`, the default: a list is a table of the command's columns; one object is a table of its fields and values, a nested list (a job's `transfers`) a table of its own under it, and a nested object (`source`) its `key=value` pairs in one cell. Drawn with Charm's lipgloss (`lipgloss/table`). Colour only when standard output is a terminal and `NO_COLOR` is unset: the header, and the states (green `SUCCEEDED`, `active`; red `FAILED`, `disabled`; yellow the others of a job or transfer).
+  - `table`, the default: a list is a table of the command's columns; one object is a table of its fields and values, in which a nested object (`source`) or list of objects (`transfers`) is a table embedded in the value's cell, and so on recursively within it (decided with the maintainer, 2026-11-26); in a list, whose rows are one line each, a nested value is its `key=value` pairs. Drawn with Charm's lipgloss (`lipgloss/table`). Colour only when standard output is a terminal and `NO_COLOR` is unset: the header, and the states (green `SUCCEEDED`, `active`; red `FAILED`, `disabled`; yellow the others of a job or transfer).
+  - `--wide` (`-w`), with `table`: a list's table has every field of its items as a column, the command's main columns first; without it a list shows only its main columns (decided with the maintainer, 2026-11-26). `json` and `yaml` always give every field.
   - `json`: the API's JSON (proto field names), indented, one document, for scripts; never coloured.
   - `yaml`: the same document as YAML; never coloured.
 - Errors: `error: <code>: <message>` on standard error, and the request ID when the server gave one.
@@ -58,5 +59,5 @@
 | CLI-T1 | Against `veho serve` on the lab, over gRPC and over REST: bootstrap a tenant and its admin; create a secret, an endpoint, a policy and its grants; submit a job by reference and inline; `job wait` exits 0; `job list -F json` and `-F yaml` parse; cancel and retry answer as the API does |
 | CLI-T2 | `job wait` exits 3 on a job that fails |
 | CLI-T3 | Without a credential, with a wrong one: exit 1 and `unauthenticated`; a token file of mode 0644 refused |
-| CLI-T5 | `-F table` of a list, of an object with a nested list and object, and of an empty list; no escape sequence without a terminal or with `NO_COLOR`; `-F json` and `-F yaml` decode to the same document; an unknown format refused |
+| CLI-T5 | `-F table` of a list, of an object with a nested list and object (embedded tables, two levels deep), and of an empty list; no escape sequence without a terminal or with `NO_COLOR`; `-F json` and `-F yaml` decode to the same document; `--wide` lists every field, the main columns first; an unknown format refused |
 | CLI-T4 | The REST request built from each annotation: path variables, body and query, for every method of every service (unit test against the descriptors) |
