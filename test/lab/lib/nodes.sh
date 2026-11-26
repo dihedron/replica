@@ -250,6 +250,10 @@ cmd_node() {
 cmd_db() {
 	require_lab
 	local verb="${1:-}" x="${2:-}"
+	if [[ "$verb" == profile ]]; then
+		db_profile "$x" # a round trip in ms, or the lab's defaults
+		return
+	fi
 	region_check "$x"
 	case "$verb" in
 	kill) inner stop "db-$x" --force ;;
@@ -258,7 +262,7 @@ cmd_db() {
 		inner_wait "db-$x"
 		db_rejoin "db-$x"
 		;;
-	*) die "usage: lab.sh db kill|start X" ;;
+	*) die "usage: lab.sh db kill|start X | profile [RTT_MS]" ;;
 	esac
 }
 

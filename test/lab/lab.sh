@@ -6,7 +6,7 @@ set -euo pipefail
 LAB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$LAB_DIR/../.." && pwd)"
 
-for lib in common preflight lxd inner pki fetch wan db s3 nexus proxy nodes campaign snapshot selftest; do
+for lib in common preflight lxd inner pki fetch wan db s3 nexus proxy nodes campaign envelope snapshot selftest; do
 	# shellcheck source=/dev/null
 	source "$LAB_DIR/lib/$lib.sh"
 done
@@ -52,6 +52,9 @@ commands:
                             nodes deploy, then the daytime acceptance suite
                             (go test -tags acceptance ./test/acceptance)
   campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long
+  campaign envelope --phase A|B [--rtt R,R] [--dry-run] | --report
+                            AC-24, one or two rows a night
+                            (.specs/veho-latency-campaign.md)
                             the long campaigns (AC-17, AC-18, AC-1 at 4 GiB
                             and AC-8 for 30 minutes), overnight; logs in
                             .evidence/
@@ -61,6 +64,8 @@ commands:
                             node start
   node pause|resume NAME    SIGSTOP / SIGCONT veho
   db kill|start X           force-stop / start db-X (Patroni member)
+  db profile [RTT_MS]       etcd and Patroni timeouts of a round trip's
+                            profile; none: the lab's defaults
   db-certs                  let Patroni rewind a former primary: the
                             members' certificates name localhost and pg_hba
                             takes local replication (also at every start)
