@@ -91,8 +91,8 @@ func setup(t *testing.T) fixture {
 // insertJob inserts a job with one transfer under tenant, from and to ep.
 func insertJob(ctx context.Context, tx pgx.Tx, tenant, ep uuid.UUID) (job, transfer uuid.UUID, err error) {
 	job, transfer = uuid.NewV7(), uuid.NewV7()
-	if _, err = tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy)
-		values ($1, $2, $3, 'a/b', '{"min_copies": 1}')`, job, tenant, ep); err != nil {
+	if _, err = tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy, created_by)
+		values ($1, $2, $3, 'a/b', '{"min_copies": 1}', 'key:test')`, job, tenant, ep); err != nil {
 		return
 	}
 	_, err = tx.Exec(ctx, `insert into veho.transfers (id, tenant_id, job_id, destination_endpoint_id, position, dest_path)

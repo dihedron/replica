@@ -50,6 +50,7 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `api.oidc[].issuer` | none | An OIDC issuer whose tokens the API accepts: an `https` URL, once each |
 | `api.oidc[].audience` | (required with an issuer) | The audience the tokens must carry |
 | `api.oidc[].groups_claim` | `groups` | The claim listing the user's groups, for entitlements and policy grants to groups |
+| `api.oidc[].max_token_lifetime` | `1h` | The longest lifetime of a token, from its `iat`, which is required, to its `exp`; at most 24h |
 | `api.oidc[].ca_file` | the system's roots | The CA that verifies the issuer's TLS |
 | `api.spiffe.trust_domain` | none (SPIFFE off) | The SPIFFE trust domain whose SVIDs the API accepts |
 | `api.spiffe.x509_bundle_file` | none | The trust domain's X.509 bundle: clients authenticate with an X.509-SVID |
@@ -75,4 +76,5 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `VEHO_MIGRATOR_DATABASE_URL` | `veho migrate`, `veho kek`, `veho bootstrap` | `veho_migrator`'s DSN (`--dsn-env` names another variable) |
 | `VEHO_LOG_LEVEL` | every command | `debug`, `info`, `warn`, `error` or `off` (the default when unset; the unit sets `info`) |
 | `VEHO_API_URL`, `VEHO_CA_FILE`, `VEHO_API` | the client | The API's URL, its CA, `grpc` or `rest` |
+| `VEHO_TENANT` | the client | The tenant to act in, or `platform`; required without an API key |
 | `VEHO_TOKEN`, `VEHO_TOKEN_FILE`, `VEHO_CERT_FILE`, `VEHO_KEY_FILE` | the client | The credential: an API key, an OIDC token or a JWT-SVID; or a client certificate. A token file readable by group or others is refused |

@@ -18,7 +18,8 @@ AS $$ SELECT nullif(current_setting('veho.tenant_id', true), '')::uuid $$;
 
 CREATE TABLE veho.tenants (
 	id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-	name       text NOT NULL UNIQUE CHECK (name <> ''),
+	-- 'platform' names the platform administrators' calls (veho-authentication.md §4)
+	name       text NOT NULL UNIQUE CHECK (name NOT IN ('', 'platform')),
 	state      text NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'suspended')),
 	quotas     jsonb NOT NULL DEFAULT '{}',
 	-- the tenant's own settings, such as inline_policies (veho-api-server.md §5.1)
@@ -63,6 +64,8 @@ CREATE TABLE veho.policies (
 CREATE TABLE veho.jobs (
 	id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	tenant_id          uuid NOT NULL,
+	-- the creator's identity name (veho-authentication.md §3.1)
+	created_by         text NOT NULL CHECK (created_by <> ''),
 	idempotency_key    text,
 	source_endpoint_id uuid NOT NULL,
 	source_path        text NOT NULL,
@@ -86,7 +89,7 @@ CREATE TABLE veho.jobs (
 	-- another request is refused (API-4)
 	request_sha256     bytea,
 	UNIQUE (tenant_id, id),
-	UNIQUE (tenant_id, idempotency_key),
+	UNIQUE (tenant_id, created_by, idempotency_key),
 	FOREIGN KEY (tenant_id, source_endpoint_id) REFERENCES veho.endpoints (tenant_id, id),
 	FOREIGN KEY (tenant_id, policy_ref) REFERENCES veho.policies (tenant_id, id)
 );
@@ -147,10 +150,10 @@ CREATE FUNCTION veho.jobs_immutable() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-	IF (NEW.id, NEW.tenant_id, NEW.idempotency_key, NEW.source_endpoint_id, NEW.source_path, NEW.policy, NEW.policy_ref, NEW.created_at,
+	IF (NEW.id, NEW.tenant_id, NEW.created_by, NEW.idempotency_key, NEW.source_endpoint_id, NEW.source_path, NEW.policy, NEW.policy_ref, NEW.created_at,
 	    NEW.labels, NEW.request_sha256)
 		IS DISTINCT FROM
-		(OLD.id, OLD.tenant_id, OLD.idempotency_key, OLD.source_endpoint_id, OLD.source_path, OLD.policy, OLD.policy_ref, OLD.created_at,
+		(OLD.id, OLD.tenant_id, OLD.created_by, OLD.idempotency_key, OLD.source_endpoint_id, OLD.source_path, OLD.policy, OLD.policy_ref, OLD.created_at,
 		 OLD.labels, OLD.request_sha256) THEN
 		RAISE EXCEPTION 'jobs: identity, source and policy are immutable' USING ERRCODE = 'integrity_constraint_violation';
 	END IF;
@@ -438,7 +441,7 @@ CREATE POLICY tenant_isolation ON veho.api_keys
 -- known; the caller compares the hash. It records the use at most once a
 -- minute.
 CREATE FUNCTION veho.authenticate_key(p_id text)
-RETURNS TABLE (principal_id uuid, tenant_id uuid, name text, role text, sha256 bytea, valid boolean)
+RETURNS TABLE (tenant_id uuid, tenant text, name text, role text, sha256 bytea, valid boolean)
 LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
 AS $$
 	WITH k AS (
@@ -446,7 +449,7 @@ AS $$
 		 WHERE id = p_id AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')
 		RETURNING id
 	)
-	SELECT p.id, p.tenant_id, p.name, p.role, a.sha256,
+	SELECT p.tenant_id, coalesce((SELECT t.name FROM veho.tenants t WHERE t.id = p.tenant_id), 'platform'), p.name, p.role, a.sha256,
 	       a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now()) AND p.disabled_at IS NULL
 	         AND (p.tenant_id IS NULL OR (SELECT t.state = 'active' FROM veho.tenants t WHERE t.id = p.tenant_id))
 	  FROM veho.api_keys a JOIN veho.principals p ON p.id = a.principal_id
@@ -480,30 +483,32 @@ ALTER TABLE veho.entitlements ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON veho.entitlements
 	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
 
--- entitlements_for returns the entitlements of an identity, before its tenant is
--- known.
-CREATE FUNCTION veho.entitlements_for(p_kind text, p_issuer text, p_subject text, p_groups text[])
-RETURNS TABLE (id uuid, tenant_id uuid, role text)
+-- entitlements_for returns the entitlements of an identity in the active tenant
+-- that the caller named, or its platform-admin ones for 'platform'; another
+-- tenant's can change nothing (veho-authentication.md §4).
+CREATE FUNCTION veho.entitlements_for(p_tenant text, p_kind text, p_issuer text, p_subject text, p_groups text[])
+RETURNS TABLE (tenant_id uuid, role text)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
 AS $$
-	SELECT e.id, e.tenant_id, e.role FROM veho.entitlements e
+	SELECT e.tenant_id, e.role FROM veho.entitlements e
 	 WHERE e.kind = p_kind AND e.issuer = p_issuer
 	   AND (e.subject = p_subject OR e."group" = ANY (p_groups))
-	   AND (e.tenant_id IS NULL OR (SELECT t.state = 'active' FROM veho.tenants t WHERE t.id = e.tenant_id))
+	   AND CASE WHEN p_tenant = 'platform' THEN e.tenant_id IS NULL
+	            ELSE e.tenant_id = (SELECT t.id FROM veho.tenants t WHERE t.name = p_tenant AND t.state = 'active') END
 $$;
-REVOKE ALL ON FUNCTION veho.entitlements_for(text, text, text, text[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION veho.entitlements_for(text, text, text, text[]) TO veho_api;
+REVOKE ALL ON FUNCTION veho.entitlements_for(text, text, text, text, text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.entitlements_for(text, text, text, text, text[]) TO veho_api;
 GRANT SELECT, INSERT, DELETE ON veho.entitlements TO veho_api;
 
 -- ---------------------------------------------------------------------------
 -- Grants on named policies (.specs/veho-api-server.md §5.1, SEC-21): a
--- grantee (key:<name>, oidc:<sub>, spiffe:<id> or group:<name>) gets submit,
+-- grantee (an identity name or a group, veho-authentication.md §3.1) gets submit,
 -- read or manage on a policy, or the tenant-wide submit_inline.
 
 CREATE TABLE veho.policy_grants (
 	tenant_id  uuid NOT NULL REFERENCES veho.tenants (id),
 	policy     text CHECK (policy <> ''),
-	grantee    text NOT NULL CHECK (grantee ~ '^(key|oidc|spiffe|group):.+'),
+	grantee    text NOT NULL CHECK (grantee ~ '^(key:.+|(oidc|group):[^#]+#.+|spiffe://.+)$'),
 	permission text NOT NULL CHECK (permission IN ('submit', 'read', 'manage', 'submit_inline')),
 	created_at timestamptz NOT NULL DEFAULT now(),
 	CHECK ((permission = 'submit_inline') = (policy IS NULL))

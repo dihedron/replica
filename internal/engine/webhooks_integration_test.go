@@ -74,7 +74,7 @@ func hookFixture(t *testing.T) fixture {
 func (f fixture) settle(t *testing.T, state string) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
-	job, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "in/" + uuid.New().String(), Policy: []byte(twoCopies)})
+	job, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "in/" + uuid.New().String(), Policy: []byte(twoCopies)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestWebhookOutbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	// a rolled-back settle
-	job, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "in/rb", Policy: []byte(twoCopies)})
+	job, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "in/rb", Policy: []byte(twoCopies)})
 	if err != nil {
 		t.Fatal(err)
 	}

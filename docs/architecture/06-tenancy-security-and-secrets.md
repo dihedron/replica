@@ -7,10 +7,10 @@ The API accepts three kinds of credential, all over TLS 1.3:
 | Credential | Checked | Tenant and role from |
 | :---------------------- | :------------------------------------------------------ | :---------------------------------- |
 | API key | `veho_<id>_<secret>`; veho stores the SHA-256 of the 256-bit secret, compares in constant time, honours expiry and revocation | The key's principal |
-| OIDC bearer token | Issuer, audience, signature, expiry, against the issuers in `api.oidc` | An entitlement of the subject, or of one of its groups |
+| OIDC bearer token | Issuer, audience, signature, expiry and lifetime, against the issuers in `api.oidc` | An entitlement of the subject, or of one of its groups |
 | SPIFFE X.509-SVID or JWT-SVID | The trust domain's bundle (`api.spiffe`); a JWT-SVID's audience | An entitlement of the SPIFFE ID |
 
-An identity no entitlement maps is refused. A caller never chooses its tenant: the tenant comes from the credential.
+An API key belongs to one tenant. The others name the tenant of each call, and an entitlement in that tenant must map them: the name only selects among the entitlements, which a tenant's administrators give, so that an entitlement in one tenant cannot change or block what an identity does in another. An identity has one name, with its issuer (`oidc:<issuer>#<subject>`, the SPIFFE ID, `key:<name>`), in grants, rate limits, jobs and the audit. An OIDC issuer that is down stops neither the node nor the other credentials: its own tokens are answered `unavailable` until it is reached.
 
 ## Authorisation
 

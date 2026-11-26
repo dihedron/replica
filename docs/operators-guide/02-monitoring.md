@@ -88,6 +88,7 @@ The actions:
 | `SECRET_PUT`, `SECRET_DELETE` | A secret written (a new version) or removed |
 | `TENANT_CREATE`, `TENANT_UPDATE`, `TENANT_SETTINGS` | A tenant created; its state or quotas changed; its own settings changed |
 | `APIKEY_CREATE`, `APIKEY_REVOKE` | An API key issued or revoked |
+| `AUTH_REFUSED` | Refused credentials, summed every minute by address, kind and reason; the principal is given only when the identity was verified |
 | `ENTITLEMENT_CREATE`, `ENTITLEMENT_DELETE` | An identity mapped to a tenant and role, or unmapped |
 | `KEK_INIT`, `KEK_ROTATE`, `KEK_REWRAP`, `KEK_REKEY` | The key-encryption key initialised, rotated; data keys re-wrapped; the unwrap key replaced |
 | `SYSTEM_ZOMBIE_ADOPTED`, `SYSTEM_ZOMBIE_RESTARTED`, `SYSTEM_ZOMBIE_REPAIRED` | Housekeeping adopted a dead node's work, restarted a lost workflow, repaired a job whose workflow ended unrecorded |

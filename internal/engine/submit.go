@@ -23,8 +23,10 @@ import (
 
 // Request is a job to accept (§3).
 type Request struct {
-	// IdempotencyKey makes a repeated submission return the first job (FR-2);
-	// empty, every submission is a new job.
+	// CreatedBy is the caller's identity name (veho-authentication.md §3.1).
+	CreatedBy string
+	// IdempotencyKey makes a repeated submission by the same caller return
+	// the first job (FR-2); empty, every submission is a new job.
 	IdempotencyKey string
 	// SourceEndpoint and SourcePath name the source object (INV-6).
 	SourceEndpoint string
@@ -109,6 +111,9 @@ func JobWorkflowID(job uuid.UUID) string { return "job/" + job.String() }
 // A policy the tenant may not submit fails with a *policy.Error.
 func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.UUID, bool, error) {
 	var p policy.Policy
+	if r.CreatedBy == "" {
+		return uuid.UUID{}, false, fmt.Errorf("%w: a job has a creator", ErrInvalid)
+	}
 	if (r.PolicyRef == nil) == (len(r.Policy) == 0) {
 		return uuid.UUID{}, false, fmt.Errorf("%w: give a policy or a policy reference", ErrInvalid)
 	}
@@ -141,7 +146,7 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 			return ErrSuspended
 		}
 		if r.IdempotencyKey != "" {
-			if found, err := sameRequest(ctx, tx, r.IdempotencyKey, sum, &job); found || err != nil {
+			if found, err := sameRequest(ctx, tx, r, sum, &job); found || err != nil {
 				return err
 			}
 		}
@@ -205,15 +210,15 @@ func (e *Engine) Submit(ctx context.Context, tenant uuid.UUID, r Request) (uuid.
 		if err != nil {
 			return err
 		}
-		tag, err := tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, idempotency_key, source_endpoint_id, source_path, policy, deadline_at, labels, request_sha256, policy_ref)
-			values ($1, veho.current_tenant(), $2, $3, $4, $5, now() + $6 * interval '1 second', $7, $8, $9)
-			on conflict (tenant_id, idempotency_key) do nothing`,
-			job, key, src.id, r.SourcePath, spec, time.Duration(p.Deadline).Seconds(), labels, sum, ref)
+		tag, err := tx.Exec(ctx, `insert into veho.jobs (id, tenant_id, idempotency_key, source_endpoint_id, source_path, policy, deadline_at, labels, request_sha256, policy_ref, created_by)
+			values ($1, veho.current_tenant(), $2, $3, $4, $5, now() + $6 * interval '1 second', $7, $8, $9, $10)
+			on conflict (tenant_id, created_by, idempotency_key) do nothing`,
+			job, key, src.id, r.SourcePath, spec, time.Duration(p.Deadline).Seconds(), labels, sum, ref, r.CreatedBy)
 		if err != nil {
 			return err
 		}
 		if tag.RowsAffected() == 0 { // a concurrent submission of the same key won
-			_, err := sameRequest(ctx, tx, r.IdempotencyKey, sum, &job)
+			_, err := sameRequest(ctx, tx, r, sum, &job)
 			return err
 		}
 		for _, d := range p.Destinations {
@@ -356,9 +361,9 @@ func derefOr(ep *endpoint) endpoint {
 
 // sameRequest finds the job of an idempotency key: found, it sets *job, or
 // fails with ErrIdempotencyReuse when the key served another request.
-func sameRequest(ctx context.Context, tx pgx.Tx, key string, sum []byte, job *uuid.UUID) (bool, error) {
+func sameRequest(ctx context.Context, tx pgx.Tx, r Request, sum []byte, job *uuid.UUID) (bool, error) {
 	var prev []byte
-	err := tx.QueryRow(ctx, "select id, request_sha256 from veho.jobs where idempotency_key = $1", key).Scan(job, &prev)
+	err := tx.QueryRow(ctx, "select id, request_sha256 from veho.jobs where created_by = $1 and idempotency_key = $2", r.CreatedBy, r.IdempotencyKey).Scan(job, &prev)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
 		return false, nil

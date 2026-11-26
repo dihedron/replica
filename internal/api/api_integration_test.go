@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -66,6 +67,8 @@ type fixture struct {
 	// client is the certificate the clients present, if any
 	client  *tls.Certificate
 	secrets *secrets.Store
+	// tenant is the one that callers without an API key name, if any
+	tenant string
 }
 
 func (f *fixture) tlsConfig() *tls.Config {
@@ -190,6 +193,9 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 	}
 
 	o.Engine, o.API, o.Secrets = f.e, f.api, f.secrets
+	if o.Audit == nil {
+		o.Audit = &audit.Recorder{}
+	}
 	if ids != nil {
 		o.Identities = ids(f)
 	}
@@ -221,8 +227,8 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 func (f *fixture) running(t *testing.T, tenant uuid.UUID) string {
 	t.Helper()
 	id := uuid.NewV7()
-	if _, err := f.migrator.Exec(context.Background(), `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy, state, deadline_at)
-		select $1, $2, e.id, 'obj', '{}', 'RUNNING', now() + interval '1 hour' from veho.endpoints e where e.tenant_id = $2 and e.name = 'source'`,
+	if _, err := f.migrator.Exec(context.Background(), `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy, state, deadline_at, created_by)
+		select $1, $2, e.id, 'obj', '{}', 'RUNNING', now() + interval '1 hour', 'key:test' from veho.endpoints e where e.tenant_id = $2 and e.name = 'source'`,
 		id, tenant); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +260,21 @@ func (f *fixture) keyAs(t *testing.T, tenant *uuid.UUID, role, name string) (str
 
 func (f *fixture) grpc(t *testing.T) vehov1.JobServiceClient {
 	t.Helper()
-	conn, err := grpc.NewClient(f.addr, grpc.WithTransportCredentials(credentials.NewTLS(f.tlsConfig())))
+	tenant := f.tenant
+	named := func(ctx context.Context) context.Context {
+		md, _ := metadata.FromOutgoingContext(ctx)
+		if auth := md.Get("authorization"); tenant == "" || len(md.Get("x-veho-tenant")) > 0 || (len(auth) > 0 && strings.HasPrefix(auth[0], "Bearer "+keyPrefix)) {
+			return ctx
+		}
+		return metadata.AppendToOutgoingContext(ctx, "x-veho-tenant", tenant)
+	}
+	conn, err := grpc.NewClient(f.addr, grpc.WithTransportCredentials(credentials.NewTLS(f.tlsConfig())),
+		grpc.WithUnaryInterceptor(func(ctx context.Context, m string, req, resp any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, o ...grpc.CallOption) error {
+			return invoke(named(ctx), m, req, resp, cc, o...)
+		}),
+		grpc.WithStreamInterceptor(func(ctx context.Context, d *grpc.StreamDesc, cc *grpc.ClientConn, m string, s grpc.Streamer, o ...grpc.CallOption) (grpc.ClientStream, error) {
+			return s(named(ctx), d, cc, m, o...)
+		}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,6 +306,9 @@ func (f *fixture) rest(t *testing.T, method, path, key string, body any, headers
 	req, _ := http.NewRequest(method, "https://localhost"+path, r)
 	if key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	if f.tenant != "" && !strings.HasPrefix(key, keyPrefix) {
+		req.Header.Set("X-Veho-Tenant", f.tenant)
 	}
 	for i := 0; i+1 < len(headers); i += 2 {
 		req.Header.Set(headers[i], headers[i+1])

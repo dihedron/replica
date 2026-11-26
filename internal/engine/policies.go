@@ -259,7 +259,8 @@ func (e *Engine) SetGrants(ctx context.Context, tenant uuid.UUID, name string, g
 	return nil
 }
 
-var validGrantee = regexp.MustCompile(`^(key|oidc|spiffe|group):.+$`)
+// validGrantee is an identity name or a group (veho-authentication.md §3.1).
+var validGrantee = regexp.MustCompile(`^(key:.+|(oidc|group):[^#]+#.+|spiffe://.+)$`)
 
 // Permitted is true when one of grantees holds one of perms on the policy
 // (name "": the tenant-wide grants).

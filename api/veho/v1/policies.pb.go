@@ -468,7 +468,7 @@ func (x *ValidatePolicyResponse) GetMessage() string {
 
 type Grant struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// key:<name>, oidc:<sub>, spiffe:<id> or group:<name>.
+	// key:<name>, oidc:<issuer>#<sub>, spiffe://<id> or group:<issuer>#<group>.
 	Grantee string `protobuf:"bytes,1,opt,name=grantee,proto3" json:"grantee,omitempty"`
 	// submit, read or manage.
 	Permission    string `protobuf:"bytes,2,opt,name=permission,proto3" json:"permission,omitempty"`

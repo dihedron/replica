@@ -25,6 +25,7 @@ type apiOptions struct {
 	TokenFile string        `long:"token-file" env:"VEHO_TOKEN_FILE" description:"A file holding the credential (else VEHO_TOKEN)"`
 	CertFile  string        `long:"cert-file" env:"VEHO_CERT_FILE" description:"A client certificate (an X.509-SVID)"`
 	KeyFile   string        `long:"key-file" env:"VEHO_KEY_FILE" description:"The client certificate's key"`
+	Tenant    string        `long:"tenant" env:"VEHO_TENANT" description:"The tenant to act in, or platform (required without an API key)"`
 	API       string        `long:"api" env:"VEHO_API" default:"grpc" choice:"grpc" choice:"rest" description:"The transport"`
 	Output    string        `short:"o" long:"output" default:"text" choice:"text" choice:"json" description:"The output's form"`
 	Timeout   time.Duration `long:"timeout" default:"30s" description:"The timeout of each call"`
@@ -41,7 +42,7 @@ func (o *apiOptions) stdout() io.Writer {
 
 func (o *apiOptions) client() (*client.Client, error) {
 	return client.New(client.Options{URL: o.URL, CAFile: o.CAFile, TokenFile: o.TokenFile, Token: os.Getenv("VEHO_TOKEN"),
-		CertFile: o.CertFile, KeyFile: o.KeyFile, REST: o.API == "rest"})
+		CertFile: o.CertFile, KeyFile: o.KeyFile, Tenant: o.Tenant, REST: o.API == "rest"})
 }
 
 // call calls method (veho.v1.JobService.GetJob) once.
