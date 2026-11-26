@@ -75,7 +75,7 @@ A lab sweep (the lab's emulated WAN between the three regions, `veho-lab.md` §3
 - jitter: none, +/- 10 %, +/- 25 %, +/- 50 % of the RTT, plus a baseline shift at reconnect;
 - for each cell: the profile's timeouts, 1 hour of light load, recording spurious etcd elections, Patroni demotions, acceptance latency (p50, p99), the time to detect and recover from a killed primary, and the time a transfer takes to be adopted.
 
-Pass: no spurious election or demotion in every cell the profile claims to support; a cell outside the claim is documented with what happened. The result replaces §3 with measurements and is published in the Operator's Guide. It is an overnight campaign (AGENTS.md rule 14): 24 cells of an hour, run over several nights.
+Pass: no spurious election or demotion in every cell the profile claims to support; a cell outside the claim is documented with what happened. The result replaces §3 with measurements and is published in the Operator's Guide. It is an overnight campaign (AGENTS.md rule 14): run over several nights, as `veho-latency-campaign.md` specifies (48 cells of an hour, with packet loss added).
 
 ## 7. Requirements
 
