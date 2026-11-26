@@ -152,7 +152,7 @@ func (f fixture) submit(t *testing.T, srcDir string, size int, pol string) job {
 func (f fixture) submitFrom(t *testing.T, endpoint, path, pol string) job {
 	t.Helper()
 	ctx := context.Background()
-	id, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: endpoint, SourcePath: path, Policy: []byte(pol)})
+	id, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: endpoint, SourcePath: path, Policy: []byte(pol)})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -161,7 +161,7 @@ func (f fixture) cancel(t *testing.T, job uuid.UUID) {
 func TestSubmit(t *testing.T) {
 	f := setup(t)
 	ctx := audit.WithRequest(context.Background(), audit.Request{Principal: "alice"})
-	job, created, err := f.e.Submit(ctx, f.tenant, Request{IdempotencyKey: "k1", SourceEndpoint: "src", SourcePath: "in/a", Policy: []byte(twoCopies)})
+	job, created, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", IdempotencyKey: "k1", SourceEndpoint: "src", SourcePath: "in/a", Policy: []byte(twoCopies)})
 	if err != nil || !created {
 		t.Fatalf("submit: %v, %v", created, err)
 	}
@@ -184,7 +184,7 @@ func TestSubmit(t *testing.T) {
 
 	// FR-2: the same key gives the same job, and no new workflow
 	before := f.workflows(t)
-	again, created, err := f.e.Submit(ctx, f.tenant, Request{IdempotencyKey: "k1", SourceEndpoint: "src", SourcePath: "in/a", Policy: []byte(twoCopies)})
+	again, created, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", IdempotencyKey: "k1", SourceEndpoint: "src", SourcePath: "in/a", Policy: []byte(twoCopies)})
 	if err != nil || created || again != job || f.workflows(t) != before {
 		t.Errorf("resubmit: %s %v %v", again, created, err)
 	}
@@ -194,7 +194,7 @@ func TestSubmit(t *testing.T) {
 
 	// INV-1: a failure after the inserts leaves neither rows nor workflow
 	f.e.beforeCommit = func() error { return errors.New("injected") }
-	if _, _, err := f.e.Submit(ctx, f.tenant, Request{IdempotencyKey: "k2", SourceEndpoint: "src", SourcePath: "in/b", Policy: []byte(twoCopies)}); err == nil {
+	if _, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", IdempotencyKey: "k2", SourceEndpoint: "src", SourcePath: "in/b", Policy: []byte(twoCopies)}); err == nil {
 		t.Fatal("injected failure: no error")
 	}
 	f.e.beforeCommit = nil
@@ -228,12 +228,12 @@ func TestSubmitCapabilities(t *testing.T) {
 	for _, c := range []struct{ src, dest string }{
 		{"sinkonly", "d1"}, {"norange", "d1"}, {"gone", "d1"}, {"src", "srconly"}, {"src", "gone"},
 	} {
-		_, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: c.src, SourcePath: "a", Policy: one(c.dest)})
+		_, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: c.src, SourcePath: "a", Policy: one(c.dest)})
 		if pe, ok := errors.AsType[*policy.Error](err); !ok || pe.Code != policy.CodeInvalidEndpoint {
 			t.Errorf("%s to %s: %v, want invalid_endpoint", c.src, c.dest, err)
 		}
 	}
-	job, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "srconly", SourcePath: "a", Policy: one("sinkonly")})
+	job, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "srconly", SourcePath: "a", Policy: one("sinkonly")})
 	if err != nil {
 		t.Fatalf("a source-only source to a sink-only destination: %v", err)
 	}
@@ -243,14 +243,14 @@ func TestSubmitCapabilities(t *testing.T) {
 func TestSubmitRefused(t *testing.T) {
 	f := setup(t)
 	ctx := context.Background()
-	if _, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "nope", SourcePath: "a", Policy: []byte(twoCopies)}); !errors.Is(err, ErrNotFound) {
+	if _, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "nope", SourcePath: "a", Policy: []byte(twoCopies)}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown source: %v", err)
 	}
-	if _, _, err := f.e.Submit(ctx, uuid.New(), Request{SourceEndpoint: "src", SourcePath: "a", Policy: []byte(twoCopies)}); !errors.Is(err, ErrNotFound) {
+	if _, _, err := f.e.Submit(ctx, uuid.New(), Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "a", Policy: []byte(twoCopies)}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("unknown tenant: %v", err)
 	}
 	for _, p := range []string{`{"destinations": [{"endpoint": "d1", "path": "x"}, {"endpoint": "other", "path": "x"}]}`, `{"nope": 1}`} {
-		if _, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "a", Policy: []byte(p)}); err == nil {
+		if _, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "a", Policy: []byte(p)}); err == nil {
 			t.Errorf("%s: no error", p)
 		} else if _, ok := errors.AsType[*policy.Error](err); !ok {
 			t.Errorf("%s: %v, want a policy error", p, err)
@@ -262,7 +262,7 @@ func TestSubmitRefused(t *testing.T) {
 	}
 	for _, retry := range []string{`{"initial": "100ms"}`, `{"max_interval": "2h"}`} {
 		p := `{"destinations": [{"endpoint": "d1", "path": "x"}], "retry": ` + retry + `}`
-		if _, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "a", Policy: []byte(p)}); err == nil {
+		if _, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "a", Policy: []byte(p)}); err == nil {
 			t.Errorf("retry %s: accepted", retry)
 		} else if pe, ok := errors.AsType[*policy.Error](err); !ok || pe.Code != policy.CodeInvalidPolicy {
 			t.Errorf("retry %s: %v, want invalid_policy", retry, err)
@@ -271,12 +271,12 @@ func TestSubmitRefused(t *testing.T) {
 	if _, err := f.migrator.Exec(ctx, `update veho.tenants set quotas = '{"max_active_jobs": 1}' where id = $1`, f.tenant); err != nil {
 		t.Fatal(err)
 	}
-	job, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "a", Policy: []byte(twoCopies)})
+	job, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "a", Policy: []byte(twoCopies)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.cancel(t, job)
-	if _, _, err := f.e.Submit(ctx, f.tenant, Request{SourceEndpoint: "src", SourcePath: "b", Policy: []byte(twoCopies)}); !errors.Is(err, ErrQuota) {
+	if _, _, err := f.e.Submit(ctx, f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "src", SourcePath: "b", Policy: []byte(twoCopies)}); !errors.Is(err, ErrQuota) {
 		t.Errorf("over the quota: %v", err)
 	}
 }

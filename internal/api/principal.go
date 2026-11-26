@@ -30,11 +30,10 @@ var rank = map[string]int{RoleViewer: 1, RoleOperator: 2, RoleAdmin: 3}
 
 // Principal is the authenticated caller.
 type Principal struct {
-	ID uuid.UUID
-	// Name is the principal as grants name it: key:<name>, oidc:<sub> or
-	// spiffe:<id> (§5.1).
+	// Name is its identity name: key:<name>, oidc:<issuer>#<sub> or
+	// spiffe://<id> (veho-authentication.md §3.1).
 	Name string
-	// Groups are its OIDC groups.
+	// Groups are its OIDC groups, as <issuer>#<group>.
 	Groups []string
 	// Tenant is nil for a platform administrator.
 	Tenant *uuid.UUID
@@ -88,6 +87,14 @@ func NewKey() (token, id string, sum []byte) {
 // nothing about which part was wrong.
 var errBadKey = errors.New("invalid credentials")
 
+// errTenantRequired and errNotEntitled refuse a verified identity that names
+// no tenant, or one where it has no entitlement; whether that tenant exists
+// does not show (veho-authentication.md §4).
+var (
+	errTenantRequired = errors.New("name a tenant: X-Veho-Tenant")
+	errNotEntitled    = errors.New("not entitled in this tenant")
+)
+
 // parseKey splits a key into its ID and secret.
 func parseKey(token string) (string, []byte, error) {
 	rest, ok := strings.CutPrefix(token, keyPrefix)
@@ -101,19 +108,21 @@ func parseKey(token string) (string, []byte, error) {
 	return rest[:keyIDLen], secret, nil
 }
 
-// authenticate returns the principal of an API key.
-func authenticate(ctx context.Context, pool *pgxpool.Pool, token string) (Principal, error) {
+// authenticate returns the principal of an API key, whose tenant is the only
+// one the caller may name.
+func authenticate(ctx context.Context, pool *pgxpool.Pool, token, named string) (Principal, error) {
 	id, secret, err := parseKey(token)
 	if err != nil {
 		return Principal{}, err
 	}
 	var (
-		p     Principal
-		sum   []byte
-		valid bool
+		p      Principal
+		tenant string
+		sum    []byte
+		valid  bool
 	)
-	err = pool.QueryRow(ctx, "select principal_id, tenant_id, name, role, sha256, valid from veho.authenticate_key($1)", id).
-		Scan(&p.ID, &p.Tenant, &p.Name, &p.Role, &sum, &valid)
+	err = pool.QueryRow(ctx, "select tenant_id, tenant, name, role, sha256, valid from veho.authenticate_key($1)", id).
+		Scan(&p.Tenant, &tenant, &p.Name, &p.Role, &sum, &valid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Principal{}, errBadKey
 	}
@@ -125,6 +134,9 @@ func authenticate(ctx context.Context, pool *pgxpool.Pool, token string) (Princi
 		return Principal{}, errBadKey
 	}
 	p.Name = "key:" + p.Name
+	if named != "" && named != tenant {
+		return Principal{Name: p.Name}, errNotEntitled
+	}
 	return p, nil
 }
 

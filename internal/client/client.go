@@ -42,17 +42,20 @@ type Options struct {
 	Token    string
 	CertFile string
 	KeyFile  string
+	// Tenant names the tenant of the calls; an API key has its own.
+	Tenant string
 	// REST selects REST instead of gRPC.
 	REST bool
 }
 
 // Client calls the API.
 type Client struct {
-	rest  bool
-	base  *url.URL
-	token string
-	http  *http.Client
-	conn  *grpc.ClientConn
+	rest   bool
+	base   *url.URL
+	token  string
+	tenant string
+	http   *http.Client
+	conn   *grpc.ClientConn
 }
 
 // Error is an error of the API, from either transport.
@@ -106,7 +109,7 @@ func New(o Options) (*Client, error) {
 	if token == "" && o.CertFile == "" {
 		return nil, errors.New("client: no credential: set VEHO_TOKEN or --token-file, or give --cert-file and --key-file")
 	}
-	c := &Client{rest: o.REST, base: u, token: strings.TrimSpace(token)}
+	c := &Client{rest: o.REST, base: u, token: strings.TrimSpace(token), tenant: o.Tenant}
 	if c.rest {
 		c.http = &http.Client{Transport: &http.Transport{TLSClientConfig: tc, ForceAttemptHTTP2: true}}
 		return c, nil
@@ -223,6 +226,9 @@ func (c *Client) Stream(ctx context.Context, m protoreflect.MethodDescriptor, re
 func (c *Client) outgoing(ctx context.Context, headers ...string) context.Context {
 	if c.token != "" {
 		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.token)
+	}
+	if c.tenant != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "x-veho-tenant", c.tenant)
 	}
 	if len(headers) > 0 {
 		ctx = metadata.AppendToOutgoingContext(ctx, headers...)
@@ -343,6 +349,9 @@ func (c *Client) restCall(ctx context.Context, m protoreflect.MethodDescriptor, 
 	}
 	if c.token != "" {
 		hr.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.tenant != "" {
+		hr.Header.Set("X-Veho-Tenant", c.tenant)
 	}
 	for i := 0; i+1 < len(headers); i += 2 {
 		hr.Header.Set(headers[i], headers[i+1])

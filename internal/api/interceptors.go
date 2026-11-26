@@ -89,18 +89,22 @@ type checkKey struct{}
 // the gRPC server, which believes it only from the in-process pipe (§4.4).
 const peerChainMD = "x-veho-peer-chain"
 
+// tenantMD names the tenant of a call (veho-authentication.md §4).
+const tenantMD = "x-veho-tenant"
+
 // credential picks the caller's credential (§4.4): a client certificate,
 // else the bearer token (an API key, a JWT-SVID or an OIDC token). It
 // returns the check that turns it into a principal, which a stream runs
 // again to re-authorise its caller.
 func (s *Server) credential(ctx context.Context) (func(context.Context) (Principal, error), error) {
+	tenant := first(ctx, tenantMD)
 	if chain := peerChain(ctx); len(chain) > 0 && s.ids != nil && s.ids.x509 != nil {
 		return func(ctx context.Context) (Principal, error) {
 			id, err := s.ids.svid(chain)
 			if err != nil {
 				return Principal{}, err
 			}
-			return entitle(ctx, s.api, id)
+			return entitle(ctx, s.api, id, tenant)
 		}, nil
 	}
 	token, ok := strings.CutPrefix(first(ctx, "authorization"), "Bearer ")
@@ -108,7 +112,7 @@ func (s *Server) credential(ctx context.Context) (func(context.Context) (Princip
 	case !ok:
 		return nil, fail(pUnauthenticated, "a credential is required")
 	case strings.HasPrefix(token, keyPrefix):
-		return func(ctx context.Context) (Principal, error) { return authenticate(ctx, s.api, token) }, nil
+		return func(ctx context.Context) (Principal, error) { return authenticate(ctx, s.api, token, tenant) }, nil
 	case s.ids == nil:
 		return nil, fail(pUnauthenticated, "invalid credentials")
 	}
@@ -117,7 +121,7 @@ func (s *Server) credential(ctx context.Context) (func(context.Context) (Princip
 		if err != nil {
 			return Principal{}, err
 		}
-		return entitle(ctx, s.api, id)
+		return entitle(ctx, s.api, id, tenant)
 	}, nil
 }
 
@@ -206,22 +210,12 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	check, err := s.credential(ctx)
 	if err != nil {
 		s.failures.Allow("ip:"+addr, s.failRate)
+		s.refused.add(refusal{address: addr, kind: "none", reason: "no usable credential"})
 		return nil, err
 	}
 	p, err := check(ctx)
 	if err != nil {
-		if errors.Is(err, errBadKey) || errors.Is(err, errAmbiguous) {
-			s.failures.Allow("ip:"+addr, s.failRate)
-		}
-		if !errors.Is(err, errBadKey) && !errors.Is(err, errAmbiguous) {
-			slog.ErrorContext(ctx, "cannot authenticate", "request_id", id, "error", err)
-			return nil, fail(pUnavailable, "authentication is unavailable")
-		}
-		slog.WarnContext(ctx, "authentication refused", "request_id", id, "method", method, "reason", err.Error())
-		if errors.Is(err, errAmbiguous) {
-			return nil, fail(pUnauthenticated, err.Error())
-		}
-		return nil, fail(pUnauthenticated, "invalid credentials")
+		return nil, s.refuse(ctx, id, method, addr, p, err)
 	}
 	need, known := roles[method]
 	if !known || !p.may(need) {
@@ -230,17 +224,50 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	if p.Tenant != nil && !s.calls.Allow("t:"+p.Tenant.String(), s.tenantRate) {
 		return nil, fail(pRateLimited, "the tenant's rate limit")
 	}
-	if !s.calls.Allow("p:"+p.ID.String(), s.principalRate) {
-		return nil, fail(pRateLimited, "the principal's rate limit")
-	}
 	tenant := ""
 	if p.Tenant != nil {
 		tenant = p.Tenant.String()
+	}
+	if !s.calls.Allow("p:"+tenant+"/"+p.Name, s.principalRate) {
+		return nil, fail(pRateLimited, "the principal's rate limit")
 	}
 	ctx = withPrincipal(ctx, p)
 	ctx = context.WithValue(ctx, checkKey{}, check)
 	ctx = audit.WithRequest(ctx, audit.Request{Principal: p.Name + "@" + tenant, Groups: p.Groups, RequestID: id})
 	return ctx, nil
+}
+
+// credentialKind names the credential that credential picked, for the audit.
+func (s *Server) credentialKind(ctx context.Context) string {
+	token, ok := strings.CutPrefix(first(ctx, "authorization"), "Bearer ")
+	switch {
+	case s.ids != nil && s.ids.x509 != nil && len(peerChain(ctx)) > 0:
+		return "certificate"
+	case ok && strings.HasPrefix(token, keyPrefix):
+		return "api_key"
+	}
+	return "jwt"
+}
+
+// refuse is the answer to a credential that check refused: p has a name only
+// when the identity was verified.
+func (s *Server) refuse(ctx context.Context, id, method, addr string, p Principal, err error) error {
+	var answer error
+	switch {
+	case errors.Is(err, errTenantRequired): // a mistake, not an attempt
+		return fail(pTenantRequired, err.Error())
+	case errors.Is(err, errNotEntitled):
+		answer = fail(pNotEntitled, err.Error())
+	case errors.Is(err, errBadKey):
+		answer = fail(pUnauthenticated, "invalid credentials")
+	default:
+		slog.ErrorContext(ctx, "cannot authenticate", "request_id", id, "error", err)
+		return fail(pUnavailable, "authentication is unavailable")
+	}
+	s.failures.Allow("ip:"+addr, s.failRate)
+	s.refused.add(refusal{address: addr, kind: s.credentialKind(ctx), principal: p.Name, reason: err.Error()})
+	slog.WarnContext(ctx, "authentication refused", "request_id", id, "method", method, "principal", p.Name, "reason", err.Error())
+	return answer
 }
 
 func (s *Server) unary(ctx context.Context, req any, info *grpc.UnaryServerInfo, h grpc.UnaryHandler) (any, error) {

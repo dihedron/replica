@@ -101,7 +101,7 @@ func (cmd *ServeCommand) run(ctx context.Context) error {
 		return errors.Join(err, e.Shutdown(shutdownTimeout))
 	}
 	defer stopMetrics()
-	apiDone, err := serveAPI(hctx, cfg, e, pools["api"], secretStore)
+	apiDone, err := serveAPI(hctx, cfg, e, pools["api"], secretStore, aud)
 	if err != nil {
 		stopBeat()
 		return errors.Join(err, e.Shutdown(shutdownTimeout))
@@ -250,7 +250,7 @@ func serveMetrics(cfg *config.Config, e *engine.Engine, aud *audit.Logger) (func
 
 // serveAPI starts the API on api.listen (.specs/veho-api-server.md §2); the
 // channel gets its end once ctx is done.
-func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *pgxpool.Pool, secretStore *secrets.Store) (<-chan error, error) {
+func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *pgxpool.Pool, secretStore *secrets.Store, aud audit.Auditor) (<-chan error, error) {
 	cert, err := tls.LoadX509KeyPair(cfg.API.TLS.CertFile, cfg.API.TLS.KeyFile)
 	if err != nil {
 		return nil, fmt.Errorf("serve: api.tls: %w", err)
@@ -260,7 +260,7 @@ func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *p
 		return nil, fmt.Errorf("serve: %w", err)
 	}
 	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Identities: ids, Secrets: secretStore,
-		RateLimit: cfg.API.RateLimit, Ready: func(ctx context.Context) error {
+		RateLimit: cfg.API.RateLimit, Audit: aud, Ready: func(ctx context.Context) error {
 			if e.Fenced() {
 				return engine.ErrFenced
 			}

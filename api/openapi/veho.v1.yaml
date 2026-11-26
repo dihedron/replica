@@ -434,7 +434,7 @@ components:
         grantee:
           type: string
           title: grantee
-          description: key:<name>, oidc:<sub>, spiffe:<id> or group:<name>.
+          description: key:<name>, oidc:<issuer>#<sub>, spiffe://<id> or group:<issuer>#<group>.
         permission:
           type: string
           title: permission

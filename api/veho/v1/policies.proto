@@ -83,7 +83,7 @@ message ValidatePolicyResponse {
 }
 
 message Grant {
-  // key:<name>, oidc:<sub>, spiffe:<id> or group:<name>.
+  // key:<name>, oidc:<issuer>#<sub>, spiffe://<id> or group:<issuer>#<group>.
   string grantee = 1;
   // submit, read or manage.
   string permission = 2;

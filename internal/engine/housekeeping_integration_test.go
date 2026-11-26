@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
@@ -79,10 +80,9 @@ func TestAdoption(t *testing.T) {
 		t.Fatal(err)
 	}
 	blocked, release := make(chan struct{}), make(chan struct{})
-	var once bool
+	var once atomic.Bool
 	f.flaky.set(func(int) error {
-		if !once {
-			once = true
+		if once.CompareAndSwap(false, true) {
 			close(blocked)
 			<-release
 		}

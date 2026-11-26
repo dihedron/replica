@@ -51,8 +51,8 @@ func TestPolicies(t *testing.T) {
 
 	// a job in progress under v1 holds the name
 	id := uuid.NewV7()
-	if _, err := f.migrator.Exec(context.Background(), `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy, state, deadline_at, policy_ref)
-		select $1, $2, e.id, 'obj', '{}', 'RUNNING', now() + interval '1 hour',
+	if _, err := f.migrator.Exec(context.Background(), `insert into veho.jobs (id, tenant_id, source_endpoint_id, source_path, policy, state, deadline_at, created_by, policy_ref)
+		select $1, $2, e.id, 'obj', '{}', 'RUNNING', now() + interval '1 hour', 'key:test',
 			(select p.id from veho.policies p where p.tenant_id = $2 and p.name = 'geo' and p.version = 1)
 		from veho.endpoints e where e.tenant_id = $2 and e.name = 'source'`, id, f.a); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestGrants(t *testing.T) {
 
 	// a group grant, for an OIDC member
 	f.entitle(t, "oidc", f.iss, "", "replicators", &f.a, RoleOperator)
-	grant(map[string]string{"grantee": "group:replicators", "permission": "submit"})
+	grant(map[string]string{"grantee": "group:" + f.iss + "#replicators", "permission": "submit"})
 	member := f.token(t, "erin", map[string]any{"groups": []string{"replicators"}})
 	if r := f.rest(t, "POST", "/v1/jobs", member, byRef("geo", 0)); r.code != http.StatusAccepted {
 		t.Errorf("a group member submits: %d %v", r.code, r.body)

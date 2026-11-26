@@ -27,7 +27,7 @@ func (f fixture) submitRun(t *testing.T, srcDir string, size int, pol string) (u
 	if err := os.WriteFile(filepath.Join(srcDir, name), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	id, _, err := f.e.Submit(context.Background(), f.tenant, Request{SourceEndpoint: "source", SourcePath: name, Policy: []byte(strings.ReplaceAll(pol, "OBJ", name))})
+	id, _, err := f.e.Submit(context.Background(), f.tenant, Request{CreatedBy: "key:test", SourceEndpoint: "source", SourcePath: name, Policy: []byte(strings.ReplaceAll(pol, "OBJ", name))})
 	if err != nil {
 		t.Fatal(err)
 	}
