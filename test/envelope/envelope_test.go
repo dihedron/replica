@@ -123,3 +123,22 @@ func TestReport(t *testing.T) {
 		t.Error("a file without the header")
 	}
 }
+
+// The rows results.csv refuses, and the cells a run skips.
+func TestResultsErrors(t *testing.T) {
+	for _, body := range []string{
+		Header + "\nA-rtt25-j0,regional,true\n",
+		Header + "\nA-rtt25-j0,regional,true,x,0,12,40,35,70,40,0,1,0\n",
+		Header + "\nA-rtt25-j0,regional,true,0,0,12,40,35,70,40,0,load,0\n",
+		Header + "\n\"unterminated\n",
+		"",
+	} {
+		if _, err := ReadResults(strings.NewReader(body)); err == nil {
+			t.Errorf("accepted %q", body)
+		}
+	}
+	done := Done([]Row{{Cell: "A-rtt25-j0", Valid: true}, {Cell: "A-rtt25-j10"}})
+	if !done["A-rtt25-j0"] || done["A-rtt25-j10"] {
+		t.Errorf("done: %v", done)
+	}
+}

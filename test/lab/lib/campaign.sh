@@ -88,7 +88,7 @@ campaign_wan24() {
 			next_switch=$((now + 7200))
 		fi
 		printf '%s %s etcd=%s patroni=%s\n' "$(date -u +%FT%TZ)" "$profile" \
-			"$(db_etcdctl endpoint status -w json 2>/dev/null | jq -c '[.[] | {leader: .Status.leader, term: .Status.raft_term}] | unique' 2>/dev/null)" \
+			"$(db_etcdctl endpoint status -w json 2>/dev/null | jq -c '[.[] | {leader: .Status.leader, term: .Status.raftTerm}] | unique' 2>/dev/null)" \
 			"$(db_leader 2>/dev/null)" >>"$dir/samples.log"
 		sleep 60
 	done

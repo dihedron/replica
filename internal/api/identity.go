@@ -8,11 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -34,10 +37,74 @@ type identity struct {
 	groups  []string
 }
 
+// name is the identity's name (veho-authentication.md §3.1).
+func (id identity) name() string {
+	if id.kind == "spiffe" {
+		return id.subject
+	}
+	return id.kind + ":" + id.issuer + "#" + id.subject
+}
+
+// oidcIssuer is an issuer; its verifier is nil until its discovery document
+// was fetched.
 type oidcIssuer struct {
 	conf     config.OIDC
-	verifier *oidc.IDTokenVerifier
+	verifier atomic.Pointer[oidc.IDTokenVerifier]
 	client   *http.Client
+}
+
+// tokenSkew is the clock difference accepted with an issuer.
+const tokenSkew = time.Minute
+
+// errIssuerDown: the token cannot be verified now, which says nothing about
+// the token (veho-authentication.md §5).
+var errIssuerDown = errors.New("the OIDC issuer cannot be reached")
+
+// keysFailed is how go-oidc says that it could not fetch the keys; it keeps
+// no error to test for.
+const keysFailed = "failed to verify signature: fetching keys "
+
+func (i *oidcIssuer) discover(ctx context.Context) error {
+	// the context stays with the verifier, which fetches the keys with it
+	p, err := oidc.NewProvider(oidc.ClientContext(ctx, i.client), i.conf.Issuer)
+	if err != nil {
+		return err
+	}
+	i.verifier.Store(p.Verifier(&oidc.Config{ClientID: i.conf.Audience, Now: func() time.Time { return time.Now().Add(-tokenSkew) }}))
+	return nil
+}
+
+// rediscover retries discovery until it succeeds.
+func (i *oidcIssuer) rediscover(ctx context.Context) {
+	for wait := time.Second; ; wait = min(2*wait, time.Minute) {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		err := i.discover(ctx)
+		if err == nil {
+			slog.InfoContext(ctx, "OIDC issuer reached", "issuer", i.conf.Issuer)
+			return
+		}
+		slog.WarnContext(ctx, "OIDC issuer unreachable", "issuer", i.conf.Issuer, "error", err)
+	}
+}
+
+// verify verifies a token of the issuer, and that its lifetime is bounded.
+func (i *oidcIssuer) verify(ctx context.Context, token string) (*oidc.IDToken, error) {
+	v := i.verifier.Load()
+	if v == nil {
+		return nil, errIssuerDown
+	}
+	tok, err := v.Verify(oidc.ClientContext(ctx, i.client), token)
+	switch {
+	case err != nil && strings.HasPrefix(err.Error(), keysFailed):
+		return nil, fmt.Errorf("%w: %w", errIssuerDown, err)
+	case err != nil, tok.IssuedAt.IsZero(), tok.IssuedAt.After(time.Now().Add(tokenSkew)), tok.Expiry.Sub(tok.IssuedAt) > i.conf.MaxTokenLifetime:
+		return nil, errBadKey
+	}
+	return tok, nil
 }
 
 // Identities verifies the OIDC and SPIFFE credentials of §4.4.
@@ -49,12 +116,13 @@ type Identities struct {
 	audience string
 }
 
-// NewIdentities fetches the OIDC issuers' discovery documents and reads the
-// SPIFFE bundles; it fails when one cannot be had (fail fast).
+// NewIdentities reads the SPIFFE bundles and the issuers' CAs, and fails when
+// one cannot be had (fail fast). An OIDC issuer that does not answer stops
+// nothing: its discovery is retried until ctx ends.
 func NewIdentities(ctx context.Context, c config.API) (*Identities, error) {
 	ids := &Identities{oidc: map[string]*oidcIssuer{}, audience: c.SPIFFE.Audience}
 	for _, o := range c.OIDC {
-		client := http.DefaultClient
+		client := &http.Client{Timeout: 10 * time.Second}
 		if o.CAFile != "" {
 			pem, err := os.ReadFile(o.CAFile)
 			if err != nil {
@@ -64,13 +132,14 @@ func NewIdentities(ctx context.Context, c config.API) (*Identities, error) {
 			if !roots.AppendCertsFromPEM(pem) {
 				return nil, fmt.Errorf("api: oidc %s: no certificate in %s", o.Issuer, o.CAFile)
 			}
-			client = &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}}
+			client.Transport = &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}}
 		}
-		p, err := oidc.NewProvider(oidc.ClientContext(ctx, client), o.Issuer)
-		if err != nil {
-			return nil, fmt.Errorf("api: oidc %s: %w", o.Issuer, err)
+		iss := &oidcIssuer{conf: o, client: client}
+		ids.oidc[o.Issuer] = iss
+		if err := iss.discover(ctx); err != nil {
+			slog.WarnContext(ctx, "OIDC issuer unreachable", "issuer", o.Issuer, "error", err)
+			go iss.rediscover(ctx)
 		}
-		ids.oidc[o.Issuer] = &oidcIssuer{conf: o, verifier: p.Verifier(&oidc.Config{ClientID: o.Audience}), client: client}
 	}
 	if c.SPIFFE.TrustDomain == "" {
 		return ids, nil
@@ -114,9 +183,9 @@ func (ids *Identities) bearer(ctx context.Context, token string) (identity, erro
 	if !ok {
 		return identity{}, errBadKey
 	}
-	tok, err := iss.verifier.Verify(oidc.ClientContext(ctx, iss.client), token)
+	tok, err := iss.verify(ctx, token)
 	if err != nil {
-		return identity{}, errBadKey
+		return identity{}, err
 	}
 	var all map[string]any
 	if err := tok.Claims(&all); err != nil {
@@ -160,14 +229,21 @@ func (ids *Identities) svid(chain []*x509.Certificate) (identity, error) {
 	return identity{kind: "spiffe", issuer: id.TrustDomain().Name(), subject: id.String()}, nil
 }
 
-// entitle maps an identity to its principal through its entitlements (§4.4).
-func entitle(ctx context.Context, pool *pgxpool.Pool, id identity) (Principal, error) {
-	rows, err := pool.Query(ctx, "select id, tenant_id, role from veho.entitlements_for($1, $2, $3, $4)", id.kind, id.issuer, id.subject, id.groups)
+// entitle maps an identity to its principal through its entitlements in the
+// tenant it names (veho-authentication.md §4); the highest role applies.
+func entitle(ctx context.Context, pool *pgxpool.Pool, id identity, tenant string) (Principal, error) {
+	p := Principal{Name: id.name()}
+	if tenant == "" {
+		return p, errTenantRequired
+	}
+	if !utf8.ValidString(tenant) || strings.ContainsRune(tenant, 0) { // no text of PostgreSQL's
+		return p, errNotEntitled
+	}
+	rows, err := pool.Query(ctx, "select tenant_id, role from veho.entitlements_for($1, $2, $3, $4, $5)", tenant, id.kind, id.issuer, id.subject, id.groups)
 	if err != nil {
 		return Principal{}, fmt.Errorf("api: entitlements: %w", err)
 	}
 	type entitlement struct {
-		ID     uuid.UUID
 		Tenant *uuid.UUID
 		Role   string
 	}
@@ -176,22 +252,20 @@ func entitle(ctx context.Context, pool *pgxpool.Pool, id identity) (Principal, e
 		return Principal{}, fmt.Errorf("api: entitlements: %w", err)
 	}
 	if len(bs) == 0 {
-		return Principal{}, errBadKey
+		return p, errNotEntitled
 	}
 	best := bs[0]
 	for _, b := range bs[1:] {
-		if (b.Tenant == nil) != (best.Tenant == nil) || (b.Tenant != nil && *b.Tenant != *best.Tenant) {
-			return Principal{}, errAmbiguous
-		}
 		if rank[b.Role] > rank[best.Role] {
 			best = b
 		}
 	}
-	return Principal{ID: best.ID, Name: id.kind + ":" + id.subject, Groups: id.groups, Role: best.Role, Tenant: best.Tenant}, nil
+	for _, g := range id.groups {
+		p.Groups = append(p.Groups, id.issuer+"#"+g)
+	}
+	p.Role, p.Tenant = best.Role, best.Tenant
+	return p, nil
 }
-
-// errAmbiguous refuses an identity entitled in more than one tenant (§4.4).
-var errAmbiguous = errors.New("ambiguous identity: entitled in more than one tenant")
 
 // reloading is a file read again, at most once a minute, when it changed.
 type reloading[T any] struct {

@@ -38,6 +38,8 @@ veho entitlement create --kind spiffe --issuer example.org --subject spiffe://ex
 veho entitlement list
 ```
 
+A caller with an OIDC token or an SVID names the tenant of each call, also when it is entitled in one only: `--tenant` or `VEHO_TENANT`, the header `X-Veho-Tenant` in REST, the metadata `x-veho-tenant` in gRPC; `platform` for a platform administrator. An API key has its own tenant and need not name it. `platform` cannot be a tenant's name.
+
 Roles: `viewer` reads; `operator` also submits, cancels and retries jobs; `admin` also manages endpoints, secrets, policies, keys, entitlements and settings.
 
 ## Policies and who may use them
@@ -45,12 +47,12 @@ Roles: `viewer` reads; `operator` also submits, cancels and retries jobs; `admin
 Named policies are versioned: `veho policy create geo --file geo.json` makes version 1, the next call version 2; jobs name `geo` (the latest) or `geo@1`. A policy in use by a running job cannot be deleted.
 
 ```bash
-veho policy grant geo group:storage-ops submit
+veho policy grant geo 'group:https://idp.example#storage-ops' submit
 veho policy grant geo key:ci read
-veho policy revoke geo group:storage-ops submit
+veho policy revoke geo 'group:https://idp.example#storage-ops' submit
 ```
 
-Grantees are `key:<name>` (an API key's principal), `oidc:<subject>`, `spiffe:<id>` or `group:<name>`; permissions are `submit`, `read` and `manage`. Tenant administrators may do everything without grants. Whether principals may submit inline policies, which no grant governs, is a tenant setting:
+Grantees are `key:<name>` (an API key's principal), `oidc:<issuer>#<subject>`, the SPIFFE ID (`spiffe://…`) or `group:<issuer>#<group>`; permissions are `submit`, `read` and `manage`. Tenant administrators may do everything without grants. Whether principals may submit inline policies, which no grant governs, is a tenant setting:
 
 ```bash
 veho settings update --inline-policies granted    # all (default), granted, none

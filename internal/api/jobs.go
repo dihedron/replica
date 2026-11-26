@@ -71,7 +71,7 @@ func (s *Server) CreateJob(ctx context.Context, r *vehov1.CreateJobRequest) (*ve
 	if key == "" {
 		key = first(ctx, "idempotency-key")
 	}
-	id, _, err := s.engine.Submit(ctx, t, engine.Request{IdempotencyKey: key, SourceEndpoint: r.GetSource().GetEndpoint(),
+	id, _, err := s.engine.Submit(ctx, t, engine.Request{CreatedBy: principal(ctx).Name, IdempotencyKey: key, SourceEndpoint: r.GetSource().GetEndpoint(),
 		SourcePath: r.GetSource().GetPath(), Policy: pol, PolicyRef: ref, Labels: r.GetLabels()})
 	if err != nil {
 		return nil, err

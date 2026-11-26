@@ -91,6 +91,9 @@ type OIDC struct {
 	GroupsClaim string `yaml:"groups_claim"`
 	// CAFile verifies the issuer's TLS; empty, the system's roots.
 	CAFile string `yaml:"ca_file"`
+	// MaxTokenLifetime bounds the lifetime of a token, from its iat to its
+	// exp (veho-authentication.md §5).
+	MaxTokenLifetime time.Duration `yaml:"max_token_lifetime"`
 }
 
 // SPIFFE is the trust domain whose SVIDs the API accepts (§4.4); an empty
@@ -342,6 +345,10 @@ func (c *Config) validate() error {
 		if o.GroupsClaim == "" {
 			o.GroupsClaim = "groups"
 		}
+		if o.MaxTokenLifetime == 0 {
+			o.MaxTokenLifetime = time.Hour
+		}
+		check(o.MaxTokenLifetime > 0 && o.MaxTokenLifetime <= 24*time.Hour, "api.oidc[%d].max_token_lifetime %v: want up to 24h", i, o.MaxTokenLifetime)
 		check(strings.HasPrefix(o.Issuer, "https://") && !issuers[o.Issuer], "api.oidc[%d].issuer: an https URL is required, once", i)
 		check(o.Audience != "", "api.oidc[%d].audience is required", i)
 		issuers[o.Issuer] = true

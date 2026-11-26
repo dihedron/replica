@@ -15,6 +15,7 @@ import (
 	"time"
 
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
+	"github.com/dihedron/veho/internal/audit"
 	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/engine"
 	"github.com/dihedron/veho/internal/ratelimit"
@@ -68,6 +69,8 @@ type Options struct {
 	// RateLimit is the API's rate limits (§5.2); zero values are the
 	// defaults.
 	RateLimit config.RateLimit
+	// Audit records the refused credentials.
+	Audit audit.Auditor
 }
 
 // Server is the API of a node.
@@ -85,6 +88,8 @@ type Server struct {
 	reauth  time.Duration
 	ids     *Identities
 	secrets *secrets.Store
+	audit   audit.Auditor
+	refused refusals
 
 	calls, failures                     ratelimit.Limiter
 	tenantRate, principalRate, failRate ratelimit.Rate
@@ -100,7 +105,7 @@ func New(o Options) (*Server, error) {
 	if s.reauth <= 0 {
 		s.reauth = time.Minute
 	}
-	s.secrets = o.Secrets
+	s.secrets, s.audit = o.Secrets, o.Audit
 	rl := o.RateLimit
 	rate := func(perSecond, def float64) ratelimit.Rate {
 		if perSecond <= 0 {
@@ -148,7 +153,7 @@ func New(o Options) (*Server, error) {
 	mux := runtime.NewServeMux(
 		runtime.WithIncomingHeaderMatcher(func(h string) (string, bool) {
 			switch k := strings.ToLower(h); k {
-			case "authorization", "idempotency-key", "x-request-id", "if-none-match":
+			case "authorization", "idempotency-key", "x-request-id", "if-none-match", tenantMD:
 				return k, true
 			}
 			return "", false
@@ -261,6 +266,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 			ClientAuth: tls.RequestClientCert},
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 	}
+	go s.refused.run(ctx, s.audit)
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)

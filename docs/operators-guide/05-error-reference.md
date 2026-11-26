@@ -10,6 +10,8 @@ The gRPC API answers errors with a status and an `ErrorInfo` detail (domain `veh
 | :------------------------ | :------------------- | :--- | :-------- | :------------------------------------------------------------------- |
 | `unauthenticated` | `UNAUTHENTICATED` | 401 | no | No credential, or one that is unknown, expired or revoked |
 | `permission_denied` | `PERMISSION_DENIED` | 403 | no | The principal's role, or its policy grants, do not allow the call |
+| `tenant_required` | `INVALID_ARGUMENT` | 400 | no | The caller has an OIDC token or an SVID and named no tenant: `X-Veho-Tenant`, or `--tenant` |
+| `not_entitled` | `PERMISSION_DENIED` | 403 | no | The identity is verified, and has no entitlement in the tenant it named, or that tenant does not exist or is suspended; or an API key named a tenant that is not its own |
 | `tenant_suspended` | `PERMISSION_DENIED` | 403 | no | The tenant is suspended: a platform administrator must reactivate it |
 | `inline_policy_refused` | `PERMISSION_DENIED` | 403 | no | The tenant's setting does not let this principal submit an inline policy: use a named policy it has `submit` on |
 | `invalid_request` | `INVALID_ARGUMENT` | 400 | no | A malformed request: a missing field, a bad label, a bad duration |
@@ -22,14 +24,14 @@ The gRPC API answers errors with a status and an `ErrorInfo` detail (domain `veh
 | `invalid_endpoint` | `INVALID_ARGUMENT` | 400 | no | The source's driver cannot be a source that reads ranges, a destination's driver cannot be a destination (`http` and `ftp` are sources only), or the driver is not on this node |
 | `not_found` | `NOT_FOUND` | 404 | no | No such object in the caller's tenant (another tenant's objects look the same) |
 | `already_exists` | `ALREADY_EXISTS` | 409 | no | A tenant, endpoint or entitlement with that name exists |
-| `idempotency_key_reuse` | `ALREADY_EXISTS` | 409 | no | The idempotency key was used for a different request |
+| `idempotency_key_reuse` | `ALREADY_EXISTS` | 409 | no | The caller used the idempotency key for a different request |
 | `invalid_state` | `FAILED_PRECONDITION` | 409 | no | The job's state forbids it: cancelling a settled job, retrying one that did not fail |
 | `in_use` | `FAILED_PRECONDITION` | 409 | no | The endpoint, secret or policy is referenced and cannot be deleted |
 | `not_modified` | `ABORTED` | 304 | no | A long poll with `If-None-Match`: the job has not changed |
 | `quota_exceeded` | `RESOURCE_EXHAUSTED` | 429 | yes | The tenant has `max_active_jobs` jobs not yet settled |
 | `rate_limited` | `RESOURCE_EXHAUSTED` | 429 | yes | Too many calls from the tenant or principal, or too many refused credentials from the client's address |
 | `too_many_watches` | `RESOURCE_EXHAUSTED` | 429 | yes | The node has `api.max_watches` streams open |
-| `unavailable` | `UNAVAILABLE` | 503 | yes | The node cannot reach the state store, or is fenced: try another node |
+| `unavailable` | `UNAVAILABLE` | 503 | yes | The node cannot reach the state store, or is fenced: try another node; or the token's OIDC issuer cannot be reached |
 | `internal` | `INTERNAL` | 500 | yes | A bug: the message carries a request ID, and the node's log has the details |
 
 :::

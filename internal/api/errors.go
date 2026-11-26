@@ -67,7 +67,8 @@ var httpByReason = func() map[string]int {
 	for _, c := range backend {
 		m[c.p.reason] = c.p.http
 	}
-	for _, p := range []problem{pUnauthenticated, pPermission, pInvalid, pWatches, pNotModified, pUnavailable, pInternal, pInlineRefused, pRateLimited} {
+	for _, p := range []problem{pUnauthenticated, pPermission, pInvalid, pWatches, pNotModified, pUnavailable, pInternal, pInlineRefused, pRateLimited,
+		pTenantRequired, pNotEntitled} {
 		m[p.reason] = p.http
 	}
 	return m
@@ -97,6 +98,8 @@ var (
 	pInternal        = problem{codes.Internal, http.StatusInternalServerError, "internal", true}
 	pInlineRefused   = problem{codes.PermissionDenied, http.StatusForbidden, "inline_policy_refused", false}
 	pRateLimited     = problem{codes.ResourceExhausted, http.StatusTooManyRequests, "rate_limited", true}
+	pTenantRequired  = problem{codes.InvalidArgument, http.StatusBadRequest, "tenant_required", false}
+	pNotEntitled     = problem{codes.PermissionDenied, http.StatusForbidden, "not_entitled", false}
 )
 
 // toStatus is the status of a handler's error: already a status, it stays;

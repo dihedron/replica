@@ -2,6 +2,8 @@
 
 **Status:** approved 2026-11-21; C7 done 2026-11-22. C7c (§5.1) and C7d (§5.2) were decided under the overnight delegation of 2026-11-22, for review. Requirements: `veho-api.md` (API-1 to API-14, the endpoints of §2, the codes of §3), `veho-tenancy.md` §1, §4, §5, §6 (SEC-2 to SEC-4, SEC-12, SEC-16, SEC-18, SEC-20, SEC-21, SEC-23), FR-1 to FR-3, FR-14 to FR-16, NFR-2, NFR-4; threats T-03, T-06, T-34 (later, with the UI), T-36. It fixes what those leave open, and amends them where noted (§10). The engine's `Submit`, `Cancel`, `Retry` and `Status` (C6) and the secrets' `Store` (C3) are the handlers' back end.
 
+**Amended** 2026-11-25 by `veho-authentication.md`, its step A1 implemented, the rest to come: §3 (the tenant is named by the caller, its §4), §4 (identity names, service accounts, patterns, trust domains, issuers that are down, its §3, §5, §8; an identity entitled in several tenants is no longer refused), §5 (job creators, own jobs, idempotency keys per caller, its §3.3), §5.1 (grantees, `view`), §5.2 (deleting a tenant, its §8.5), §6 (`tenant_required` 400, `not_entitled` 403, `step_up_required` 401, `managed` 409, `tenant_deleting` 409).
+
 ## 1. Steps
 
 | Step | Scope |

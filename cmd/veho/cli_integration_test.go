@@ -255,8 +255,8 @@ func TestCLI(t *testing.T) {
 			pc.Args.Name = "geo-" + s
 			c.must(pc)
 			pg := &PolicyGrantCommand{apiOptions: c.opts("text")}
-			pg.Args.Policy, pg.Args.Grantee, pg.Args.Permission = "geo-"+s, "group:ops", "submit"
-			if out := c.must(pg); !strings.Contains(out, "group:ops") {
+			pg.Args.Policy, pg.Args.Grantee, pg.Args.Permission = "geo-"+s, "group:https://idp.example#ops", "submit"
+			if out := c.must(pg); !strings.Contains(out, "group:https://idp.example#ops") {
 				t.Errorf("policy grant: %s", out)
 			}
 			if out := c.must(&PolicyListCommand{apiOptions: c.opts("text")}); !strings.Contains(out, "geo-"+s) {

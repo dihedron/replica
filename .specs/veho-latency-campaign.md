@@ -42,7 +42,7 @@ The campaign runs only in the lab and changes no product code; it adds no threat
 
 ## 6. Out of scope
 
-A chaos case with packet loss in the soak (1 to 5 % on one random link for 5 minutes, to check that jobs, leases and fencing ride out a degraded link): a separate backlog item (43). Bandwidth limits on the links. Asymmetric latency (one direction slower).
+A chaos case with packet loss in the soak (1 to 5 % on one random link for 5 minutes, to check that jobs, leases and fencing ride out a degraded link): a separate backlog item (44). Bandwidth limits on the links. Asymmetric latency (one direction slower).
 
 ## 7. Changes from the implementation (2026-11-26)
 

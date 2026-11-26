@@ -142,7 +142,14 @@ func (f *idFixture) entitle(t *testing.T, kind, issuer, subject, group string, t
 	return id
 }
 
-func setupIdentities(t *testing.T, o Options) *idFixture {
+func setupIdentities(t *testing.T, o Options) *idFixture { return setupIssuers(t, o) }
+
+func oidcConf(issuer, ca string) config.OIDC {
+	return config.OIDC{Issuer: issuer, Audience: audience, GroupsClaim: "groups", CAFile: ca, MaxTokenLifetime: time.Hour}
+}
+
+// setupIssuers is setupIdentities with more OIDC issuers.
+func setupIssuers(t *testing.T, o Options, more ...config.OIDC) *idFixture {
 	t.Helper()
 	f := &idFixture{oidc: newSigner("oidc-1"), svidKey: newSigner("svid-1"), domain: newTrustDomain(t, td)}
 	srv, ca := issuer(t, f.oidc)
@@ -157,7 +164,7 @@ func setupIdentities(t *testing.T, o Options) *idFixture {
 	}
 	f.fixture = setupWith(t, o, func(*fixture) *Identities {
 		ids, err := NewIdentities(context.Background(), config.API{
-			OIDC:   []config.OIDC{{Issuer: srv.URL, Audience: audience, GroupsClaim: "groups", CAFile: ca}},
+			OIDC:   append([]config.OIDC{oidcConf(srv.URL, ca)}, more...),
 			SPIFFE: config.SPIFFE{TrustDomain: td, X509BundleFile: x509b, JWTBundleFile: jwtb, Audience: audience},
 		})
 		if err != nil {
@@ -165,6 +172,7 @@ func setupIdentities(t *testing.T, o Options) *idFixture {
 		}
 		return ids
 	})
+	f.tenant = f.tenantName(t, f.a)
 	return f
 }
 
@@ -181,8 +189,6 @@ func TestOIDC(t *testing.T) {
 	f := setupIdentities(t, Options{})
 	f.entitle(t, "oidc", f.iss, "alice", "", &f.a, RoleOperator)
 	f.entitle(t, "oidc", f.iss, "", "readers", &f.a, RoleViewer)
-	f.entitle(t, "oidc", f.iss, "carol", "", &f.a, RoleViewer)
-	f.entitle(t, "oidc", f.iss, "carol", "", &f.b, RoleViewer)
 	if r := f.rest(t, "POST", "/v1/jobs", f.token(t, "alice", nil), job("out/oidc")); r.code != http.StatusAccepted {
 		t.Errorf("alice creates: %d %v", r.code, r.body)
 	}
@@ -195,16 +201,17 @@ func TestOIDC(t *testing.T) {
 	}
 	other := newSigner("oidc-1") // the same key ID, another key
 	for name, tok := range map[string]string{
-		"wrong audience":  f.token(t, "alice", map[string]any{"aud": "other"}),
-		"another issuer":  f.token(t, "alice", map[string]any{"iss": "https://elsewhere.example"}),
-		"expired":         f.token(t, "alice", map[string]any{"exp": time.Now().Add(-time.Minute).Unix()}),
-		"bad signature":   other.sign(t, map[string]any{"iss": f.iss, "sub": "alice", "aud": audience, "exp": time.Now().Add(time.Hour).Unix()}),
-		"unbound subject": f.token(t, "mallory", nil),
-		"two tenants":     f.token(t, "carol", nil),
+		"wrong audience": f.token(t, "alice", map[string]any{"aud": "other"}),
+		"another issuer": f.token(t, "alice", map[string]any{"iss": "https://elsewhere.example"}),
+		"expired":        f.token(t, "alice", map[string]any{"exp": time.Now().Add(-2 * time.Minute).Unix()}),
+		"bad signature":  other.sign(t, map[string]any{"iss": f.iss, "sub": "alice", "aud": audience, "exp": time.Now().Add(time.Hour).Unix()}),
 	} {
 		if r := f.rest(t, "GET", "/v1/jobs", tok, nil); r.code != http.StatusUnauthorized {
 			t.Errorf("%s: %d %v", name, r.code, r.body)
 		}
+	}
+	if r := f.rest(t, "GET", "/v1/jobs", f.token(t, "mallory", nil), nil); r.code != http.StatusForbidden || r.body["code"] != "not_entitled" {
+		t.Errorf("a subject without an entitlement: %d %v", r.code, r.body)
 	}
 }
 
@@ -285,16 +292,21 @@ func TestIdentityRevocation(t *testing.T) {
 		}
 		return nil
 	}
-	short := f.token(t, "alice", map[string]any{"exp": time.Now().Add(2 * time.Second).Unix()})
+	short := f.token(t, "alice", map[string]any{"iat": time.Now().Add(-30 * time.Minute).Unix(),
+		"exp": time.Now().Add(2*time.Second - tokenSkew).Unix()})
 	if err := watch(short); status.Code(err) != codes.Unauthenticated {
 		t.Errorf("an expiring token: %v", err)
 	}
 	dave := f.token(t, "dave", nil)
+	deleted := make(chan struct{})
+	start := time.Now()
 	go func() {
+		defer close(deleted)
 		time.Sleep(time.Second)
 		_, _ = f.migrator.Exec(context.Background(), "delete from veho.entitlements where id = $1", entitlement)
 	}()
-	if err := watch(dave); status.Code(err) != codes.Unauthenticated {
-		t.Errorf("an entitlement deleted: %v", err)
+	if err := watch(dave); status.Code(err) != codes.Unauthenticated || time.Since(start) < time.Second {
+		t.Errorf("an entitlement deleted: %v after %v", err, time.Since(start))
 	}
+	<-deleted
 }
