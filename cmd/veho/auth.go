@@ -364,7 +364,7 @@ func (cmd *AuthStatusCommand) Execute([]string) error {
 	if err != nil {
 		return err
 	}
-	if l := creds.Logins[cmd.URL]; l != nil && cmd.Output != "json" {
+	if l := creds.Logins[cmd.URL]; l != nil && !cmd.machine() {
 		refresh := ""
 		if l.Refresh != "" {
 			refresh = ", refreshable"

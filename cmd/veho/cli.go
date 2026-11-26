@@ -2,18 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"sort"
-	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/dihedron/veho/internal/client"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -27,7 +21,7 @@ type apiOptions struct {
 	KeyFile   string        `long:"key-file" env:"VEHO_KEY_FILE" description:"The client certificate's key"`
 	Tenant    string        `long:"tenant" env:"VEHO_TENANT" description:"The tenant to act in, or platform (required without an API key)"`
 	API       string        `long:"api" env:"VEHO_API" default:"grpc" choice:"grpc" choice:"rest" description:"The transport"`
-	Output    string        `short:"o" long:"output" default:"text" choice:"text" choice:"json" description:"The output's form"`
+	Format    string        `short:"F" long:"format" default:"table" choice:"table" choice:"json" choice:"yaml" description:"The output's format"`
 	Timeout   time.Duration `long:"timeout" default:"30s" description:"The timeout of each call"`
 
 	out io.Writer // tests only; default os.Stdout
@@ -119,71 +113,6 @@ func (o *apiOptions) show(method string, req, resp proto.Message, columns ...str
 		return err
 	}
 	return o.print(resp, columns...)
-}
-
-// print writes msg as JSON (-o json), or as text: a table of its list with
-// columns, or key: value lines.
-func (o *apiOptions) print(msg proto.Message, columns ...string) error {
-	b, err := protojson.MarshalOptions{UseProtoNames: true, Multiline: o.Output == "json", Indent: "  "}.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	w := o.stdout()
-	if o.Output == "json" {
-		_, err := fmt.Fprintln(w, string(b))
-		return err
-	}
-	var fields map[string]any
-	if err := json.Unmarshal(b, &fields); err != nil {
-		return err
-	}
-	if len(columns) > 0 {
-		for _, v := range fields {
-			if list, ok := v.([]any); ok {
-				return table(w, list, columns)
-			}
-		}
-		return table(w, nil, columns) // an empty list
-	}
-	keys := make([]string, 0, len(fields))
-	for k := range fields {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		if _, err := fmt.Fprintf(w, "%s: %s\n", k, text(fields[k])); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func table(w io.Writer, rows []any, columns []string) error {
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	_, _ = fmt.Fprintln(tw, strings.ToUpper(strings.Join(columns, "\t")))
-	for _, r := range rows {
-		row, _ := r.(map[string]any)
-		cells := make([]string, len(columns))
-		for i, c := range columns {
-			cells[i] = text(row[c])
-		}
-		_, _ = fmt.Fprintln(tw, strings.Join(cells, "\t"))
-	}
-	return tw.Flush()
-}
-
-func text(v any) string {
-	switch x := v.(type) {
-	case nil:
-		return "-"
-	case string:
-		return x
-	case map[string]any, []any:
-		b, _ := json.Marshal(x)
-		return string(b)
-	default:
-		return fmt.Sprint(x)
-	}
 }
 
 // exitError ends the process with its code (.specs/veho-cli.md §3).

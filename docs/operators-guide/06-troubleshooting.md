@@ -55,7 +55,7 @@ A node killed by the OOM killer (`oom-kill` in the journal) has less memory than
 
 ## Collecting evidence for a report
 
-- `veho job show <id> -o json` for each job concerned;
+- `veho job show <id> -F json` for each job concerned;
 - the journals of every node for the window (`journalctl -u veho --since ... --until ...`);
 - `patronictl list` and `patronictl history`;
 - the version of each node (`veho version --verbose`).

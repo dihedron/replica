@@ -112,7 +112,7 @@ type cli struct {
 
 func (c *cli) opts(output string) apiOptions {
 	c.output.Reset()
-	return apiOptions{URL: c.url, CAFile: c.ca, API: c.api, Output: output, Timeout: 30 * time.Second, out: &c.output}
+	return apiOptions{URL: c.url, CAFile: c.ca, API: c.api, Format: output, Timeout: 30 * time.Second, out: &c.output}
 }
 
 func (c *cli) run(cmd interface{ Execute([]string) error }) error {
@@ -136,6 +136,16 @@ func field(t *testing.T, out, name string) string {
 	}
 	s, _ := m[name].(string)
 	return s
+}
+
+// cell is a field's value in a table of fields (-F table).
+func cell(out, name string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if parts := strings.Split(line, "│"); len(parts) >= 4 && strings.TrimSpace(parts[1]) == name {
+			return strings.TrimSpace(parts[2])
+		}
+	}
+	return ""
 }
 
 // CLI-T1 to CLI-T3, over gRPC and over REST.
@@ -179,14 +189,14 @@ func TestCLI(t *testing.T) {
 			if err := c.run(outside); err == nil {
 				t.Error("a file endpoint outside the roots was created")
 			}
-			test := &EndpointTestCommand{apiOptions: c.opts("text")}
+			test := &EndpointTestCommand{apiOptions: c.opts("table")}
 			test.Args.Name = "d1-" + s
-			if out := c.must(test); !strings.Contains(out, "ok: true") {
+			if out := c.must(test); cell(out, "ok") != "true" {
 				t.Errorf("endpoint test: %s", out)
 			}
 			// NC-T4: a check from every executor, waited for; a file
 			// endpoint has no flows, so the table is empty
-			check := &EndpointCheckCommand{apiOptions: c.opts("text"), Wait: true, Within: time.Minute}
+			check := &EndpointCheckCommand{apiOptions: c.opts("table"), Wait: true, Within: time.Minute}
 			check.Args.Name = "d1-" + s
 			if out := c.must(check); !strings.Contains(out, "state: complete") || !strings.Contains(out, "NODE") {
 				t.Errorf("endpoint check: %s", out)
@@ -197,11 +207,11 @@ func TestCLI(t *testing.T) {
 				t.Errorf("endpoint check, json: %s", out)
 			}
 			// CV-T6 through the CLI: the valid endpoints are not listed
-			invalid := &EndpointListCommand{apiOptions: c.opts("text"), Invalid: true}
+			invalid := &EndpointListCommand{apiOptions: c.opts("table"), Invalid: true}
 			if out := c.must(invalid); !strings.Contains(out, "PROBLEM") || strings.Contains(out, "d1-"+s) {
 				t.Errorf("endpoint list --invalid: %s", out)
 			}
-			show := &EndpointShowCommand{apiOptions: c.opts("text")}
+			show := &EndpointShowCommand{apiOptions: c.opts("table")}
 			show.Args.Name = "d1-" + s
 			if out := c.must(show); !strings.Contains(out, "last_check: ") {
 				t.Errorf("endpoint show: %s", out)
@@ -223,7 +233,7 @@ func TestCLI(t *testing.T) {
 			if err := json.Unmarshal([]byte(out), &created); err != nil || !strings.HasPrefix(created.Secret, "whsec_") || created.Webhook["name"] != "hook-"+s {
 				t.Errorf("webhook create: %v %s", err, out)
 			}
-			hl := &WebhookListCommand{apiOptions: c.opts("text")}
+			hl := &WebhookListCommand{apiOptions: c.opts("table")}
 			if out := c.must(hl); !strings.Contains(out, "hook-"+s) || strings.Contains(out, created.Secret) {
 				t.Errorf("webhook list: %s", out)
 			}
@@ -254,12 +264,12 @@ func TestCLI(t *testing.T) {
 			pc := &PolicyCreateCommand{apiOptions: c.opts("json"), File: pol}
 			pc.Args.Name = "geo-" + s
 			c.must(pc)
-			pg := &PolicyGrantCommand{apiOptions: c.opts("text")}
+			pg := &PolicyGrantCommand{apiOptions: c.opts("table")}
 			pg.Args.Policy, pg.Args.Grantee, pg.Args.Permission = "geo-"+s, "group:https://idp.example#ops", "submit"
 			if out := c.must(pg); !strings.Contains(out, "group:https://idp.example#ops") {
 				t.Errorf("policy grant: %s", out)
 			}
-			if out := c.must(&PolicyListCommand{apiOptions: c.opts("text")}); !strings.Contains(out, "geo-"+s) {
+			if out := c.must(&PolicyListCommand{apiOptions: c.opts("table")}); !strings.Contains(out, "geo-"+s) {
 				t.Errorf("policy list: %s", out)
 			}
 
@@ -302,11 +312,11 @@ func TestCLI(t *testing.T) {
 	// CLI-T3: a wrong credential, and none
 	c := &cli{t: t, url: url, ca: ca, api: "rest"}
 	t.Setenv("VEHO_TOKEN", "veho_wrongwrongwr_AAAA")
-	if err := c.run(&JobListCommand{apiOptions: c.opts("text")}); !isCode(err, "unauthenticated") || exitCode(err) != 1 {
+	if err := c.run(&JobListCommand{apiOptions: c.opts("table")}); !isCode(err, "unauthenticated") || exitCode(err) != 1 {
 		t.Errorf("a wrong key: %v", err)
 	}
 	t.Setenv("VEHO_TOKEN", "")
-	if err := c.run(&JobListCommand{apiOptions: c.opts("text")}); err == nil || !strings.Contains(err.Error(), "no credential") {
+	if err := c.run(&JobListCommand{apiOptions: c.opts("table")}); err == nil || !strings.Contains(err.Error(), "no credential") {
 		t.Errorf("no credential: %v", err)
 	}
 }

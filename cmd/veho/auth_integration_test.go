@@ -66,7 +66,7 @@ func setupAuth(t *testing.T) *authLab {
 }
 
 func (a *authLab) opts(out *bytes.Buffer) apiOptions {
-	return apiOptions{URL: a.url, CAFile: a.ca, API: "grpc", Output: "text", Timeout: 30 * time.Second, out: out}
+	return apiOptions{URL: a.url, CAFile: a.ca, API: "grpc", Format: "table", Timeout: 30 * time.Second, out: out}
 }
 
 func (a *authLab) login(t *testing.T, device bool) {

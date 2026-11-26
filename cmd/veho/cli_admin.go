@@ -201,7 +201,7 @@ type EndpointShowCommand struct {
 
 // Execute prints the endpoint and, as text, its last network check.
 func (cmd *EndpointShowCommand) Execute([]string) error {
-	if err := cmd.show("veho.v1.EndpointService.GetEndpoint", &vehov1.EndpointName{Name: cmd.Args.Name}, &vehov1.Endpoint{}); err != nil || cmd.Output == "json" {
+	if err := cmd.show("veho.v1.EndpointService.GetEndpoint", &vehov1.EndpointName{Name: cmd.Args.Name}, &vehov1.Endpoint{}); err != nil || cmd.machine() {
 		return err
 	}
 	checks := &vehov1.ListEndpointChecksResponse{}
@@ -309,7 +309,7 @@ func (cmd *EndpointCheckCommand) Execute([]string) error {
 			return err
 		}
 	}
-	if cmd.Output == "json" {
+	if cmd.machine() {
 		if err := cmd.print(c); err != nil {
 			return err
 		}
@@ -343,7 +343,8 @@ func printCheck(w io.Writer, c *vehov1.EndpointCheck) error {
 				"status": r.GetStatus(), "reason": r.GetReason()})
 		}
 	}
-	return table(w, rows, []string{"node", "region", "flow", "target", "address", "status", "reason"})
+	_, err := fmt.Fprintln(w, painter{on: colour(w)}.list(rows, []string{"node", "region", "flow", "target", "address", "status", "reason"}))
+	return err
 }
 
 func unreachable(c *vehov1.EndpointCheck) int {
