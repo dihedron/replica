@@ -73,6 +73,15 @@ type API struct {
 	OIDC       []OIDC    `yaml:"oidc"`
 	SPIFFE     SPIFFE    `yaml:"spiffe"`
 	RateLimit  RateLimit `yaml:"rate_limit"`
+	Keys       Keys      `yaml:"keys"`
+}
+
+// Keys bounds the lifetime of API keys (veho-authentication.md §8.3): a key
+// created without an expiry gets DefaultLifetime, and none may outlive
+// MaxLifetime.
+type Keys struct {
+	DefaultLifetime time.Duration `yaml:"default_lifetime"`
+	MaxLifetime     time.Duration `yaml:"max_lifetime"`
 }
 
 // RateLimit is the API's rate limits (§5.2).
@@ -254,6 +263,8 @@ func (c *Config) complete() error {
 	setF(&c.API.RateLimit.PrincipalPerSecond, 20)
 	setF(&c.API.RateLimit.Burst, 2)
 	setF(&c.API.RateLimit.FailuresPerMinute, 30)
+	setD(&c.API.Keys.DefaultLifetime, 90*24*time.Hour)
+	setD(&c.API.Keys.MaxLifetime, 90*24*time.Hour)
 	setD(&c.Engine.Heartbeat, 10*time.Second)
 	setD(&c.Engine.LeaseTTL, 60*time.Second)
 	setI(&c.Engine.PartSizeMiB, 64)
@@ -337,6 +348,8 @@ func (c *Config) validate() error {
 	check(err == nil, "api.listen %q: want host:port", c.API.Listen)
 	check(c.API.TLS.CertFile != "" && c.API.TLS.KeyFile != "", "api.tls.cert_file and api.tls.key_file are required")
 	check(c.API.MaxWatches > 0, "api.max_watches must be positive")
+	check(c.API.Keys.DefaultLifetime > 0 && c.API.Keys.DefaultLifetime <= c.API.Keys.MaxLifetime,
+		"api.keys: default_lifetime must be positive and at most max_lifetime")
 	rl := c.API.RateLimit
 	check(rl.TenantPerSecond > 0 && rl.PrincipalPerSecond > 0 && rl.Burst >= 1 && rl.FailuresPerMinute > 0, "api.rate_limit: the rates must be positive and the burst at least 1")
 	issuers := map[string]bool{}

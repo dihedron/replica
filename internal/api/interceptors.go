@@ -65,14 +65,20 @@ var roles = map[string]string{
 	"/veho.v1.TenantService/ListTenants":  RolePlatformAdmin,
 	"/veho.v1.TenantService/UpdateTenant": RolePlatformAdmin,
 
-	"/veho.v1.AdminService/CreateKey":         RoleAdmin,
-	"/veho.v1.AdminService/ListKeys":          RoleAdmin,
-	"/veho.v1.AdminService/RevokeKey":         RoleAdmin,
-	"/veho.v1.AdminService/CreateEntitlement": RoleAdmin,
-	"/veho.v1.AdminService/ListEntitlements":  RoleAdmin,
-	"/veho.v1.AdminService/DeleteEntitlement": RoleAdmin,
-	"/veho.v1.AdminService/GetSettings":       RoleAdmin,
-	"/veho.v1.AdminService/UpdateSettings":    RoleAdmin,
+	"/veho.v1.AdminService/CreateServiceAccount":  roleScopeAdmin,
+	"/veho.v1.AdminService/ListServiceAccounts":   roleScopeAdmin,
+	"/veho.v1.AdminService/GetServiceAccount":     roleScopeAdmin,
+	"/veho.v1.AdminService/DisableServiceAccount": roleScopeAdmin,
+	"/veho.v1.AdminService/EnableServiceAccount":  roleScopeAdmin,
+	"/veho.v1.AdminService/DeleteServiceAccount":  roleScopeAdmin,
+	"/veho.v1.AdminService/CreateKey":             roleScopeAdmin,
+	"/veho.v1.AdminService/ListKeys":              roleScopeAdmin,
+	"/veho.v1.AdminService/RevokeKey":             roleScopeAdmin,
+	"/veho.v1.AdminService/CreateEntitlement":     RoleAdmin,
+	"/veho.v1.AdminService/ListEntitlements":      RoleAdmin,
+	"/veho.v1.AdminService/DeleteEntitlement":     RoleAdmin,
+	"/veho.v1.AdminService/GetSettings":           RoleAdmin,
+	"/veho.v1.AdminService/UpdateSettings":        RoleAdmin,
 }
 
 // public methods need no credential.

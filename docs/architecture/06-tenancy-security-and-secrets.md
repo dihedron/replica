@@ -6,7 +6,7 @@ The API accepts three kinds of credential, all over TLS 1.3:
 
 | Credential | Checked | Tenant and role from |
 | :---------------------- | :------------------------------------------------------ | :---------------------------------- |
-| API key | `veho_<id>_<secret>`; veho stores the SHA-256 of the 256-bit secret, compares in constant time, honours expiry and revocation | The key's principal |
+| API key | `veho_<id>_<secret>`; veho stores the SHA-256 of the 256-bit secret, compares in constant time, honours the mandatory expiry, revocation and the disabling of its service account | `key:<service account>`: grants name the account, so its keys (at most 3 active) rotate under them |
 | OIDC bearer token | Issuer, audience, signature, expiry and lifetime, against the issuers in `api.oidc` | An entitlement of the subject, or of one of its groups |
 | SPIFFE X.509-SVID or JWT-SVID | The trust domain's bundle (`api.spiffe`); a JWT-SVID's audience | An entitlement of the SPIFFE ID |
 
@@ -20,7 +20,7 @@ An API key belongs to one tenant. The others name the tenant of each call, and a
 
 ## Isolation in the database
 
-Every tenant's row carries its tenant, and PostgreSQL's row-level security admits only the rows of the tenant a transaction set: a session that set none sees nothing. The API sets the tenant from the authenticated principal; the executor sets it from the transfer it runs. The few operations that must cross tenants (housekeeping, authentication, the platform administrators' views) are reviewed `SECURITY DEFINER` functions with fixed purposes, not a role that bypasses the policies. A job, its source and its destinations are immutable once accepted (enforced by triggers), so a compromised API cannot redirect an accepted job. IDs are random.
+Every tenant's row carries its tenant, and PostgreSQL's row-level security admits only the rows of the tenant a transaction set: a session that set none sees nothing. The API sets the tenant from the authenticated principal; the executor sets it from the transfer it runs. The platform's own service accounts and keys, which have no tenant, are visible only in a transaction that set the platform's scope instead. The few operations that must cross tenants (housekeeping, authentication, the platform administrators' views) are reviewed `SECURITY DEFINER` functions with fixed purposes, not a role that bypasses the policies. A job, its source and its destinations are immutable once accepted (enforced by triggers), so a compromised API cannot redirect an accepted job. IDs are random.
 
 Jobs name endpoints, never URLs: a tenant can only reach the storage locations it registered, which keeps a node from being used to read internal services.
 

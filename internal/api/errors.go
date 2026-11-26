@@ -54,6 +54,7 @@ var backend = []struct {
 	{secrets.ErrInUse, problem{codes.FailedPrecondition, http.StatusConflict, "in_use", false}},
 	{engine.ErrInUse, problem{codes.FailedPrecondition, http.StatusConflict, "in_use", false}},
 	{engine.ErrConflict, problem{codes.AlreadyExists, http.StatusConflict, "already_exists", false}},
+	{engine.ErrTooManyKeys, problem{codes.FailedPrecondition, http.StatusConflict, "too_many_keys", false}},
 	{secrets.ErrInvalid, problem{codes.InvalidArgument, http.StatusBadRequest, "invalid_request", false}},
 	{engine.ErrQuota, problem{codes.ResourceExhausted, http.StatusTooManyRequests, "quota_exceeded", true}},
 	{engine.ErrSuspended, problem{codes.PermissionDenied, http.StatusForbidden, "tenant_suspended", false}},

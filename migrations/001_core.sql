@@ -405,10 +405,12 @@ GRANT EXECUTE ON FUNCTION veho.quiet_jobs(interval, int), veho.expired_jobs(int)
 	veho.job_tenant(uuid), veho.state_counts() TO veho_worker;
 
 -- ---------------------------------------------------------------------------
--- The API's principals and their keys (.specs/veho-api-server.md §4). A
--- platform administrator has no tenant; every other principal one.
+-- The API's service accounts and their keys (.specs/veho-api-server.md §4,
+-- veho-authentication.md §8.3). A platform service account has no tenant;
+-- every other one has. Grants name the account (key:<name>), so that its
+-- keys rotate under them.
 
-CREATE TABLE veho.principals (
+CREATE TABLE veho.service_accounts (
 	id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 	tenant_id   uuid REFERENCES veho.tenants (id),
 	name        text NOT NULL CHECK (name <> ''),
@@ -417,29 +419,57 @@ CREATE TABLE veho.principals (
 	disabled_at timestamptz,
 	CHECK ((role = 'platform-admin') = (tenant_id IS NULL))
 );
-CREATE UNIQUE INDEX principals_name ON veho.principals (coalesce(tenant_id, '00000000-0000-0000-0000-000000000000'), name);
+CREATE UNIQUE INDEX service_accounts_name ON veho.service_accounts (coalesce(tenant_id, '00000000-0000-0000-0000-000000000000'), name);
 
+-- A key's expiry is mandatory (AU-14).
 CREATE TABLE veho.api_keys (
-	id           text PRIMARY KEY CHECK (id ~ '^[a-z0-9]{12}$'),
-	principal_id uuid NOT NULL REFERENCES veho.principals (id) ON DELETE CASCADE,
-	tenant_id    uuid REFERENCES veho.tenants (id),
-	sha256       bytea NOT NULL CHECK (length(sha256) = 32),
-	created_at   timestamptz NOT NULL DEFAULT now(),
-	expires_at   timestamptz,
-	revoked_at   timestamptz,
-	last_used_at timestamptz
+	id                 text PRIMARY KEY CHECK (id ~ '^[a-z0-9]{12}$'),
+	service_account_id uuid NOT NULL REFERENCES veho.service_accounts (id) ON DELETE CASCADE,
+	tenant_id          uuid REFERENCES veho.tenants (id),
+	sha256             bytea NOT NULL CHECK (length(sha256) = 32),
+	created_at         timestamptz NOT NULL DEFAULT now(),
+	expires_at         timestamptz NOT NULL,
+	revoked_at         timestamptz,
+	last_used_at       timestamptz
 );
+CREATE INDEX api_keys_account ON veho.api_keys (service_account_id);
 
-ALTER TABLE veho.principals ENABLE ROW LEVEL SECURITY;
+-- in_platform is true in the transactions of the platform's scope
+-- (store.InScope without a tenant): only they see the platform's accounts.
+CREATE FUNCTION veho.in_platform() RETURNS boolean
+LANGUAGE sql STABLE
+AS $$ SELECT coalesce(current_setting('veho.platform', true), '') = 'on' $$;
+
+ALTER TABLE veho.service_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE veho.api_keys ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tenant_isolation ON veho.principals
-	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+CREATE POLICY tenant_isolation ON veho.service_accounts
+	USING (tenant_id = veho.current_tenant() OR (tenant_id IS NULL AND veho.in_platform()))
+	WITH CHECK (tenant_id = veho.current_tenant() OR (tenant_id IS NULL AND veho.in_platform()));
 CREATE POLICY tenant_isolation ON veho.api_keys
-	USING (tenant_id = veho.current_tenant()) WITH CHECK (tenant_id = veho.current_tenant());
+	USING (tenant_id = veho.current_tenant() OR (tenant_id IS NULL AND veho.in_platform()))
+	WITH CHECK (tenant_id = veho.current_tenant() OR (tenant_id IS NULL AND veho.in_platform()));
 
--- authenticate_key returns the principal of a key, before the tenant is
--- known; the caller compares the hash. It records the use at most once a
--- minute.
+-- At most 3 active keys an account: the account's row is locked, so that
+-- keys created at once are counted one after the other. SQLSTATE VHK03
+-- is the API's too_many_keys.
+CREATE FUNCTION veho.api_keys_limit() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+	PERFORM 1 FROM veho.service_accounts WHERE id = NEW.service_account_id FOR UPDATE;
+	IF (SELECT count(*) FROM veho.api_keys
+	     WHERE service_account_id = NEW.service_account_id AND revoked_at IS NULL AND expires_at > now()) >= 3 THEN
+		RAISE EXCEPTION 'service account % has 3 active keys', NEW.service_account_id USING ERRCODE = 'VHK03';
+	END IF;
+	RETURN NEW;
+END
+$$;
+CREATE TRIGGER api_keys_limit BEFORE INSERT ON veho.api_keys
+	FOR EACH ROW EXECUTE FUNCTION veho.api_keys_limit();
+
+-- authenticate_key returns the service account of a key, before the tenant
+-- is known; the caller compares the hash. It records the use at most once
+-- a minute.
 CREATE FUNCTION veho.authenticate_key(p_id text)
 RETURNS TABLE (tenant_id uuid, tenant text, name text, role text, sha256 bytea, valid boolean)
 LANGUAGE sql SECURITY DEFINER SET search_path = veho, pg_temp
@@ -449,15 +479,16 @@ AS $$
 		 WHERE id = p_id AND (last_used_at IS NULL OR last_used_at < now() - interval '1 minute')
 		RETURNING id
 	)
-	SELECT p.tenant_id, coalesce((SELECT t.name FROM veho.tenants t WHERE t.id = p.tenant_id), 'platform'), p.name, p.role, a.sha256,
-	       a.revoked_at IS NULL AND (a.expires_at IS NULL OR a.expires_at > now()) AND p.disabled_at IS NULL
-	         AND (p.tenant_id IS NULL OR (SELECT t.state = 'active' FROM veho.tenants t WHERE t.id = p.tenant_id))
-	  FROM veho.api_keys a JOIN veho.principals p ON p.id = a.principal_id
+	SELECT s.tenant_id, coalesce((SELECT t.name FROM veho.tenants t WHERE t.id = s.tenant_id), 'platform'), s.name, s.role, a.sha256,
+	       a.revoked_at IS NULL AND a.expires_at > now() AND s.disabled_at IS NULL
+	         AND (s.tenant_id IS NULL OR (SELECT t.state = 'active' FROM veho.tenants t WHERE t.id = s.tenant_id))
+	  FROM veho.api_keys a JOIN veho.service_accounts s ON s.id = a.service_account_id
 	 WHERE a.id = p_id
 $$;
 REVOKE ALL ON FUNCTION veho.authenticate_key(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION veho.authenticate_key(text) TO veho_api;
-GRANT SELECT, INSERT, UPDATE ON veho.principals, veho.api_keys TO veho_api;
+GRANT SELECT, INSERT, UPDATE, DELETE ON veho.service_accounts TO veho_api;
+GRANT SELECT, INSERT, UPDATE ON veho.api_keys TO veho_api;
 
 -- ---------------------------------------------------------------------------
 -- OIDC and SPIFFE identities (.specs/veho-api-server.md §4.4): an

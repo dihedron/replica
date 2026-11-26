@@ -182,6 +182,22 @@ func InTenant(ctx context.Context, pool *pgxpool.Pool, tenant uuid.UUID, fn func
 	})
 }
 
+// InScope runs fn in tenant's transaction, as InTenant does, or with no
+// tenant in the platform's: only there are the platform's service accounts
+// and keys visible (veho.in_platform).
+func InScope(ctx context.Context, pool *pgxpool.Pool, tenant *uuid.UUID, fn func(pgx.Tx) error) error {
+	if tenant != nil {
+		return InTenant(ctx, pool, *tenant, fn)
+	}
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, "select set_config('veho.platform', 'on', true)"); err != nil {
+			slog.ErrorContext(ctx, "cannot set the platform's scope", "error", err)
+			return fmt.Errorf("store: platform scope: %w", err)
+		}
+		return fn(tx)
+	})
+}
+
 // TryLock takes the session advisory lock name of a singleton's pass, on a
 // connection of its own: a pass holding a connection of pool while asking
 // pool for another would wait for good if passes filled the pool. release

@@ -12,7 +12,7 @@
 | `veho policy create \| show \| list \| delete \| validate \| grant \| revoke` | `PolicyService` |
 | `veho endpoint create \| show \| list \| update \| delete \| test` | `EndpointService` |
 | `veho secret set \| show \| list \| delete` | `SecretService` |
-| `veho apikey create \| list \| revoke`, `veho entitlement create \| list \| delete`, `veho settings show \| update` | `AdminService` (a tenant admin) |
+| `veho serviceaccount create \| list \| show \| disable \| enable \| delete`, `veho apikey create --service-account \| list \| revoke`, `veho entitlement create \| list \| delete`, `veho settings show \| update` | `AdminService` (a tenant admin) |
 | `veho tenant create \| show \| list \| update` | `TenantService` (a platform administrator) |
 | `veho bootstrap tenant \| apikey \| entitlement` | the database, as `veho_migrator` (`veho-api-server.md` §4.3, §4.4) |
 

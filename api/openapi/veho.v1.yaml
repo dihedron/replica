@@ -33,9 +33,11 @@ info:
     ## veho.v1.AdminService
 
 
-    AdminService administers the caller's tenant: its API keys, its
+    AdminService administers the caller's tenant: its service accounts and
 
-     entitlements and its settings.
+     their API keys, its entitlements and its settings. A platform
+     administrator calling for the platform manages the platform's service
+     accounts and keys.
 
     ## veho.v1.JobService
 
@@ -119,9 +121,10 @@ components:
         id:
           type: string
           title: id
-        principal:
+        service_account:
           type: string
-          title: principal
+          title: service_account
+          description: key:<service account>, its grantee name.
         role:
           type: string
           title: role
@@ -181,18 +184,16 @@ components:
     veho.v1.CreateKeyRequest:
       type: object
       properties:
-        name:
+        service_account:
           type: string
-          title: name
-          description: The principal's name, unique in the tenant.
-        role:
-          type: string
-          title: role
+          title: service_account
         expires_in:
           type: string
           title: expires_in
           format: int64
-          description: Seconds from now; 0 never expires.
+          description: |-
+            Seconds from now, at most api.keys.max_lifetime; 0 is
+             api.keys.default_lifetime.
       title: CreateKeyRequest
       additionalProperties: false
     veho.v1.CreatePolicyRequest:
@@ -205,6 +206,21 @@ components:
           title: policy
           $ref: '#/components/schemas/google.protobuf.Struct'
       title: CreatePolicyRequest
+      additionalProperties: false
+    veho.v1.CreateServiceAccountRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+          description: Unique in the tenant, or in the platform.
+        role:
+          type: string
+          title: role
+          description: |-
+            viewer, operator or admin in a tenant; platform-admin, the default, in
+             the platform.
+      title: CreateServiceAccountRequest
       additionalProperties: false
     veho.v1.CreateTenantRequest:
       type: object
@@ -590,6 +606,16 @@ components:
           title: secrets
       title: ListSecretsResponse
       additionalProperties: false
+    veho.v1.ListServiceAccountsResponse:
+      type: object
+      properties:
+        service_accounts:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.ServiceAccount'
+          title: service_accounts
+      title: ListServiceAccountsResponse
+      additionalProperties: false
     veho.v1.ListTenantsResponse:
       type: object
       properties:
@@ -745,6 +771,32 @@ components:
       title: Secret
       additionalProperties: false
       description: 'Secret is what the API shows of a secret: never its value.'
+    veho.v1.ServiceAccount:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        role:
+          type: string
+          title: role
+        state:
+          type: string
+          title: state
+          description: active or disabled.
+        created_at:
+          title: created_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        disabled_at:
+          title: disabled_at
+          $ref: '#/components/schemas/google.protobuf.Timestamp'
+        active_keys:
+          type: integer
+          title: active_keys
+          format: int32
+          description: 'Keys neither revoked nor expired: at most 3.'
+      title: ServiceAccount
+      additionalProperties: false
     veho.v1.Source:
       type: object
       properties:
@@ -998,6 +1050,13 @@ paths:
         - veho.v1.AdminService
       summary: ListKeys
       operationId: veho.v1.AdminService.ListKeys
+      parameters:
+        - name: service_account
+          in: query
+          description: Only this service account's keys, if given.
+          schema:
+            type: string
+            title: service_account
       responses:
         "200":
           description: Success
@@ -1052,6 +1111,142 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/serviceaccounts:
+    get:
+      tags:
+        - veho.v1.AdminService
+      summary: ListServiceAccounts
+      operationId: veho.v1.AdminService.ListServiceAccounts
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ListServiceAccountsResponse'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+        - veho.v1.AdminService
+      summary: CreateServiceAccount
+      operationId: veho.v1.AdminService.CreateServiceAccount
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/veho.v1.CreateServiceAccountRequest'
+        required: true
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ServiceAccount'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/serviceaccounts/{name}:
+    get:
+      tags:
+        - veho.v1.AdminService
+      summary: GetServiceAccount
+      operationId: veho.v1.AdminService.GetServiceAccount
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ServiceAccount'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags:
+        - veho.v1.AdminService
+      summary: DeleteServiceAccount
+      description: DeleteServiceAccount removes its keys and the grants that name it.
+      operationId: veho.v1.AdminService.DeleteServiceAccount
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Empty'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/serviceaccounts/{name}:disable:
+    post:
+      tags:
+        - veho.v1.AdminService
+      summary: DisableServiceAccount
+      description: DisableServiceAccount refuses all its keys at once.
+      operationId: veho.v1.AdminService.DisableServiceAccount
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ServiceAccount'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/admin/serviceaccounts/{name}:enable:
+    post:
+      tags:
+        - veho.v1.AdminService
+      summary: EnableServiceAccount
+      operationId: veho.v1.AdminService.EnableServiceAccount
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+            title: name
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.ServiceAccount'
         "4XX":
           $ref: '#/components/responses/Problem'
         "5XX":
@@ -2150,8 +2345,10 @@ tags:
     description: 'TenantService manages the tenants: platform administrators only.'
   - name: veho.v1.AdminService
     description: |-
-      AdminService administers the caller's tenant: its API keys, its
-       entitlements and its settings.
+      AdminService administers the caller's tenant: its service accounts and
+       their API keys, its entitlements and its settings. A platform
+       administrator calling for the platform manages the platform's service
+       accounts and keys.
   - name: veho.v1.JobService
     description: JobService accepts, shows, cancels and retries replication jobs.
   - name: veho.v1.WebhookService

@@ -40,10 +40,18 @@ type Principal struct {
 	Role   string
 }
 
+// roleScopeAdmin, in the methods' roles, is a tenant's admin in its tenant
+// and a platform administrator in the platform: who manages the scope's
+// service accounts and keys.
+const roleScopeAdmin = "scope-admin"
+
 // may is true when p holds role in its tenant.
 func (p Principal) may(role string) bool {
-	if role == RolePlatformAdmin {
+	switch role {
+	case RolePlatformAdmin:
 		return p.Role == RolePlatformAdmin
+	case roleScopeAdmin:
+		return (p.Tenant == nil && p.Role == RolePlatformAdmin) || (p.Tenant != nil && p.Role == RoleAdmin)
 	}
 	return p.Tenant != nil && rank[p.Role] >= rank[role]
 }

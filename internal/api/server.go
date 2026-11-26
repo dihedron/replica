@@ -69,6 +69,8 @@ type Options struct {
 	// RateLimit is the API's rate limits (§5.2); zero values are the
 	// defaults.
 	RateLimit config.RateLimit
+	// Keys bounds the lifetime of API keys; zero values are the defaults.
+	Keys config.Keys
 	// Audit records the refused credentials.
 	Audit audit.Auditor
 }
@@ -78,6 +80,7 @@ type Server struct {
 	vehov1.UnimplementedJobServiceServer
 	pol     policies
 	engine  *engine.Engine
+	keys    config.Keys
 	api     *pgxpool.Pool
 	grpc    *grpc.Server
 	gateway http.Handler
@@ -105,7 +108,13 @@ func New(o Options) (*Server, error) {
 	if s.reauth <= 0 {
 		s.reauth = time.Minute
 	}
-	s.secrets, s.audit = o.Secrets, o.Audit
+	s.secrets, s.audit, s.keys = o.Secrets, o.Audit, o.Keys
+	if s.keys.DefaultLifetime <= 0 {
+		s.keys.DefaultLifetime = 90 * 24 * time.Hour
+	}
+	if s.keys.MaxLifetime <= 0 {
+		s.keys.MaxLifetime = 90 * 24 * time.Hour
+	}
 	rl := o.RateLimit
 	rate := func(perSecond, def float64) ratelimit.Rate {
 		if perSecond <= 0 {

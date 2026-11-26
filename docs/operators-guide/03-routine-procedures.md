@@ -29,14 +29,25 @@ A platform administrator sees tenants, never what is inside them.
 ## People and applications (tenant administrators)
 
 ```bash
-veho apikey create --name ci --role operator > ci.key    # printed once
-veho apikey list
+veho serviceaccount create ci --role operator
+veho apikey create --service-account ci > ci.key         # printed once; 90 days by default
+veho apikey list --service-account ci
 veho apikey revoke <id>                                  # at once
+veho serviceaccount disable ci                           # all its keys refused at once
+veho serviceaccount delete ci                            # its keys and the grants naming key:ci go too
 
 veho entitlement create --kind oidc --issuer https://idp.example --group storage-ops --role operator
 veho entitlement create --kind spiffe --issuer example.org --subject spiffe://example.org/backup --role operator
 veho entitlement list
 ```
+
+An application with neither SPIFFE nor OIDC gets a **service account**; its grants name the account (`key:ci`), never a key, so its keys rotate under them. Every key expires: `api.keys.default_lifetime` unless `--expires` is given, never later than `api.keys.max_lifetime` (both 90 days by default). An account has at most 3 active keys. To rotate one without downtime:
+
+1. `veho apikey create --service-account ci` and deploy the new key;
+2. check in `veho apikey list --service-account ci` that the old key's `last_used_at` stops moving;
+3. `veho apikey revoke <old id>`.
+
+A platform administrator, calling for the platform, manages the platform's service accounts the same way; they are all `platform-admin`. The bootstrap keys expire too (90 days at most): `veho bootstrap apikey` with the same `--name` adds a key to the existing account, from the database.
 
 A caller with an OIDC token or an SVID names the tenant of each call, also when it is entitled in one only: `--tenant` or `VEHO_TENANT`, the header `X-Veho-Tenant` in REST, the metadata `x-veho-tenant` in gRPC; `platform` for a platform administrator. An API key has its own tenant and need not name it. `platform` cannot be a tenant's name.
 

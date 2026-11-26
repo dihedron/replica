@@ -23,7 +23,8 @@ func TestDefaults(t *testing.T) {
 		c.Database.DBOS.Env != "VEHO_DBOS_DATABASE_URL" || c.Audit.Sink != "syslog" ||
 		*c.Housekeeping.JobsRetention != 2160*time.Hour || *c.Housekeeping.WorkflowRetention != 168*time.Hour ||
 		c.Checks.Primary != "refuse" || c.Checks.SynchronousCommit != "refuse" || c.Checks.Quorum != "refuse" ||
-		c.Checks.Clock != "refuse" || c.Checks.MaxClockOffset != time.Second {
+		c.Checks.Clock != "refuse" || c.Checks.MaxClockOffset != time.Second ||
+		c.API.Keys.DefaultLifetime != 2160*time.Hour || c.API.Keys.MaxLifetime != 2160*time.Hour {
 		t.Errorf("defaults: %+v", c)
 	}
 }
@@ -98,6 +99,7 @@ func TestRefused(t *testing.T) {
 		"checks.clock":            node + key + "checks: {clock: maybe}\n",
 		"max_clock_offset":        node + key + "checks: {max_clock_offset: -1s}\n",
 		"field schema":            node + key + "checks: {schema: warn}\n",
+		"api.keys":                node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, keys: {default_lifetime: 2400h}}\n",
 		"allow_cidrs":             node + key + "notifications: {enabled: true, allow_cidrs: [nonsense]}\n",
 		"delivered_retention":     node + key + "notifications: {delivered_retention: 1s}\n",
 		"abandoned_retention":     node + key + "notifications: {abandoned_retention: 1s}\n",

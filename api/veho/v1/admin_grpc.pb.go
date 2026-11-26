@@ -889,23 +889,39 @@ var TenantService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AdminService_CreateKey_FullMethodName         = "/veho.v1.AdminService/CreateKey"
-	AdminService_ListKeys_FullMethodName          = "/veho.v1.AdminService/ListKeys"
-	AdminService_RevokeKey_FullMethodName         = "/veho.v1.AdminService/RevokeKey"
-	AdminService_CreateEntitlement_FullMethodName = "/veho.v1.AdminService/CreateEntitlement"
-	AdminService_ListEntitlements_FullMethodName  = "/veho.v1.AdminService/ListEntitlements"
-	AdminService_DeleteEntitlement_FullMethodName = "/veho.v1.AdminService/DeleteEntitlement"
-	AdminService_GetSettings_FullMethodName       = "/veho.v1.AdminService/GetSettings"
-	AdminService_UpdateSettings_FullMethodName    = "/veho.v1.AdminService/UpdateSettings"
+	AdminService_CreateServiceAccount_FullMethodName  = "/veho.v1.AdminService/CreateServiceAccount"
+	AdminService_ListServiceAccounts_FullMethodName   = "/veho.v1.AdminService/ListServiceAccounts"
+	AdminService_GetServiceAccount_FullMethodName     = "/veho.v1.AdminService/GetServiceAccount"
+	AdminService_DisableServiceAccount_FullMethodName = "/veho.v1.AdminService/DisableServiceAccount"
+	AdminService_EnableServiceAccount_FullMethodName  = "/veho.v1.AdminService/EnableServiceAccount"
+	AdminService_DeleteServiceAccount_FullMethodName  = "/veho.v1.AdminService/DeleteServiceAccount"
+	AdminService_CreateKey_FullMethodName             = "/veho.v1.AdminService/CreateKey"
+	AdminService_ListKeys_FullMethodName              = "/veho.v1.AdminService/ListKeys"
+	AdminService_RevokeKey_FullMethodName             = "/veho.v1.AdminService/RevokeKey"
+	AdminService_CreateEntitlement_FullMethodName     = "/veho.v1.AdminService/CreateEntitlement"
+	AdminService_ListEntitlements_FullMethodName      = "/veho.v1.AdminService/ListEntitlements"
+	AdminService_DeleteEntitlement_FullMethodName     = "/veho.v1.AdminService/DeleteEntitlement"
+	AdminService_GetSettings_FullMethodName           = "/veho.v1.AdminService/GetSettings"
+	AdminService_UpdateSettings_FullMethodName        = "/veho.v1.AdminService/UpdateSettings"
 )
 
 // AdminServiceClient is the client API for AdminService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// AdminService administers the caller's tenant: its API keys, its
-// entitlements and its settings.
+// AdminService administers the caller's tenant: its service accounts and
+// their API keys, its entitlements and its settings. A platform
+// administrator calling for the platform manages the platform's service
+// accounts and keys.
 type AdminServiceClient interface {
+	CreateServiceAccount(ctx context.Context, in *CreateServiceAccountRequest, opts ...grpc.CallOption) (*ServiceAccount, error)
+	ListServiceAccounts(ctx context.Context, in *ListServiceAccountsRequest, opts ...grpc.CallOption) (*ListServiceAccountsResponse, error)
+	GetServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*ServiceAccount, error)
+	// DisableServiceAccount refuses all its keys at once.
+	DisableServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*ServiceAccount, error)
+	EnableServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*ServiceAccount, error)
+	// DeleteServiceAccount removes its keys and the grants that name it.
+	DeleteServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*Empty, error)
 	// CreateKey returns the key in this answer only.
 	CreateKey(ctx context.Context, in *CreateKeyRequest, opts ...grpc.CallOption) (*CreatedKey, error)
 	ListKeys(ctx context.Context, in *ListKeysRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
@@ -923,6 +939,66 @@ type adminServiceClient struct {
 
 func NewAdminServiceClient(cc grpc.ClientConnInterface) AdminServiceClient {
 	return &adminServiceClient{cc}
+}
+
+func (c *adminServiceClient) CreateServiceAccount(ctx context.Context, in *CreateServiceAccountRequest, opts ...grpc.CallOption) (*ServiceAccount, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceAccount)
+	err := c.cc.Invoke(ctx, AdminService_CreateServiceAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) ListServiceAccounts(ctx context.Context, in *ListServiceAccountsRequest, opts ...grpc.CallOption) (*ListServiceAccountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListServiceAccountsResponse)
+	err := c.cc.Invoke(ctx, AdminService_ListServiceAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) GetServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*ServiceAccount, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceAccount)
+	err := c.cc.Invoke(ctx, AdminService_GetServiceAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) DisableServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*ServiceAccount, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceAccount)
+	err := c.cc.Invoke(ctx, AdminService_DisableServiceAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) EnableServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*ServiceAccount, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ServiceAccount)
+	err := c.cc.Invoke(ctx, AdminService_EnableServiceAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adminServiceClient) DeleteServiceAccount(ctx context.Context, in *ServiceAccountName, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, AdminService_DeleteServiceAccount_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *adminServiceClient) CreateKey(ctx context.Context, in *CreateKeyRequest, opts ...grpc.CallOption) (*CreatedKey, error) {
@@ -1009,9 +1085,19 @@ func (c *adminServiceClient) UpdateSettings(ctx context.Context, in *TenantSetti
 // All implementations must embed UnimplementedAdminServiceServer
 // for forward compatibility.
 //
-// AdminService administers the caller's tenant: its API keys, its
-// entitlements and its settings.
+// AdminService administers the caller's tenant: its service accounts and
+// their API keys, its entitlements and its settings. A platform
+// administrator calling for the platform manages the platform's service
+// accounts and keys.
 type AdminServiceServer interface {
+	CreateServiceAccount(context.Context, *CreateServiceAccountRequest) (*ServiceAccount, error)
+	ListServiceAccounts(context.Context, *ListServiceAccountsRequest) (*ListServiceAccountsResponse, error)
+	GetServiceAccount(context.Context, *ServiceAccountName) (*ServiceAccount, error)
+	// DisableServiceAccount refuses all its keys at once.
+	DisableServiceAccount(context.Context, *ServiceAccountName) (*ServiceAccount, error)
+	EnableServiceAccount(context.Context, *ServiceAccountName) (*ServiceAccount, error)
+	// DeleteServiceAccount removes its keys and the grants that name it.
+	DeleteServiceAccount(context.Context, *ServiceAccountName) (*Empty, error)
 	// CreateKey returns the key in this answer only.
 	CreateKey(context.Context, *CreateKeyRequest) (*CreatedKey, error)
 	ListKeys(context.Context, *ListKeysRequest) (*ListKeysResponse, error)
@@ -1031,6 +1117,24 @@ type AdminServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAdminServiceServer struct{}
 
+func (UnimplementedAdminServiceServer) CreateServiceAccount(context.Context, *CreateServiceAccountRequest) (*ServiceAccount, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateServiceAccount not implemented")
+}
+func (UnimplementedAdminServiceServer) ListServiceAccounts(context.Context, *ListServiceAccountsRequest) (*ListServiceAccountsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListServiceAccounts not implemented")
+}
+func (UnimplementedAdminServiceServer) GetServiceAccount(context.Context, *ServiceAccountName) (*ServiceAccount, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetServiceAccount not implemented")
+}
+func (UnimplementedAdminServiceServer) DisableServiceAccount(context.Context, *ServiceAccountName) (*ServiceAccount, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DisableServiceAccount not implemented")
+}
+func (UnimplementedAdminServiceServer) EnableServiceAccount(context.Context, *ServiceAccountName) (*ServiceAccount, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EnableServiceAccount not implemented")
+}
+func (UnimplementedAdminServiceServer) DeleteServiceAccount(context.Context, *ServiceAccountName) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteServiceAccount not implemented")
+}
 func (UnimplementedAdminServiceServer) CreateKey(context.Context, *CreateKeyRequest) (*CreatedKey, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateKey not implemented")
 }
@@ -1074,6 +1178,114 @@ func RegisterAdminServiceServer(s grpc.ServiceRegistrar, srv AdminServiceServer)
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&AdminService_ServiceDesc, srv)
+}
+
+func _AdminService_CreateServiceAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateServiceAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).CreateServiceAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_CreateServiceAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).CreateServiceAccount(ctx, req.(*CreateServiceAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_ListServiceAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListServiceAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).ListServiceAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_ListServiceAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).ListServiceAccounts(ctx, req.(*ListServiceAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_GetServiceAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceAccountName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).GetServiceAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_GetServiceAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).GetServiceAccount(ctx, req.(*ServiceAccountName))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_DisableServiceAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceAccountName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).DisableServiceAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_DisableServiceAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).DisableServiceAccount(ctx, req.(*ServiceAccountName))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_EnableServiceAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceAccountName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).EnableServiceAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_EnableServiceAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).EnableServiceAccount(ctx, req.(*ServiceAccountName))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdminService_DeleteServiceAccount_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ServiceAccountName)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdminServiceServer).DeleteServiceAccount(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdminService_DeleteServiceAccount_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdminServiceServer).DeleteServiceAccount(ctx, req.(*ServiceAccountName))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _AdminService_CreateKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -1227,6 +1439,30 @@ var AdminService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "veho.v1.AdminService",
 	HandlerType: (*AdminServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateServiceAccount",
+			Handler:    _AdminService_CreateServiceAccount_Handler,
+		},
+		{
+			MethodName: "ListServiceAccounts",
+			Handler:    _AdminService_ListServiceAccounts_Handler,
+		},
+		{
+			MethodName: "GetServiceAccount",
+			Handler:    _AdminService_GetServiceAccount_Handler,
+		},
+		{
+			MethodName: "DisableServiceAccount",
+			Handler:    _AdminService_DisableServiceAccount_Handler,
+		},
+		{
+			MethodName: "EnableServiceAccount",
+			Handler:    _AdminService_EnableServiceAccount_Handler,
+		},
+		{
+			MethodName: "DeleteServiceAccount",
+			Handler:    _AdminService_DeleteServiceAccount_Handler,
+		},
 		{
 			MethodName: "CreateKey",
 			Handler:    _AdminService_CreateKey_Handler,
