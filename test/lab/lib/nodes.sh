@@ -250,6 +250,10 @@ cmd_node() {
 cmd_db() {
 	require_lab
 	local verb="${1:-}" x="${2:-}"
+	if [[ "$verb" == profile ]]; then
+		db_profile "$x" # a round trip in ms, or the lab's defaults
+		return
+	fi
 	region_check "$x"
 	case "$verb" in
 	kill) inner stop "db-$x" --force ;;
@@ -258,7 +262,7 @@ cmd_db() {
 		inner_wait "db-$x"
 		db_rejoin "db-$x"
 		;;
-	*) die "usage: lab.sh db kill|start X" ;;
+	*) die "usage: lab.sh db kill|start X | profile [RTT_MS]" ;;
 	esac
 }
 
@@ -268,8 +272,10 @@ cmd_db() {
 # soak), so after two minutes it is reinitialized from the leader.
 db_rejoin() {
 	local name="$1" ok
+	# 2 minutes an attempt by default; a slow or lossy WAN (the AC-24
+	# campaign) makes pg_rewind and a base backup take longer
 	for attempt in 1 2; do
-		for _ in $(seq 1 24); do
+		for _ in $(seq 1 $((${LAB_DB_REJOIN_WAIT:-120} / 5))); do
 			ok="$(db_members | jq -r --arg m "$name" '(map(select(.Role == "Leader"))[0].TL) as $tl
 				| map(select(.Member == $m and (.Role == "Leader" or (.State == "streaming" and .TL == $tl)))) | length')"
 			[[ "$ok" == 1 ]] && return 0

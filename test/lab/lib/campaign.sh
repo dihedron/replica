@@ -12,7 +12,8 @@ cmd_campaign() {
 	soak) campaign_soak "$dir" "$@" ;;
 	wan24) campaign_wan24 "$dir" "$@" ;;
 	long) campaign_long "$dir" ;;
-	*) die "usage: lab.sh campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long" ;;
+	envelope) campaign_envelope "$dir" "$@" ;;
+	*) die "usage: lab.sh campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long | envelope --phase A|B [--rtt R,R] [--dry-run] | envelope --report" ;;
 	esac
 }
 
