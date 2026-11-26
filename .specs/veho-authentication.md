@@ -144,6 +144,8 @@ Client credentials and Kubernetes projected service-account tokens (`sub` = `sys
 - A service account (today's `principals` row) has a name, a tenant, a role and a state. Grants name it, so they survive the rotation of its keys. `veho serviceaccount create|list|show|disable|enable|delete`; `veho apikey create --service-account <name>`.
 - At most 3 active keys each. The expiry is mandatory: 90 days by default and at most (`api.keys.{default_lifetime, max_lifetime}`). Bootstrap keys too; a new one is made from the database.
 - Disabling a service account refuses all its keys at once.
+- **Decided with the maintainer (2026-11-26):** deleting a service account deletes its keys **and every grant that names it** (`key:<name>`), in one transaction, so that an account created later with the same name starts with no access. Platform service accounts (`platform-admin`, no tenant) are managed over the API too, by a platform administrator calling for the platform; RLS shows them only to a transaction that set the platform's scope (`veho.in_platform()`).
+- **Implemented (A2, 2026-11-26):** `AdminService.{Create,List,Get,Disable,Enable,Delete}ServiceAccount`, `CreateKey{service_account, expires_in}` (0 is the default lifetime; over the maximum `400`), `ListKeys{service_account}`. The limit of 3 active keys is a trigger that locks the account's row (`409 too_many_keys`), so it holds for keys created at once and for bootstrap. `veho bootstrap apikey` adds a key to an existing account of the same role; its keys live 90 days at most, as bootstrap reads no node's `api.keys`.
 
 ### 8.4 Automation that administers veho
 
@@ -245,7 +247,7 @@ Applied on 2026-11-25, at the approval; the amended texts say that the implement
 | Step | Scope | Needs |
 | :--- | :--- | :--- |
 | **A1** | Security fixes of what exists: tenant naming (G-1), identity names (G-2, G-6), job creators and idempotency (G-3, G-4), issuer start-up and token lifetime (G-7, G-8), audit (G-9). Implemented 2026-11-25 with AU-T1, AU-T2, AU-T3, AU-T5, AU-T6, AU-T7 (but the client IDs, A4) and the audit of AU-T16; G-1 was first proven by its test | — |
-| **A2** | Service accounts and keys (G-5) | A1 |
+| **A2** | Service accounts and keys (G-5). Implemented 2026-11-26 with AU-T9 (§8.3) | A1 |
 | **A3** | `member`, `view`, patterns, several trust domains, `integrator`, `ManagedAccessService` | A1 |
 | **A3b** | Administration by automation: `initial_admins`, entitlement keys, `LocationService`, `DeleteTenant` (G-10, G-11); before backlog 35 | A1 |
 | **A4** | `GetConfig`, `WhoAmI`, CLI login, step-up | A1 |

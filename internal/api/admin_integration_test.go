@@ -166,7 +166,10 @@ func TestTenants(t *testing.T) {
 func TestAdmin(t *testing.T) {
 	f := setup(t, Options{})
 	admin := f.keys["a-admin"]
-	r := f.rest(t, "POST", "/v1/admin/keys", admin, map[string]any{"name": "ci", "role": "viewer"})
+	if r := f.rest(t, "POST", "/v1/admin/serviceaccounts", admin, map[string]any{"name": "ci", "role": "viewer"}); r.code != http.StatusOK {
+		t.Fatalf("create a service account: %d %v", r.code, r.body)
+	}
+	r := f.rest(t, "POST", "/v1/admin/keys", admin, map[string]any{"service_account": "ci"})
 	if r.code != http.StatusOK || !strings.HasPrefix(toString(r.body["key"]), "veho_") {
 		t.Fatalf("create a key: %d %v", r.code, r.body)
 	}
@@ -183,8 +186,8 @@ func TestAdmin(t *testing.T) {
 			}
 		}
 	}
-	if r := f.rest(t, "POST", "/v1/admin/keys", admin, map[string]any{"name": "root", "role": "platform-admin"}); r.code != http.StatusBadRequest {
-		t.Errorf("a platform-admin key from a tenant admin: %d", r.code)
+	if r := f.rest(t, "POST", "/v1/admin/serviceaccounts", admin, map[string]any{"name": "root", "role": "platform-admin"}); r.code != http.StatusBadRequest {
+		t.Errorf("a platform-admin account from a tenant admin: %d", r.code)
 	}
 	if r := f.rest(t, "POST", "/v1/admin/keys/"+id+":revoke", admin, map[string]any{}); r.code != http.StatusOK {
 		t.Errorf("revoke: %d", r.code)

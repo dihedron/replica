@@ -247,9 +247,31 @@ message UpdateTenantRequest {
   Quotas quotas = 3;
 }
 
-// AdminService administers the caller's tenant: its API keys, its
-// entitlements and its settings.
+// AdminService administers the caller's tenant: its service accounts and
+// their API keys, its entitlements and its settings. A platform
+// administrator calling for the platform manages the platform's service
+// accounts and keys.
 service AdminService {
+  rpc CreateServiceAccount(CreateServiceAccountRequest) returns (ServiceAccount) {
+    option (google.api.http) = {post: "/v1/admin/serviceaccounts" body: "*"};
+  }
+  rpc ListServiceAccounts(ListServiceAccountsRequest) returns (ListServiceAccountsResponse) {
+    option (google.api.http) = {get: "/v1/admin/serviceaccounts"};
+  }
+  rpc GetServiceAccount(ServiceAccountName) returns (ServiceAccount) {
+    option (google.api.http) = {get: "/v1/admin/serviceaccounts/{name}"};
+  }
+  // DisableServiceAccount refuses all its keys at once.
+  rpc DisableServiceAccount(ServiceAccountName) returns (ServiceAccount) {
+    option (google.api.http) = {post: "/v1/admin/serviceaccounts/{name}:disable" body: "*"};
+  }
+  rpc EnableServiceAccount(ServiceAccountName) returns (ServiceAccount) {
+    option (google.api.http) = {post: "/v1/admin/serviceaccounts/{name}:enable" body: "*"};
+  }
+  // DeleteServiceAccount removes its keys and the grants that name it.
+  rpc DeleteServiceAccount(ServiceAccountName) returns (Empty) {
+    option (google.api.http) = {delete: "/v1/admin/serviceaccounts/{name}"};
+  }
   // CreateKey returns the key in this answer only.
   rpc CreateKey(CreateKeyRequest) returns (CreatedKey) {
     option (google.api.http) = {post: "/v1/admin/keys" body: "*"};
@@ -277,12 +299,40 @@ service AdminService {
   }
 }
 
-message CreateKeyRequest {
-  // The principal's name, unique in the tenant.
+message CreateServiceAccountRequest {
+  // Unique in the tenant, or in the platform.
+  string name = 1;
+  // viewer, operator or admin in a tenant; platform-admin, the default, in
+  // the platform.
+  string role = 2;
+}
+
+message ServiceAccount {
   string name = 1;
   string role = 2;
-  // Seconds from now; 0 never expires.
-  int64 expires_in = 3;
+  // active or disabled.
+  string state = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp disabled_at = 5;
+  // Keys neither revoked nor expired: at most 3.
+  int32 active_keys = 6;
+}
+
+message ServiceAccountName {
+  string name = 1;
+}
+
+message ListServiceAccountsRequest {}
+
+message ListServiceAccountsResponse {
+  repeated ServiceAccount service_accounts = 1;
+}
+
+message CreateKeyRequest {
+  string service_account = 1;
+  // Seconds from now, at most api.keys.max_lifetime; 0 is
+  // api.keys.default_lifetime.
+  int64 expires_in = 2;
 }
 
 message CreatedKey {
@@ -293,7 +343,8 @@ message CreatedKey {
 
 message ApiKey {
   string id = 1;
-  string principal = 2;
+  // key:<service account>, its grantee name.
+  string service_account = 2;
   string role = 3;
   google.protobuf.Timestamp created_at = 4;
   google.protobuf.Timestamp expires_at = 5;
@@ -301,7 +352,10 @@ message ApiKey {
   google.protobuf.Timestamp last_used_at = 7;
 }
 
-message ListKeysRequest {}
+message ListKeysRequest {
+  // Only this service account's keys, if given.
+  string service_account = 1;
+}
 
 message ListKeysResponse {
   repeated ApiKey keys = 1;

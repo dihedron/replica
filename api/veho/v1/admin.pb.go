@@ -1477,20 +1477,284 @@ func (x *UpdateTenantRequest) GetQuotas() *Quotas {
 	return nil
 }
 
-type CreateKeyRequest struct {
+type CreateServiceAccountRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// The principal's name, unique in the tenant.
+	// Unique in the tenant, or in the platform.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Role string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
-	// Seconds from now; 0 never expires.
-	ExpiresIn     int64 `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
+	// viewer, operator or admin in a tenant; platform-admin, the default, in
+	// the platform.
+	Role          string `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateServiceAccountRequest) Reset() {
+	*x = CreateServiceAccountRequest{}
+	mi := &file_veho_v1_admin_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateServiceAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateServiceAccountRequest) ProtoMessage() {}
+
+func (x *CreateServiceAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_veho_v1_admin_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateServiceAccountRequest.ProtoReflect.Descriptor instead.
+func (*CreateServiceAccountRequest) Descriptor() ([]byte, []int) {
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *CreateServiceAccountRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateServiceAccountRequest) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+type ServiceAccount struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Role  string                 `protobuf:"bytes,2,opt,name=role,proto3" json:"role,omitempty"`
+	// active or disabled.
+	State      string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	DisabledAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=disabled_at,json=disabledAt,proto3" json:"disabled_at,omitempty"`
+	// Keys neither revoked nor expired: at most 3.
+	ActiveKeys    int32 `protobuf:"varint,6,opt,name=active_keys,json=activeKeys,proto3" json:"active_keys,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceAccount) Reset() {
+	*x = ServiceAccount{}
+	mi := &file_veho_v1_admin_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceAccount) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceAccount) ProtoMessage() {}
+
+func (x *ServiceAccount) ProtoReflect() protoreflect.Message {
+	mi := &file_veho_v1_admin_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceAccount.ProtoReflect.Descriptor instead.
+func (*ServiceAccount) Descriptor() ([]byte, []int) {
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *ServiceAccount) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ServiceAccount) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
+func (x *ServiceAccount) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+func (x *ServiceAccount) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *ServiceAccount) GetDisabledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DisabledAt
+	}
+	return nil
+}
+
+func (x *ServiceAccount) GetActiveKeys() int32 {
+	if x != nil {
+		return x.ActiveKeys
+	}
+	return 0
+}
+
+type ServiceAccountName struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceAccountName) Reset() {
+	*x = ServiceAccountName{}
+	mi := &file_veho_v1_admin_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceAccountName) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceAccountName) ProtoMessage() {}
+
+func (x *ServiceAccountName) ProtoReflect() protoreflect.Message {
+	mi := &file_veho_v1_admin_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceAccountName.ProtoReflect.Descriptor instead.
+func (*ServiceAccountName) Descriptor() ([]byte, []int) {
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *ServiceAccountName) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type ListServiceAccountsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListServiceAccountsRequest) Reset() {
+	*x = ListServiceAccountsRequest{}
+	mi := &file_veho_v1_admin_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListServiceAccountsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListServiceAccountsRequest) ProtoMessage() {}
+
+func (x *ListServiceAccountsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_veho_v1_admin_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListServiceAccountsRequest.ProtoReflect.Descriptor instead.
+func (*ListServiceAccountsRequest) Descriptor() ([]byte, []int) {
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{27}
+}
+
+type ListServiceAccountsResponse struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	ServiceAccounts []*ServiceAccount      `protobuf:"bytes,1,rep,name=service_accounts,json=serviceAccounts,proto3" json:"service_accounts,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ListServiceAccountsResponse) Reset() {
+	*x = ListServiceAccountsResponse{}
+	mi := &file_veho_v1_admin_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListServiceAccountsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListServiceAccountsResponse) ProtoMessage() {}
+
+func (x *ListServiceAccountsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_veho_v1_admin_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListServiceAccountsResponse.ProtoReflect.Descriptor instead.
+func (*ListServiceAccountsResponse) Descriptor() ([]byte, []int) {
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ListServiceAccountsResponse) GetServiceAccounts() []*ServiceAccount {
+	if x != nil {
+		return x.ServiceAccounts
+	}
+	return nil
+}
+
+type CreateKeyRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ServiceAccount string                 `protobuf:"bytes,1,opt,name=service_account,json=serviceAccount,proto3" json:"service_account,omitempty"`
+	// Seconds from now, at most api.keys.max_lifetime; 0 is
+	// api.keys.default_lifetime.
+	ExpiresIn     int64 `protobuf:"varint,2,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateKeyRequest) Reset() {
 	*x = CreateKeyRequest{}
-	mi := &file_veho_v1_admin_proto_msgTypes[24]
+	mi := &file_veho_v1_admin_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1502,7 +1766,7 @@ func (x *CreateKeyRequest) String() string {
 func (*CreateKeyRequest) ProtoMessage() {}
 
 func (x *CreateKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[24]
+	mi := &file_veho_v1_admin_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1515,19 +1779,12 @@ func (x *CreateKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateKeyRequest.ProtoReflect.Descriptor instead.
 func (*CreateKeyRequest) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{24}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{29}
 }
 
-func (x *CreateKeyRequest) GetName() string {
+func (x *CreateKeyRequest) GetServiceAccount() string {
 	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *CreateKeyRequest) GetRole() string {
-	if x != nil {
-		return x.Role
+		return x.ServiceAccount
 	}
 	return ""
 }
@@ -1550,7 +1807,7 @@ type CreatedKey struct {
 
 func (x *CreatedKey) Reset() {
 	*x = CreatedKey{}
-	mi := &file_veho_v1_admin_proto_msgTypes[25]
+	mi := &file_veho_v1_admin_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1562,7 +1819,7 @@ func (x *CreatedKey) String() string {
 func (*CreatedKey) ProtoMessage() {}
 
 func (x *CreatedKey) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[25]
+	mi := &file_veho_v1_admin_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1575,7 +1832,7 @@ func (x *CreatedKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreatedKey.ProtoReflect.Descriptor instead.
 func (*CreatedKey) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{25}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CreatedKey) GetId() string {
@@ -1593,21 +1850,22 @@ func (x *CreatedKey) GetKey() string {
 }
 
 type ApiKey struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Principal     string                 `protobuf:"bytes,2,opt,name=principal,proto3" json:"principal,omitempty"`
-	Role          string                 `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	RevokedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
-	LastUsedAt    *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// key:<service account>, its grantee name.
+	ServiceAccount string                 `protobuf:"bytes,2,opt,name=service_account,json=serviceAccount,proto3" json:"service_account,omitempty"`
+	Role           string                 `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
+	CreatedAt      *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ExpiresAt      *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	RevokedAt      *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
+	LastUsedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ApiKey) Reset() {
 	*x = ApiKey{}
-	mi := &file_veho_v1_admin_proto_msgTypes[26]
+	mi := &file_veho_v1_admin_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1619,7 +1877,7 @@ func (x *ApiKey) String() string {
 func (*ApiKey) ProtoMessage() {}
 
 func (x *ApiKey) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[26]
+	mi := &file_veho_v1_admin_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1632,7 +1890,7 @@ func (x *ApiKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApiKey.ProtoReflect.Descriptor instead.
 func (*ApiKey) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{26}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ApiKey) GetId() string {
@@ -1642,9 +1900,9 @@ func (x *ApiKey) GetId() string {
 	return ""
 }
 
-func (x *ApiKey) GetPrincipal() string {
+func (x *ApiKey) GetServiceAccount() string {
 	if x != nil {
-		return x.Principal
+		return x.ServiceAccount
 	}
 	return ""
 }
@@ -1685,14 +1943,16 @@ func (x *ApiKey) GetLastUsedAt() *timestamppb.Timestamp {
 }
 
 type ListKeysRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Only this service account's keys, if given.
+	ServiceAccount string `protobuf:"bytes,1,opt,name=service_account,json=serviceAccount,proto3" json:"service_account,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListKeysRequest) Reset() {
 	*x = ListKeysRequest{}
-	mi := &file_veho_v1_admin_proto_msgTypes[27]
+	mi := &file_veho_v1_admin_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1704,7 +1964,7 @@ func (x *ListKeysRequest) String() string {
 func (*ListKeysRequest) ProtoMessage() {}
 
 func (x *ListKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[27]
+	mi := &file_veho_v1_admin_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1717,7 +1977,14 @@ func (x *ListKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListKeysRequest) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{27}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ListKeysRequest) GetServiceAccount() string {
+	if x != nil {
+		return x.ServiceAccount
+	}
+	return ""
 }
 
 type ListKeysResponse struct {
@@ -1729,7 +1996,7 @@ type ListKeysResponse struct {
 
 func (x *ListKeysResponse) Reset() {
 	*x = ListKeysResponse{}
-	mi := &file_veho_v1_admin_proto_msgTypes[28]
+	mi := &file_veho_v1_admin_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1741,7 +2008,7 @@ func (x *ListKeysResponse) String() string {
 func (*ListKeysResponse) ProtoMessage() {}
 
 func (x *ListKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[28]
+	mi := &file_veho_v1_admin_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1754,7 +2021,7 @@ func (x *ListKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListKeysResponse) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{28}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ListKeysResponse) GetKeys() []*ApiKey {
@@ -1773,7 +2040,7 @@ type KeyID struct {
 
 func (x *KeyID) Reset() {
 	*x = KeyID{}
-	mi := &file_veho_v1_admin_proto_msgTypes[29]
+	mi := &file_veho_v1_admin_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1785,7 +2052,7 @@ func (x *KeyID) String() string {
 func (*KeyID) ProtoMessage() {}
 
 func (x *KeyID) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[29]
+	mi := &file_veho_v1_admin_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1798,7 +2065,7 @@ func (x *KeyID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyID.ProtoReflect.Descriptor instead.
 func (*KeyID) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{29}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *KeyID) GetId() string {
@@ -1824,7 +2091,7 @@ type Entitlement struct {
 
 func (x *Entitlement) Reset() {
 	*x = Entitlement{}
-	mi := &file_veho_v1_admin_proto_msgTypes[30]
+	mi := &file_veho_v1_admin_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1836,7 +2103,7 @@ func (x *Entitlement) String() string {
 func (*Entitlement) ProtoMessage() {}
 
 func (x *Entitlement) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[30]
+	mi := &file_veho_v1_admin_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1849,7 +2116,7 @@ func (x *Entitlement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Entitlement.ProtoReflect.Descriptor instead.
 func (*Entitlement) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{30}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *Entitlement) GetId() string {
@@ -1909,7 +2176,7 @@ type ListEntitlementsRequest struct {
 
 func (x *ListEntitlementsRequest) Reset() {
 	*x = ListEntitlementsRequest{}
-	mi := &file_veho_v1_admin_proto_msgTypes[31]
+	mi := &file_veho_v1_admin_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1921,7 +2188,7 @@ func (x *ListEntitlementsRequest) String() string {
 func (*ListEntitlementsRequest) ProtoMessage() {}
 
 func (x *ListEntitlementsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[31]
+	mi := &file_veho_v1_admin_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1934,7 +2201,7 @@ func (x *ListEntitlementsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntitlementsRequest.ProtoReflect.Descriptor instead.
 func (*ListEntitlementsRequest) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{31}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{36}
 }
 
 type ListEntitlementsResponse struct {
@@ -1946,7 +2213,7 @@ type ListEntitlementsResponse struct {
 
 func (x *ListEntitlementsResponse) Reset() {
 	*x = ListEntitlementsResponse{}
-	mi := &file_veho_v1_admin_proto_msgTypes[32]
+	mi := &file_veho_v1_admin_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1958,7 +2225,7 @@ func (x *ListEntitlementsResponse) String() string {
 func (*ListEntitlementsResponse) ProtoMessage() {}
 
 func (x *ListEntitlementsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[32]
+	mi := &file_veho_v1_admin_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1971,7 +2238,7 @@ func (x *ListEntitlementsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEntitlementsResponse.ProtoReflect.Descriptor instead.
 func (*ListEntitlementsResponse) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{32}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ListEntitlementsResponse) GetEntitlements() []*Entitlement {
@@ -1990,7 +2257,7 @@ type EntitlementID struct {
 
 func (x *EntitlementID) Reset() {
 	*x = EntitlementID{}
-	mi := &file_veho_v1_admin_proto_msgTypes[33]
+	mi := &file_veho_v1_admin_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2002,7 +2269,7 @@ func (x *EntitlementID) String() string {
 func (*EntitlementID) ProtoMessage() {}
 
 func (x *EntitlementID) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[33]
+	mi := &file_veho_v1_admin_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2015,7 +2282,7 @@ func (x *EntitlementID) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EntitlementID.ProtoReflect.Descriptor instead.
 func (*EntitlementID) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{33}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *EntitlementID) GetId() string {
@@ -2033,7 +2300,7 @@ type GetSettingsRequest struct {
 
 func (x *GetSettingsRequest) Reset() {
 	*x = GetSettingsRequest{}
-	mi := &file_veho_v1_admin_proto_msgTypes[34]
+	mi := &file_veho_v1_admin_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2045,7 +2312,7 @@ func (x *GetSettingsRequest) String() string {
 func (*GetSettingsRequest) ProtoMessage() {}
 
 func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_veho_v1_admin_proto_msgTypes[34]
+	mi := &file_veho_v1_admin_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2058,7 +2325,7 @@ func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSettingsRequest.ProtoReflect.Descriptor instead.
 func (*GetSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_veho_v1_admin_proto_rawDescGZIP(), []int{34}
+	return file_veho_v1_admin_proto_rawDescGZIP(), []int{39}
 }
 
 var File_veho_v1_admin_proto protoreflect.FileDescriptor
@@ -2170,19 +2437,36 @@ const file_veho_v1_admin_proto_rawDesc = "" +
 	"\x13UpdateTenantRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05state\x18\x02 \x01(\tR\x05state\x12'\n" +
-	"\x06quotas\x18\x03 \x01(\v2\x0f.veho.v1.QuotasR\x06quotas\"Y\n" +
-	"\x10CreateKeyRequest\x12\x12\n" +
+	"\x06quotas\x18\x03 \x01(\v2\x0f.veho.v1.QuotasR\x06quotas\"E\n" +
+	"\x1bCreateServiceAccountRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
-	"\x04role\x18\x02 \x01(\tR\x04role\x12\x1d\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\"\xe7\x01\n" +
+	"\x0eServiceAccount\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04role\x18\x02 \x01(\tR\x04role\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\x129\n" +
 	"\n" +
-	"expires_in\x18\x03 \x01(\x03R\texpiresIn\".\n" +
+	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12;\n" +
+	"\vdisabled_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"disabledAt\x12\x1f\n" +
+	"\vactive_keys\x18\x06 \x01(\x05R\n" +
+	"activeKeys\"(\n" +
+	"\x12ServiceAccountName\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\x1c\n" +
+	"\x1aListServiceAccountsRequest\"a\n" +
+	"\x1bListServiceAccountsResponse\x12B\n" +
+	"\x10service_accounts\x18\x01 \x03(\v2\x17.veho.v1.ServiceAccountR\x0fserviceAccounts\"Z\n" +
+	"\x10CreateKeyRequest\x12'\n" +
+	"\x0fservice_account\x18\x01 \x01(\tR\x0eserviceAccount\x12\x1d\n" +
+	"\n" +
+	"expires_in\x18\x02 \x01(\x03R\texpiresIn\".\n" +
 	"\n" +
 	"CreatedKey\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\xb9\x02\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\xc4\x02\n" +
 	"\x06ApiKey\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1c\n" +
-	"\tprincipal\x18\x02 \x01(\tR\tprincipal\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12'\n" +
+	"\x0fservice_account\x18\x02 \x01(\tR\x0eserviceAccount\x12\x12\n" +
 	"\x04role\x18\x03 \x01(\tR\x04role\x129\n" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
@@ -2191,8 +2475,9 @@ const file_veho_v1_admin_proto_rawDesc = "" +
 	"\n" +
 	"revoked_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x12<\n" +
 	"\flast_used_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"lastUsedAt\"\x11\n" +
-	"\x0fListKeysRequest\"7\n" +
+	"lastUsedAt\":\n" +
+	"\x0fListKeysRequest\x12'\n" +
+	"\x0fservice_account\x18\x01 \x01(\tR\x0eserviceAccount\"7\n" +
 	"\x10ListKeysResponse\x12#\n" +
 	"\x04keys\x18\x01 \x03(\v2\x0f.veho.v1.ApiKeyR\x04keys\"\x17\n" +
 	"\x05KeyID\x12\x0e\n" +
@@ -2231,8 +2516,14 @@ const file_veho_v1_admin_proto_rawDesc = "" +
 	"\fCreateTenant\x12\x1c.veho.v1.CreateTenantRequest\x1a\x0f.veho.v1.Tenant\"\x16\x82\xd3\xe4\x93\x02\x10:\x01*\"\v/v1/tenants\x12I\n" +
 	"\tGetTenant\x12\x11.veho.v1.TenantID\x1a\x0f.veho.v1.Tenant\"\x18\x82\xd3\xe4\x93\x02\x12\x12\x10/v1/tenants/{id}\x12]\n" +
 	"\vListTenants\x12\x1b.veho.v1.ListTenantsRequest\x1a\x1c.veho.v1.ListTenantsResponse\"\x13\x82\xd3\xe4\x93\x02\r\x12\v/v1/tenants\x12Z\n" +
-	"\fUpdateTenant\x12\x1c.veho.v1.UpdateTenantRequest\x1a\x0f.veho.v1.Tenant\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*2\x10/v1/tenants/{id}2\x96\x06\n" +
-	"\fAdminService\x12V\n" +
+	"\fUpdateTenant\x12\x1c.veho.v1.UpdateTenantRequest\x1a\x0f.veho.v1.Tenant\"\x1b\x82\xd3\xe4\x93\x02\x15:\x01*2\x10/v1/tenants/{id}2\x85\f\n" +
+	"\fAdminService\x12{\n" +
+	"\x14CreateServiceAccount\x12$.veho.v1.CreateServiceAccountRequest\x1a\x17.veho.v1.ServiceAccount\"$\x82\xd3\xe4\x93\x02\x1e:\x01*\"\x19/v1/admin/serviceaccounts\x12\x83\x01\n" +
+	"\x13ListServiceAccounts\x12#.veho.v1.ListServiceAccountsRequest\x1a$.veho.v1.ListServiceAccountsResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/admin/serviceaccounts\x12s\n" +
+	"\x11GetServiceAccount\x12\x1b.veho.v1.ServiceAccountName\x1a\x17.veho.v1.ServiceAccount\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/admin/serviceaccounts/{name}\x12\x82\x01\n" +
+	"\x15DisableServiceAccount\x12\x1b.veho.v1.ServiceAccountName\x1a\x17.veho.v1.ServiceAccount\"3\x82\xd3\xe4\x93\x02-:\x01*\"(/v1/admin/serviceaccounts/{name}:disable\x12\x80\x01\n" +
+	"\x14EnableServiceAccount\x12\x1b.veho.v1.ServiceAccountName\x1a\x17.veho.v1.ServiceAccount\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/admin/serviceaccounts/{name}:enable\x12m\n" +
+	"\x14DeleteServiceAccount\x12\x1b.veho.v1.ServiceAccountName\x1a\x0e.veho.v1.Empty\"(\x82\xd3\xe4\x93\x02\"* /v1/admin/serviceaccounts/{name}\x12V\n" +
 	"\tCreateKey\x12\x19.veho.v1.CreateKeyRequest\x1a\x13.veho.v1.CreatedKey\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\"\x0e/v1/admin/keys\x12W\n" +
 	"\bListKeys\x12\x18.veho.v1.ListKeysRequest\x1a\x19.veho.v1.ListKeysResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/v1/admin/keys\x12R\n" +
 	"\tRevokeKey\x12\x0e.veho.v1.KeyID\x1a\x0e.veho.v1.Empty\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/admin/keys/{id}:revoke\x12b\n" +
@@ -2254,130 +2545,150 @@ func file_veho_v1_admin_proto_rawDescGZIP() []byte {
 	return file_veho_v1_admin_proto_rawDescData
 }
 
-var file_veho_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
+var file_veho_v1_admin_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
 var file_veho_v1_admin_proto_goTypes = []any{
-	(*Endpoint)(nil),                   // 0: veho.v1.Endpoint
-	(*EndpointName)(nil),               // 1: veho.v1.EndpointName
-	(*ListEndpointsRequest)(nil),       // 2: veho.v1.ListEndpointsRequest
-	(*ListEndpointsResponse)(nil),      // 3: veho.v1.ListEndpointsResponse
-	(*EndpointCheckName)(nil),          // 4: veho.v1.EndpointCheckName
-	(*Flow)(nil),                       // 5: veho.v1.Flow
-	(*FlowResult)(nil),                 // 6: veho.v1.FlowResult
-	(*NodeCheck)(nil),                  // 7: veho.v1.NodeCheck
-	(*EndpointCheck)(nil),              // 8: veho.v1.EndpointCheck
-	(*ListEndpointChecksResponse)(nil), // 9: veho.v1.ListEndpointChecksResponse
-	(*EndpointTest)(nil),               // 10: veho.v1.EndpointTest
-	(*PutSecretRequest)(nil),           // 11: veho.v1.PutSecretRequest
-	(*SecretName)(nil),                 // 12: veho.v1.SecretName
-	(*Secret)(nil),                     // 13: veho.v1.Secret
-	(*ListSecretsRequest)(nil),         // 14: veho.v1.ListSecretsRequest
-	(*ListSecretsResponse)(nil),        // 15: veho.v1.ListSecretsResponse
-	(*Tenant)(nil),                     // 16: veho.v1.Tenant
-	(*Quotas)(nil),                     // 17: veho.v1.Quotas
-	(*TenantSettings)(nil),             // 18: veho.v1.TenantSettings
-	(*CreateTenantRequest)(nil),        // 19: veho.v1.CreateTenantRequest
-	(*TenantID)(nil),                   // 20: veho.v1.TenantID
-	(*ListTenantsRequest)(nil),         // 21: veho.v1.ListTenantsRequest
-	(*ListTenantsResponse)(nil),        // 22: veho.v1.ListTenantsResponse
-	(*UpdateTenantRequest)(nil),        // 23: veho.v1.UpdateTenantRequest
-	(*CreateKeyRequest)(nil),           // 24: veho.v1.CreateKeyRequest
-	(*CreatedKey)(nil),                 // 25: veho.v1.CreatedKey
-	(*ApiKey)(nil),                     // 26: veho.v1.ApiKey
-	(*ListKeysRequest)(nil),            // 27: veho.v1.ListKeysRequest
-	(*ListKeysResponse)(nil),           // 28: veho.v1.ListKeysResponse
-	(*KeyID)(nil),                      // 29: veho.v1.KeyID
-	(*Entitlement)(nil),                // 30: veho.v1.Entitlement
-	(*ListEntitlementsRequest)(nil),    // 31: veho.v1.ListEntitlementsRequest
-	(*ListEntitlementsResponse)(nil),   // 32: veho.v1.ListEntitlementsResponse
-	(*EntitlementID)(nil),              // 33: veho.v1.EntitlementID
-	(*GetSettingsRequest)(nil),         // 34: veho.v1.GetSettingsRequest
-	(*structpb.Struct)(nil),            // 35: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),      // 36: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),        // 37: google.protobuf.Duration
-	(*Empty)(nil),                      // 38: veho.v1.Empty
+	(*Endpoint)(nil),                    // 0: veho.v1.Endpoint
+	(*EndpointName)(nil),                // 1: veho.v1.EndpointName
+	(*ListEndpointsRequest)(nil),        // 2: veho.v1.ListEndpointsRequest
+	(*ListEndpointsResponse)(nil),       // 3: veho.v1.ListEndpointsResponse
+	(*EndpointCheckName)(nil),           // 4: veho.v1.EndpointCheckName
+	(*Flow)(nil),                        // 5: veho.v1.Flow
+	(*FlowResult)(nil),                  // 6: veho.v1.FlowResult
+	(*NodeCheck)(nil),                   // 7: veho.v1.NodeCheck
+	(*EndpointCheck)(nil),               // 8: veho.v1.EndpointCheck
+	(*ListEndpointChecksResponse)(nil),  // 9: veho.v1.ListEndpointChecksResponse
+	(*EndpointTest)(nil),                // 10: veho.v1.EndpointTest
+	(*PutSecretRequest)(nil),            // 11: veho.v1.PutSecretRequest
+	(*SecretName)(nil),                  // 12: veho.v1.SecretName
+	(*Secret)(nil),                      // 13: veho.v1.Secret
+	(*ListSecretsRequest)(nil),          // 14: veho.v1.ListSecretsRequest
+	(*ListSecretsResponse)(nil),         // 15: veho.v1.ListSecretsResponse
+	(*Tenant)(nil),                      // 16: veho.v1.Tenant
+	(*Quotas)(nil),                      // 17: veho.v1.Quotas
+	(*TenantSettings)(nil),              // 18: veho.v1.TenantSettings
+	(*CreateTenantRequest)(nil),         // 19: veho.v1.CreateTenantRequest
+	(*TenantID)(nil),                    // 20: veho.v1.TenantID
+	(*ListTenantsRequest)(nil),          // 21: veho.v1.ListTenantsRequest
+	(*ListTenantsResponse)(nil),         // 22: veho.v1.ListTenantsResponse
+	(*UpdateTenantRequest)(nil),         // 23: veho.v1.UpdateTenantRequest
+	(*CreateServiceAccountRequest)(nil), // 24: veho.v1.CreateServiceAccountRequest
+	(*ServiceAccount)(nil),              // 25: veho.v1.ServiceAccount
+	(*ServiceAccountName)(nil),          // 26: veho.v1.ServiceAccountName
+	(*ListServiceAccountsRequest)(nil),  // 27: veho.v1.ListServiceAccountsRequest
+	(*ListServiceAccountsResponse)(nil), // 28: veho.v1.ListServiceAccountsResponse
+	(*CreateKeyRequest)(nil),            // 29: veho.v1.CreateKeyRequest
+	(*CreatedKey)(nil),                  // 30: veho.v1.CreatedKey
+	(*ApiKey)(nil),                      // 31: veho.v1.ApiKey
+	(*ListKeysRequest)(nil),             // 32: veho.v1.ListKeysRequest
+	(*ListKeysResponse)(nil),            // 33: veho.v1.ListKeysResponse
+	(*KeyID)(nil),                       // 34: veho.v1.KeyID
+	(*Entitlement)(nil),                 // 35: veho.v1.Entitlement
+	(*ListEntitlementsRequest)(nil),     // 36: veho.v1.ListEntitlementsRequest
+	(*ListEntitlementsResponse)(nil),    // 37: veho.v1.ListEntitlementsResponse
+	(*EntitlementID)(nil),               // 38: veho.v1.EntitlementID
+	(*GetSettingsRequest)(nil),          // 39: veho.v1.GetSettingsRequest
+	(*structpb.Struct)(nil),             // 40: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),       // 41: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),         // 42: google.protobuf.Duration
+	(*Empty)(nil),                       // 43: veho.v1.Empty
 }
 var file_veho_v1_admin_proto_depIdxs = []int32{
-	35, // 0: veho.v1.Endpoint.config:type_name -> google.protobuf.Struct
-	36, // 1: veho.v1.Endpoint.created_at:type_name -> google.protobuf.Timestamp
+	40, // 0: veho.v1.Endpoint.config:type_name -> google.protobuf.Struct
+	41, // 1: veho.v1.Endpoint.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 2: veho.v1.ListEndpointsResponse.endpoints:type_name -> veho.v1.Endpoint
-	36, // 3: veho.v1.NodeCheck.checked_at:type_name -> google.protobuf.Timestamp
+	41, // 3: veho.v1.NodeCheck.checked_at:type_name -> google.protobuf.Timestamp
 	6,  // 4: veho.v1.NodeCheck.results:type_name -> veho.v1.FlowResult
-	36, // 5: veho.v1.EndpointCheck.created_at:type_name -> google.protobuf.Timestamp
+	41, // 5: veho.v1.EndpointCheck.created_at:type_name -> google.protobuf.Timestamp
 	5,  // 6: veho.v1.EndpointCheck.flows:type_name -> veho.v1.Flow
 	7,  // 7: veho.v1.EndpointCheck.nodes:type_name -> veho.v1.NodeCheck
 	8,  // 8: veho.v1.ListEndpointChecksResponse.checks:type_name -> veho.v1.EndpointCheck
-	36, // 9: veho.v1.Secret.created_at:type_name -> google.protobuf.Timestamp
-	36, // 10: veho.v1.Secret.updated_at:type_name -> google.protobuf.Timestamp
+	41, // 9: veho.v1.Secret.created_at:type_name -> google.protobuf.Timestamp
+	41, // 10: veho.v1.Secret.updated_at:type_name -> google.protobuf.Timestamp
 	13, // 11: veho.v1.ListSecretsResponse.secrets:type_name -> veho.v1.Secret
 	17, // 12: veho.v1.Tenant.quotas:type_name -> veho.v1.Quotas
 	18, // 13: veho.v1.Tenant.settings:type_name -> veho.v1.TenantSettings
-	36, // 14: veho.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
-	37, // 15: veho.v1.Quotas.min_retry_initial:type_name -> google.protobuf.Duration
-	37, // 16: veho.v1.Quotas.max_retry_interval:type_name -> google.protobuf.Duration
+	41, // 14: veho.v1.Tenant.created_at:type_name -> google.protobuf.Timestamp
+	42, // 15: veho.v1.Quotas.min_retry_initial:type_name -> google.protobuf.Duration
+	42, // 16: veho.v1.Quotas.max_retry_interval:type_name -> google.protobuf.Duration
 	16, // 17: veho.v1.ListTenantsResponse.tenants:type_name -> veho.v1.Tenant
 	17, // 18: veho.v1.UpdateTenantRequest.quotas:type_name -> veho.v1.Quotas
-	36, // 19: veho.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
-	36, // 20: veho.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
-	36, // 21: veho.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
-	36, // 22: veho.v1.ApiKey.last_used_at:type_name -> google.protobuf.Timestamp
-	26, // 23: veho.v1.ListKeysResponse.keys:type_name -> veho.v1.ApiKey
-	36, // 24: veho.v1.Entitlement.created_at:type_name -> google.protobuf.Timestamp
-	30, // 25: veho.v1.ListEntitlementsResponse.entitlements:type_name -> veho.v1.Entitlement
-	0,  // 26: veho.v1.EndpointService.CreateEndpoint:input_type -> veho.v1.Endpoint
-	1,  // 27: veho.v1.EndpointService.GetEndpoint:input_type -> veho.v1.EndpointName
-	2,  // 28: veho.v1.EndpointService.ListEndpoints:input_type -> veho.v1.ListEndpointsRequest
-	0,  // 29: veho.v1.EndpointService.UpdateEndpoint:input_type -> veho.v1.Endpoint
-	1,  // 30: veho.v1.EndpointService.DeleteEndpoint:input_type -> veho.v1.EndpointName
-	1,  // 31: veho.v1.EndpointService.TestEndpoint:input_type -> veho.v1.EndpointName
-	1,  // 32: veho.v1.EndpointService.CheckEndpoint:input_type -> veho.v1.EndpointName
-	1,  // 33: veho.v1.EndpointService.ListEndpointChecks:input_type -> veho.v1.EndpointName
-	4,  // 34: veho.v1.EndpointService.GetEndpointCheck:input_type -> veho.v1.EndpointCheckName
-	11, // 35: veho.v1.SecretService.PutSecret:input_type -> veho.v1.PutSecretRequest
-	12, // 36: veho.v1.SecretService.GetSecret:input_type -> veho.v1.SecretName
-	14, // 37: veho.v1.SecretService.ListSecrets:input_type -> veho.v1.ListSecretsRequest
-	12, // 38: veho.v1.SecretService.DeleteSecret:input_type -> veho.v1.SecretName
-	19, // 39: veho.v1.TenantService.CreateTenant:input_type -> veho.v1.CreateTenantRequest
-	20, // 40: veho.v1.TenantService.GetTenant:input_type -> veho.v1.TenantID
-	21, // 41: veho.v1.TenantService.ListTenants:input_type -> veho.v1.ListTenantsRequest
-	23, // 42: veho.v1.TenantService.UpdateTenant:input_type -> veho.v1.UpdateTenantRequest
-	24, // 43: veho.v1.AdminService.CreateKey:input_type -> veho.v1.CreateKeyRequest
-	27, // 44: veho.v1.AdminService.ListKeys:input_type -> veho.v1.ListKeysRequest
-	29, // 45: veho.v1.AdminService.RevokeKey:input_type -> veho.v1.KeyID
-	30, // 46: veho.v1.AdminService.CreateEntitlement:input_type -> veho.v1.Entitlement
-	31, // 47: veho.v1.AdminService.ListEntitlements:input_type -> veho.v1.ListEntitlementsRequest
-	33, // 48: veho.v1.AdminService.DeleteEntitlement:input_type -> veho.v1.EntitlementID
-	34, // 49: veho.v1.AdminService.GetSettings:input_type -> veho.v1.GetSettingsRequest
-	18, // 50: veho.v1.AdminService.UpdateSettings:input_type -> veho.v1.TenantSettings
-	0,  // 51: veho.v1.EndpointService.CreateEndpoint:output_type -> veho.v1.Endpoint
-	0,  // 52: veho.v1.EndpointService.GetEndpoint:output_type -> veho.v1.Endpoint
-	3,  // 53: veho.v1.EndpointService.ListEndpoints:output_type -> veho.v1.ListEndpointsResponse
-	0,  // 54: veho.v1.EndpointService.UpdateEndpoint:output_type -> veho.v1.Endpoint
-	38, // 55: veho.v1.EndpointService.DeleteEndpoint:output_type -> veho.v1.Empty
-	10, // 56: veho.v1.EndpointService.TestEndpoint:output_type -> veho.v1.EndpointTest
-	8,  // 57: veho.v1.EndpointService.CheckEndpoint:output_type -> veho.v1.EndpointCheck
-	9,  // 58: veho.v1.EndpointService.ListEndpointChecks:output_type -> veho.v1.ListEndpointChecksResponse
-	8,  // 59: veho.v1.EndpointService.GetEndpointCheck:output_type -> veho.v1.EndpointCheck
-	13, // 60: veho.v1.SecretService.PutSecret:output_type -> veho.v1.Secret
-	13, // 61: veho.v1.SecretService.GetSecret:output_type -> veho.v1.Secret
-	15, // 62: veho.v1.SecretService.ListSecrets:output_type -> veho.v1.ListSecretsResponse
-	38, // 63: veho.v1.SecretService.DeleteSecret:output_type -> veho.v1.Empty
-	16, // 64: veho.v1.TenantService.CreateTenant:output_type -> veho.v1.Tenant
-	16, // 65: veho.v1.TenantService.GetTenant:output_type -> veho.v1.Tenant
-	22, // 66: veho.v1.TenantService.ListTenants:output_type -> veho.v1.ListTenantsResponse
-	16, // 67: veho.v1.TenantService.UpdateTenant:output_type -> veho.v1.Tenant
-	25, // 68: veho.v1.AdminService.CreateKey:output_type -> veho.v1.CreatedKey
-	28, // 69: veho.v1.AdminService.ListKeys:output_type -> veho.v1.ListKeysResponse
-	38, // 70: veho.v1.AdminService.RevokeKey:output_type -> veho.v1.Empty
-	30, // 71: veho.v1.AdminService.CreateEntitlement:output_type -> veho.v1.Entitlement
-	32, // 72: veho.v1.AdminService.ListEntitlements:output_type -> veho.v1.ListEntitlementsResponse
-	38, // 73: veho.v1.AdminService.DeleteEntitlement:output_type -> veho.v1.Empty
-	18, // 74: veho.v1.AdminService.GetSettings:output_type -> veho.v1.TenantSettings
-	18, // 75: veho.v1.AdminService.UpdateSettings:output_type -> veho.v1.TenantSettings
-	51, // [51:76] is the sub-list for method output_type
-	26, // [26:51] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	41, // 19: veho.v1.ServiceAccount.created_at:type_name -> google.protobuf.Timestamp
+	41, // 20: veho.v1.ServiceAccount.disabled_at:type_name -> google.protobuf.Timestamp
+	25, // 21: veho.v1.ListServiceAccountsResponse.service_accounts:type_name -> veho.v1.ServiceAccount
+	41, // 22: veho.v1.ApiKey.created_at:type_name -> google.protobuf.Timestamp
+	41, // 23: veho.v1.ApiKey.expires_at:type_name -> google.protobuf.Timestamp
+	41, // 24: veho.v1.ApiKey.revoked_at:type_name -> google.protobuf.Timestamp
+	41, // 25: veho.v1.ApiKey.last_used_at:type_name -> google.protobuf.Timestamp
+	31, // 26: veho.v1.ListKeysResponse.keys:type_name -> veho.v1.ApiKey
+	41, // 27: veho.v1.Entitlement.created_at:type_name -> google.protobuf.Timestamp
+	35, // 28: veho.v1.ListEntitlementsResponse.entitlements:type_name -> veho.v1.Entitlement
+	0,  // 29: veho.v1.EndpointService.CreateEndpoint:input_type -> veho.v1.Endpoint
+	1,  // 30: veho.v1.EndpointService.GetEndpoint:input_type -> veho.v1.EndpointName
+	2,  // 31: veho.v1.EndpointService.ListEndpoints:input_type -> veho.v1.ListEndpointsRequest
+	0,  // 32: veho.v1.EndpointService.UpdateEndpoint:input_type -> veho.v1.Endpoint
+	1,  // 33: veho.v1.EndpointService.DeleteEndpoint:input_type -> veho.v1.EndpointName
+	1,  // 34: veho.v1.EndpointService.TestEndpoint:input_type -> veho.v1.EndpointName
+	1,  // 35: veho.v1.EndpointService.CheckEndpoint:input_type -> veho.v1.EndpointName
+	1,  // 36: veho.v1.EndpointService.ListEndpointChecks:input_type -> veho.v1.EndpointName
+	4,  // 37: veho.v1.EndpointService.GetEndpointCheck:input_type -> veho.v1.EndpointCheckName
+	11, // 38: veho.v1.SecretService.PutSecret:input_type -> veho.v1.PutSecretRequest
+	12, // 39: veho.v1.SecretService.GetSecret:input_type -> veho.v1.SecretName
+	14, // 40: veho.v1.SecretService.ListSecrets:input_type -> veho.v1.ListSecretsRequest
+	12, // 41: veho.v1.SecretService.DeleteSecret:input_type -> veho.v1.SecretName
+	19, // 42: veho.v1.TenantService.CreateTenant:input_type -> veho.v1.CreateTenantRequest
+	20, // 43: veho.v1.TenantService.GetTenant:input_type -> veho.v1.TenantID
+	21, // 44: veho.v1.TenantService.ListTenants:input_type -> veho.v1.ListTenantsRequest
+	23, // 45: veho.v1.TenantService.UpdateTenant:input_type -> veho.v1.UpdateTenantRequest
+	24, // 46: veho.v1.AdminService.CreateServiceAccount:input_type -> veho.v1.CreateServiceAccountRequest
+	27, // 47: veho.v1.AdminService.ListServiceAccounts:input_type -> veho.v1.ListServiceAccountsRequest
+	26, // 48: veho.v1.AdminService.GetServiceAccount:input_type -> veho.v1.ServiceAccountName
+	26, // 49: veho.v1.AdminService.DisableServiceAccount:input_type -> veho.v1.ServiceAccountName
+	26, // 50: veho.v1.AdminService.EnableServiceAccount:input_type -> veho.v1.ServiceAccountName
+	26, // 51: veho.v1.AdminService.DeleteServiceAccount:input_type -> veho.v1.ServiceAccountName
+	29, // 52: veho.v1.AdminService.CreateKey:input_type -> veho.v1.CreateKeyRequest
+	32, // 53: veho.v1.AdminService.ListKeys:input_type -> veho.v1.ListKeysRequest
+	34, // 54: veho.v1.AdminService.RevokeKey:input_type -> veho.v1.KeyID
+	35, // 55: veho.v1.AdminService.CreateEntitlement:input_type -> veho.v1.Entitlement
+	36, // 56: veho.v1.AdminService.ListEntitlements:input_type -> veho.v1.ListEntitlementsRequest
+	38, // 57: veho.v1.AdminService.DeleteEntitlement:input_type -> veho.v1.EntitlementID
+	39, // 58: veho.v1.AdminService.GetSettings:input_type -> veho.v1.GetSettingsRequest
+	18, // 59: veho.v1.AdminService.UpdateSettings:input_type -> veho.v1.TenantSettings
+	0,  // 60: veho.v1.EndpointService.CreateEndpoint:output_type -> veho.v1.Endpoint
+	0,  // 61: veho.v1.EndpointService.GetEndpoint:output_type -> veho.v1.Endpoint
+	3,  // 62: veho.v1.EndpointService.ListEndpoints:output_type -> veho.v1.ListEndpointsResponse
+	0,  // 63: veho.v1.EndpointService.UpdateEndpoint:output_type -> veho.v1.Endpoint
+	43, // 64: veho.v1.EndpointService.DeleteEndpoint:output_type -> veho.v1.Empty
+	10, // 65: veho.v1.EndpointService.TestEndpoint:output_type -> veho.v1.EndpointTest
+	8,  // 66: veho.v1.EndpointService.CheckEndpoint:output_type -> veho.v1.EndpointCheck
+	9,  // 67: veho.v1.EndpointService.ListEndpointChecks:output_type -> veho.v1.ListEndpointChecksResponse
+	8,  // 68: veho.v1.EndpointService.GetEndpointCheck:output_type -> veho.v1.EndpointCheck
+	13, // 69: veho.v1.SecretService.PutSecret:output_type -> veho.v1.Secret
+	13, // 70: veho.v1.SecretService.GetSecret:output_type -> veho.v1.Secret
+	15, // 71: veho.v1.SecretService.ListSecrets:output_type -> veho.v1.ListSecretsResponse
+	43, // 72: veho.v1.SecretService.DeleteSecret:output_type -> veho.v1.Empty
+	16, // 73: veho.v1.TenantService.CreateTenant:output_type -> veho.v1.Tenant
+	16, // 74: veho.v1.TenantService.GetTenant:output_type -> veho.v1.Tenant
+	22, // 75: veho.v1.TenantService.ListTenants:output_type -> veho.v1.ListTenantsResponse
+	16, // 76: veho.v1.TenantService.UpdateTenant:output_type -> veho.v1.Tenant
+	25, // 77: veho.v1.AdminService.CreateServiceAccount:output_type -> veho.v1.ServiceAccount
+	28, // 78: veho.v1.AdminService.ListServiceAccounts:output_type -> veho.v1.ListServiceAccountsResponse
+	25, // 79: veho.v1.AdminService.GetServiceAccount:output_type -> veho.v1.ServiceAccount
+	25, // 80: veho.v1.AdminService.DisableServiceAccount:output_type -> veho.v1.ServiceAccount
+	25, // 81: veho.v1.AdminService.EnableServiceAccount:output_type -> veho.v1.ServiceAccount
+	43, // 82: veho.v1.AdminService.DeleteServiceAccount:output_type -> veho.v1.Empty
+	30, // 83: veho.v1.AdminService.CreateKey:output_type -> veho.v1.CreatedKey
+	33, // 84: veho.v1.AdminService.ListKeys:output_type -> veho.v1.ListKeysResponse
+	43, // 85: veho.v1.AdminService.RevokeKey:output_type -> veho.v1.Empty
+	35, // 86: veho.v1.AdminService.CreateEntitlement:output_type -> veho.v1.Entitlement
+	37, // 87: veho.v1.AdminService.ListEntitlements:output_type -> veho.v1.ListEntitlementsResponse
+	43, // 88: veho.v1.AdminService.DeleteEntitlement:output_type -> veho.v1.Empty
+	18, // 89: veho.v1.AdminService.GetSettings:output_type -> veho.v1.TenantSettings
+	18, // 90: veho.v1.AdminService.UpdateSettings:output_type -> veho.v1.TenantSettings
+	60, // [60:91] is the sub-list for method output_type
+	29, // [29:60] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_veho_v1_admin_proto_init() }
@@ -2392,7 +2703,7 @@ func file_veho_v1_admin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_veho_v1_admin_proto_rawDesc), len(file_veho_v1_admin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   35,
+			NumMessages:   40,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

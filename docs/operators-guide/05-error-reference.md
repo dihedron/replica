@@ -23,10 +23,11 @@ The gRPC API answers errors with a status and an `ErrorInfo` detail (domain `veh
 | `unsatisfiable_policy` | `INVALID_ARGUMENT` | 400 | no | The spread asks for more distinct locations than the destinations span, or than `min_copies` |
 | `invalid_endpoint` | `INVALID_ARGUMENT` | 400 | no | The source's driver cannot be a source that reads ranges, a destination's driver cannot be a destination (`http` and `ftp` are sources only), or the driver is not on this node |
 | `not_found` | `NOT_FOUND` | 404 | no | No such object in the caller's tenant (another tenant's objects look the same) |
-| `already_exists` | `ALREADY_EXISTS` | 409 | no | A tenant, endpoint or entitlement with that name exists |
+| `already_exists` | `ALREADY_EXISTS` | 409 | no | A tenant, endpoint, service account or entitlement with that name exists |
 | `idempotency_key_reuse` | `ALREADY_EXISTS` | 409 | no | The caller used the idempotency key for a different request |
 | `invalid_state` | `FAILED_PRECONDITION` | 409 | no | The job's state forbids it: cancelling a settled job, retrying one that did not fail |
 | `in_use` | `FAILED_PRECONDITION` | 409 | no | The endpoint, secret or policy is referenced and cannot be deleted |
+| `too_many_keys` | `FAILED_PRECONDITION` | 409 | no | The service account has 3 active keys: revoke one first |
 | `not_modified` | `ABORTED` | 304 | no | A long poll with `If-None-Match`: the job has not changed |
 | `quota_exceeded` | `RESOURCE_EXHAUSTED` | 429 | yes | The tenant has `max_active_jobs` jobs not yet settled |
 | `rate_limited` | `RESOURCE_EXHAUSTED` | 429 | yes | Too many calls from the tenant or principal, or too many refused credentials from the client's address |

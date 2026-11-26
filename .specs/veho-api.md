@@ -162,7 +162,7 @@ displays an object is `show`, and the process commands are `serve`, `migrate`,
 | `veho policy create \| show \| list \| delete \| validate \| grant \| revoke` | named policies and who may submit them |
 | `veho endpoint create \| show \| list \| update \| delete \| test` | tenant endpoints |
 | `veho secret set \| show \| list \| delete` | tenant secrets (the value is read from a file or standard input, never from an argument) |
-| `veho apikey create \| list \| revoke`, `veho entitlement create \| list \| delete`, `veho settings show \| update` | a tenant admin's administration of its tenant |
+| `veho serviceaccount create \| list \| show \| disable \| enable \| delete`, `veho apikey create --service-account \| list \| revoke`, `veho entitlement create \| list \| delete`, `veho settings show \| update` | a tenant admin's administration of its tenant |
 | `veho tenant create \| show \| list \| update` | the tenants, for platform administrators |
 | `veho version [--verbose]` | the build metadata (name, version, license, author, build and packaging environments) |
 | `veho completion bash \| zsh` | shell completions: a function that asks the binary (go-flags), so they always match it |

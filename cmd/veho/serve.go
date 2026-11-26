@@ -260,7 +260,7 @@ func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *p
 		return nil, fmt.Errorf("serve: %w", err)
 	}
 	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Identities: ids, Secrets: secretStore,
-		RateLimit: cfg.API.RateLimit, Audit: aud, Ready: func(ctx context.Context) error {
+		RateLimit: cfg.API.RateLimit, Keys: cfg.API.Keys, Audit: aud, Ready: func(ctx context.Context) error {
 			if e.Fenced() {
 				return engine.ErrFenced
 			}

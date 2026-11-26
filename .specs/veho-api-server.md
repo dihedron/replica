@@ -51,7 +51,7 @@ Row-level security as for the other tenant tables; authentication reads them thr
 ### 4.2 API keys
 
 - A key is `veho_<id>_<secret>`: `id` 12 random characters (the lookup), `secret` 32 random bytes in base64url. The database keeps `SHA-256(secret)`, compared in constant time. **Amendment to SEC-16**: no argon2id and no pepper, because the secret is 256 random bits: a slow hash protects guessable passwords, not random keys, and costs CPU on every call.
-- Shown once, at creation. Expiry optional; revocation immediate (looked up on every call; `last_used_at` updated at most once a minute).
+- Shown once, at creation. Expiry mandatory (`api.keys`, **amended** by `veho-authentication.md` §8.3: a key belongs to a service account, at most 3 active each); revocation immediate (looked up on every call; `last_used_at` updated at most once a minute).
 
 ### 4.3 Bootstrap
 

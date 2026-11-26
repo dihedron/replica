@@ -87,7 +87,8 @@ The actions:
 | `WEBHOOK_DISABLE`, `WEBHOOK_DELIVERY_ABANDONED` | A webhook switched off after 12 consecutive failed deliveries; an event given up after 12 attempts, or past the cap of 10,000 pending |
 | `SECRET_PUT`, `SECRET_DELETE` | A secret written (a new version) or removed |
 | `TENANT_CREATE`, `TENANT_UPDATE`, `TENANT_SETTINGS` | A tenant created; its state or quotas changed; its own settings changed |
-| `APIKEY_CREATE`, `APIKEY_REVOKE` | An API key issued or revoked |
+| `SERVICEACCOUNT_CREATE`, `SERVICEACCOUNT_DISABLE`, `SERVICEACCOUNT_ENABLE`, `SERVICEACCOUNT_DELETE` | A service account created, disabled, enabled or deleted; a deletion counts the keys and grants it removed |
+| `APIKEY_CREATE`, `APIKEY_REVOKE` | An API key issued, with its service account and expiry, or revoked |
 | `AUTH_REFUSED` | Refused credentials, summed every minute by address, kind and reason; the principal is given only when the identity was verified |
 | `ENTITLEMENT_CREATE`, `ENTITLEMENT_DELETE` | An identity mapped to a tenant and role, or unmapped |
 | `KEK_INIT`, `KEK_ROTATE`, `KEK_REWRAP`, `KEK_REKEY` | The key-encryption key initialised, rotated; data keys re-wrapped; the unwrap key replaced |

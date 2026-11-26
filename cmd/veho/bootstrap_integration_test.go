@@ -90,6 +90,35 @@ func TestBootstrap(t *testing.T) {
 	if err := (&BootstrapAPIKeyCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Name: "x"}).Execute(nil); err == nil {
 		t.Error("a tenant without a role: no error")
 	}
+	// AU-T9: a second key of the same account rotates it; another role, or
+	// a lifetime over 90 days, is refused
+	kc2 := &BootstrapAPIKeyCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Role: "admin", Name: "first-admin"}
+	if k2 := stdout(t, func() error { return kc2.Execute(nil) }); k2 == key || !strings.HasPrefix(k2, "veho_") {
+		t.Errorf("a second key of first-admin: %q", k2)
+	}
+	for _, bad := range []*BootstrapAPIKeyCommand{
+		{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Role: "viewer", Name: "first-admin"},
+		{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Tenant: name, Role: "admin", Name: "long", Expires: 91 * 24 * time.Hour},
+	} {
+		if err := bad.Execute(nil); err == nil {
+			t.Errorf("%s as %s for %s: no error", bad.Name, bad.Role, bad.Expires)
+		}
+	}
+	var expires time.Time
+	if err := func() error {
+		conn, err := db.connect(context.Background(), "test")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = conn.Close(context.Background()) }()
+		return conn.QueryRow(context.Background(), `select min(k.expires_at) from veho.api_keys k join veho.service_accounts s on s.id = k.service_account_id
+			join veho.tenants t on t.id = s.tenant_id where t.name = $1 and s.name = 'first-admin'`, name).Scan(&expires)
+	}(); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Until(expires); d < 89*24*time.Hour || d > 90*24*time.Hour {
+		t.Errorf("a bootstrap key's default lifetime: %v", d)
+	}
 
 	// API-T13: an entitlement by subject, one by group; both or neither refused
 	ec := &BootstrapEntitlementCommand{dbOptions: db, auditOptions: auditOptions{auditor: rec}, Kind: "oidc",
@@ -129,7 +158,7 @@ func TestBootstrap(t *testing.T) {
 		where t.name = $1 and e.subject = 'alice' and e.role = 'operator'`, name).Scan(&n); err != nil || n != 1 {
 		t.Errorf("%d entitlements of alice, %v", n, err)
 	}
-	if strings.Contains(string(events), secret) || len(rec.Events()) != 5 {
+	if strings.Contains(string(events), secret) || len(rec.Events()) != 7 {
 		t.Errorf("events %s", events)
 	}
 }

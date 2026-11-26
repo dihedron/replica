@@ -235,24 +235,25 @@ func (f *fixture) running(t *testing.T, tenant uuid.UUID) string {
 	return id.String()
 }
 
-// key inserts a principal and its key, as veho apikey create does.
+// key inserts a service account and its key, as veho bootstrap apikey does.
 func (f *fixture) key(t *testing.T, tenant *uuid.UUID, role, name string) string {
 	t.Helper()
 	token, _ := f.keyAs(t, tenant, role, name+"-"+uuid.New().String()[:8])
 	return token
 }
 
-// keyAs is key with the principal's exact name; it returns the key and
-// the principal's grantee name.
+// keyAs is key with the service account's exact name; it returns the key
+// and the account's grantee name.
 func (f *fixture) keyAs(t *testing.T, tenant *uuid.UUID, role, name string) (string, string) {
 	t.Helper()
 	token, id, sum := NewKey()
 	ctx := context.Background()
 	var p uuid.UUID
-	if err := f.migrator.QueryRow(ctx, "insert into veho.principals (tenant_id, name, role) values ($1, $2, $3) returning id", tenant, name, role).Scan(&p); err != nil {
+	if err := f.migrator.QueryRow(ctx, "insert into veho.service_accounts (tenant_id, name, role) values ($1, $2, $3) returning id", tenant, name, role).Scan(&p); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.migrator.Exec(ctx, "insert into veho.api_keys (id, principal_id, tenant_id, sha256) values ($1, $2, $3, $4)", id, p, tenant, sum); err != nil {
+	if _, err := f.migrator.Exec(ctx, "insert into veho.api_keys (id, service_account_id, tenant_id, sha256, expires_at) values ($1, $2, $3, $4, now() + interval '1 day')",
+		id, p, tenant, sum); err != nil {
 		t.Fatal(err)
 	}
 	return token, "key:" + name

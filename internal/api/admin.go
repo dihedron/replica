@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"time"
 	"uuid"
 
@@ -384,55 +385,120 @@ func (ts tenants) UpdateTenant(ctx context.Context, r *vehov1.UpdateTenantReques
 	return toTenant(t), nil
 }
 
-// tenantRoles are the roles a tenant admin may give a key.
+// tenantRoles are the roles a tenant admin may give a service account.
 var tenantRoles = map[string]bool{RoleViewer: true, RoleOperator: true, RoleAdmin: true}
 
-// CreateKey implements AdminService: the key is in this answer only.
-func (as admin) CreateKey(ctx context.Context, r *vehov1.CreateKeyRequest) (*vehov1.CreatedKey, error) {
-	t, err := tenant(ctx)
+// scope is the caller's tenant, or nil for a platform administrator
+// calling for the platform: the scope of its service accounts and keys.
+func scope(ctx context.Context) *uuid.UUID { return principal(ctx).Tenant }
+
+func toServiceAccount(a engine.ServiceAccount) *vehov1.ServiceAccount {
+	state := "active"
+	if a.DisabledAt != nil {
+		state = "disabled"
+	}
+	return &vehov1.ServiceAccount{Name: a.Name, Role: a.Role, State: state, CreatedAt: timestamppb.New(a.CreatedAt), DisabledAt: ts(a.DisabledAt),
+		ActiveKeys: a.ActiveKeys}
+}
+
+// CreateServiceAccount implements AdminService: a tenant's accounts have a
+// tenant role, the platform's are platform-admin.
+func (as admin) CreateServiceAccount(ctx context.Context, r *vehov1.CreateServiceAccountRequest) (*vehov1.ServiceAccount, error) {
+	sc, role := scope(ctx), r.GetRole()
+	if sc == nil && role == "" {
+		role = RolePlatformAdmin
+	}
+	if r.GetName() == "" || (sc != nil && !tenantRoles[role]) || (sc == nil && role != RolePlatformAdmin) {
+		return nil, fail(pInvalid, "a name and a role are required: viewer, operator or admin in a tenant, platform-admin in the platform")
+	}
+	a, err := as.s.engine.CreateServiceAccount(ctx, sc, r.GetName(), role)
 	if err != nil {
 		return nil, err
 	}
-	if !tenantRoles[r.GetRole()] || r.GetName() == "" || r.GetExpiresIn() < 0 {
-		return nil, fail(pInvalid, "a name, a role (viewer, operator, admin) and a non-negative expiry are required")
+	return toServiceAccount(a), nil
+}
+
+// ListServiceAccounts implements AdminService.
+func (as admin) ListServiceAccounts(ctx context.Context, _ *vehov1.ListServiceAccountsRequest) (*vehov1.ListServiceAccountsResponse, error) {
+	all, err := as.s.engine.ListServiceAccounts(ctx, scope(ctx))
+	if err != nil {
+		return nil, err
 	}
-	var expires *time.Time
-	if r.GetExpiresIn() > 0 {
-		e := time.Now().Add(time.Duration(r.GetExpiresIn()) * time.Second)
-		expires = &e
+	out := &vehov1.ListServiceAccountsResponse{}
+	for _, a := range all {
+		out.ServiceAccounts = append(out.ServiceAccounts, toServiceAccount(a))
+	}
+	return out, nil
+}
+
+// GetServiceAccount implements AdminService.
+func (as admin) GetServiceAccount(ctx context.Context, r *vehov1.ServiceAccountName) (*vehov1.ServiceAccount, error) {
+	a, err := as.s.engine.GetServiceAccount(ctx, scope(ctx), r.GetName())
+	if err != nil {
+		return nil, err
+	}
+	return toServiceAccount(a), nil
+}
+
+// DisableServiceAccount implements AdminService: its keys are refused from
+// the next call.
+func (as admin) DisableServiceAccount(ctx context.Context, r *vehov1.ServiceAccountName) (*vehov1.ServiceAccount, error) {
+	a, err := as.s.engine.SetServiceAccountDisabled(ctx, scope(ctx), r.GetName(), true)
+	if err != nil {
+		return nil, err
+	}
+	return toServiceAccount(a), nil
+}
+
+// EnableServiceAccount implements AdminService.
+func (as admin) EnableServiceAccount(ctx context.Context, r *vehov1.ServiceAccountName) (*vehov1.ServiceAccount, error) {
+	a, err := as.s.engine.SetServiceAccountDisabled(ctx, scope(ctx), r.GetName(), false)
+	if err != nil {
+		return nil, err
+	}
+	return toServiceAccount(a), nil
+}
+
+// DeleteServiceAccount implements AdminService: its keys and grants go too.
+func (as admin) DeleteServiceAccount(ctx context.Context, r *vehov1.ServiceAccountName) (*vehov1.Empty, error) {
+	return &vehov1.Empty{}, as.s.engine.DeleteServiceAccount(ctx, scope(ctx), r.GetName())
+}
+
+// CreateKey implements AdminService: the key is in this answer only. Its
+// expiry is mandatory, api.keys.default_lifetime unless given, and at most
+// api.keys.max_lifetime.
+func (as admin) CreateKey(ctx context.Context, r *vehov1.CreateKeyRequest) (*vehov1.CreatedKey, error) {
+	life := time.Duration(r.GetExpiresIn()) * time.Second
+	if r.GetServiceAccount() == "" || r.GetExpiresIn() < 0 || r.GetExpiresIn() > int64(as.s.keys.MaxLifetime/time.Second) {
+		return nil, fail(pInvalid, fmt.Sprintf("a service account is required, and an expiry of at most %s", as.s.keys.MaxLifetime))
+	}
+	if life == 0 {
+		life = as.s.keys.DefaultLifetime
 	}
 	token, id, sum := NewKey()
-	if err := as.s.engine.CreateKey(ctx, t, r.GetName(), r.GetRole(), id, sum, expires); err != nil {
+	if err := as.s.engine.CreateKey(ctx, scope(ctx), r.GetServiceAccount(), id, sum, time.Now().Add(life)); err != nil {
 		return nil, err
 	}
 	return &vehov1.CreatedKey{Id: id, Key: token}, nil
 }
 
 // ListKeys implements AdminService: no secret.
-func (as admin) ListKeys(ctx context.Context, _ *vehov1.ListKeysRequest) (*vehov1.ListKeysResponse, error) {
-	t, err := tenant(ctx)
-	if err != nil {
-		return nil, err
-	}
-	all, err := as.s.engine.ListKeys(ctx, t)
+func (as admin) ListKeys(ctx context.Context, r *vehov1.ListKeysRequest) (*vehov1.ListKeysResponse, error) {
+	all, err := as.s.engine.ListKeys(ctx, scope(ctx), r.GetServiceAccount())
 	if err != nil {
 		return nil, err
 	}
 	out := &vehov1.ListKeysResponse{}
 	for _, k := range all {
-		out.Keys = append(out.Keys, &vehov1.ApiKey{Id: k.ID, Principal: k.Principal, Role: k.Role, CreatedAt: timestamppb.New(k.CreatedAt),
-			ExpiresAt: ts(k.ExpiresAt), RevokedAt: ts(k.RevokedAt), LastUsedAt: ts(k.LastUsedAt)})
+		out.Keys = append(out.Keys, &vehov1.ApiKey{Id: k.ID, ServiceAccount: k.ServiceAccount, Role: k.Role, CreatedAt: timestamppb.New(k.CreatedAt),
+			ExpiresAt: timestamppb.New(k.ExpiresAt), RevokedAt: ts(k.RevokedAt), LastUsedAt: ts(k.LastUsedAt)})
 	}
 	return out, nil
 }
 
 // RevokeKey implements AdminService.
 func (as admin) RevokeKey(ctx context.Context, r *vehov1.KeyID) (*vehov1.Empty, error) {
-	t, err := tenant(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &vehov1.Empty{}, as.s.engine.RevokeKey(ctx, t, r.GetId())
+	return &vehov1.Empty{}, as.s.engine.RevokeKey(ctx, scope(ctx), r.GetId())
 }
 
 func toEntitlement(e engine.Entitlement) *vehov1.Entitlement {

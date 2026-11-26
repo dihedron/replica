@@ -425,33 +425,111 @@ func (cmd *SecretDeleteCommand) Execute([]string) error {
 	return cmd.call("veho.v1.SecretService.DeleteSecret", &vehov1.SecretName{Name: cmd.Args.Name}, &vehov1.Empty{})
 }
 
+// ServiceAccountCommand is "veho serviceaccount".
+type ServiceAccountCommand struct {
+	Create  ServiceAccountCreateCommand  `command:"create" description:"Create a service account, whose API keys rotate under its grants"`
+	List    ServiceAccountListCommand    `command:"list" description:"List the service accounts"`
+	Show    ServiceAccountShowCommand    `command:"show" description:"Show a service account"`
+	Disable ServiceAccountDisableCommand `command:"disable" description:"Disable a service account: all its keys are refused at once"`
+	Enable  ServiceAccountEnableCommand  `command:"enable" description:"Enable a disabled service account"`
+	Delete  ServiceAccountDeleteCommand  `command:"delete" description:"Delete a service account, its keys and the grants that name it"`
+}
+
+// ServiceAccountCreateCommand is "veho serviceaccount create".
+type ServiceAccountCreateCommand struct {
+	apiOptions
+	nameArg
+	Role string `long:"role" choice:"viewer" choice:"operator" choice:"admin" choice:"platform-admin" description:"Its role: a tenant role, or platform-admin (the default) for the platform"`
+}
+
+// Execute creates the service account.
+func (cmd *ServiceAccountCreateCommand) Execute([]string) error {
+	return cmd.show("veho.v1.AdminService.CreateServiceAccount", &vehov1.CreateServiceAccountRequest{Name: cmd.Args.Name, Role: cmd.Role}, &vehov1.ServiceAccount{})
+}
+
+// ServiceAccountListCommand is "veho serviceaccount list".
+type ServiceAccountListCommand struct{ apiOptions }
+
+// Execute prints the service accounts.
+func (cmd *ServiceAccountListCommand) Execute([]string) error {
+	return cmd.show("veho.v1.AdminService.ListServiceAccounts", &vehov1.ListServiceAccountsRequest{}, &vehov1.ListServiceAccountsResponse{},
+		"name", "role", "state", "active_keys")
+}
+
+// ServiceAccountShowCommand is "veho serviceaccount show".
+type ServiceAccountShowCommand struct {
+	apiOptions
+	nameArg
+}
+
+// Execute prints the service account.
+func (cmd *ServiceAccountShowCommand) Execute([]string) error {
+	return cmd.show("veho.v1.AdminService.GetServiceAccount", &vehov1.ServiceAccountName{Name: cmd.Args.Name}, &vehov1.ServiceAccount{})
+}
+
+// ServiceAccountDisableCommand is "veho serviceaccount disable".
+type ServiceAccountDisableCommand struct {
+	apiOptions
+	nameArg
+}
+
+// Execute disables the service account.
+func (cmd *ServiceAccountDisableCommand) Execute([]string) error {
+	return cmd.show("veho.v1.AdminService.DisableServiceAccount", &vehov1.ServiceAccountName{Name: cmd.Args.Name}, &vehov1.ServiceAccount{})
+}
+
+// ServiceAccountEnableCommand is "veho serviceaccount enable".
+type ServiceAccountEnableCommand struct {
+	apiOptions
+	nameArg
+}
+
+// Execute enables the service account.
+func (cmd *ServiceAccountEnableCommand) Execute([]string) error {
+	return cmd.show("veho.v1.AdminService.EnableServiceAccount", &vehov1.ServiceAccountName{Name: cmd.Args.Name}, &vehov1.ServiceAccount{})
+}
+
+// ServiceAccountDeleteCommand is "veho serviceaccount delete".
+type ServiceAccountDeleteCommand struct {
+	apiOptions
+	nameArg
+}
+
+// Execute deletes the service account.
+func (cmd *ServiceAccountDeleteCommand) Execute([]string) error {
+	return cmd.call("veho.v1.AdminService.DeleteServiceAccount", &vehov1.ServiceAccountName{Name: cmd.Args.Name}, &vehov1.Empty{})
+}
+
 // APIKeyCommand is "veho apikey".
 type APIKeyCommand struct {
-	Create APIKeyCreateCommand `command:"create" description:"Create a principal and its API key; the key is printed once"`
-	List   APIKeyListCommand   `command:"list" description:"List the tenant's API keys (never their secrets)"`
+	Create APIKeyCreateCommand `command:"create" description:"Create an API key of a service account; the key is printed once"`
+	List   APIKeyListCommand   `command:"list" description:"List the API keys (never their secrets)"`
 	Revoke APIKeyRevokeCommand `command:"revoke" description:"Revoke an API key at once"`
 }
 
 // APIKeyCreateCommand is "veho apikey create".
 type APIKeyCreateCommand struct {
 	apiOptions
-	Name    string `long:"name" required:"true" description:"The principal's name"`
-	Role    string `long:"role" required:"true" choice:"viewer" choice:"operator" choice:"admin" description:"Its role"`
-	Expires int64  `long:"expires-in" description:"Seconds until it expires; 0 never"`
+	ServiceAccount string        `long:"service-account" required:"true" description:"The service account whose key it is"`
+	Expires        time.Duration `long:"expires" description:"Its lifetime; the cluster's default (api.keys.default_lifetime) if not given"`
 }
 
 // Execute creates the key and prints it, once.
 func (cmd *APIKeyCreateCommand) Execute([]string) error {
-	return cmd.show("veho.v1.AdminService.CreateKey", &vehov1.CreateKeyRequest{Name: cmd.Name, Role: cmd.Role, ExpiresIn: cmd.Expires}, &vehov1.CreatedKey{})
+	return cmd.show("veho.v1.AdminService.CreateKey", &vehov1.CreateKeyRequest{ServiceAccount: cmd.ServiceAccount, ExpiresIn: int64(cmd.Expires / time.Second)},
+		&vehov1.CreatedKey{})
 }
 
 // APIKeyListCommand is "veho apikey list".
-type APIKeyListCommand struct{ apiOptions }
+type APIKeyListCommand struct {
+	apiOptions
+	ServiceAccount string `long:"service-account" description:"Only this service account's keys"`
+}
 
 // Execute prints the keys.
 func (cmd *APIKeyListCommand) Execute([]string) error {
-	return cmd.show("veho.v1.AdminService.ListKeys", &vehov1.ListKeysRequest{}, &vehov1.ListKeysResponse{},
-		"id", "principal", "role", "expires_at", "revoked_at", "last_used_at")
+	return cmd.show("veho.v1.AdminService.ListKeys", &vehov1.ListKeysRequest{ServiceAccount: cmd.ServiceAccount}, &vehov1.ListKeysResponse{},
+		"id", "service_account", "role", "expires_at", "revoked_at", "last_used_at")
 }
 
 // APIKeyRevokeCommand is "veho apikey revoke".

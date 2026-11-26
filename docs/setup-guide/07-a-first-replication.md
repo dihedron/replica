@@ -13,7 +13,7 @@ veho bootstrap apikey --tenant acme --role admin --name alice > alice.key
 chmod 600 alice.key
 ```
 
-`veho bootstrap apikey` prints the new API key once; veho stores only its hash. `--platform-admin` instead of `--tenant` makes a platform administrator, who manages tenants and nothing inside them. Identities from an OIDC provider or a SPIFFE trust domain get their tenant and role from **entitlements** (`veho bootstrap entitlement`, then `veho entitlement create` through the API).
+`veho bootstrap apikey` creates the service account `alice` and prints its new API key once; veho stores only its hash. The key expires in 90 days (`--expires` shortens it); running the command again with the same `--name` adds a key to the account, which is how a bootstrap key is rotated. `--platform-admin` instead of `--tenant` makes a platform administrator, who manages tenants and nothing inside them. Identities from an OIDC provider or a SPIFFE trust domain get their tenant and role from **entitlements** (`veho bootstrap entitlement`, then `veho entitlement create` through the API).
 
 ## The command-line client
 
