@@ -38,7 +38,7 @@ func printed(t *testing.T, format string, colours bool, msg proto.Message, colum
 func TestFormatTable(t *testing.T) {
 	real := colour
 	list := printed(t, "table", false, &vehov1.ListJobsResponse{Jobs: []*vehov1.Job{failedJob(), {Id: "j2", State: "RUNNING"}}}, "id", "state")
-	for _, want := range []string{"ID", "STATE", "j1", "FAILED", "j2", "RUNNING", "╭"} {
+	for _, want := range []string{"ID", "STATE", "j1", "FAILED", "j2", "RUNNING", "┌"} {
 		if !strings.Contains(list, want) {
 			t.Errorf("the list lacks %q:\n%s", want, list)
 		}
@@ -52,9 +52,9 @@ func TestFormatTable(t *testing.T) {
 			t.Errorf("the object lacks %q:\n%s", want, obj)
 		}
 	}
-	// each transfer is a table of its own, the rows apart by a line
-	if strings.Count(obj, "│ id ") != 3 || !strings.Contains(obj, "├") {
-		t.Errorf("not one table per transfer, or no line between rows:\n%s", obj)
+	// the transfers: a table with a row per transfer under its header
+	if !strings.Contains(obj, "│ ID │ STATE") || strings.Count(obj, "├") < 5 {
+		t.Errorf("no table of the transfers, or no line between rows:\n%s", obj)
 	}
 	// nested values are tables in the value's cell, and so on within them
 	if strings.Contains(obj, "endpoint=a-source") || strings.Contains(obj, "region=region-b") {
@@ -118,5 +118,37 @@ func TestFormatRefused(t *testing.T) {
 	_, err := flags.NewParser(&command, flags.HelpFlag).ParseArgs([]string{"job", "list", "-F", "xml"})
 	if err == nil || !strings.Contains(err.Error(), "xml") {
 		t.Errorf("-F xml: %v", err)
+	}
+}
+
+// CLI-T5: a nested table fills its cell, its lines meeting the cell's
+// borders, and every line is as wide as the others.
+func TestGridJoints(t *testing.T) {
+	got := printed(t, "table", false, &vehov1.Identity{Name: "oidc:https://idp#alice", Kind: "oidc",
+		Tenants: []*vehov1.TenantRole{{Tenant: "demo", Role: "admin"}, {Tenant: "platform", Role: "platform-admin"}}})
+	want := `┌─────────┬───────────────────────────┐
+│ FIELD   │ VALUE                     │
+├─────────┼───────────────────────────┤
+│ name    │ oidc:https://idp#alice    │
+├─────────┼───────────────────────────┤
+│ kind    │ oidc                      │
+├─────────┼────────────────┬──────────┤
+│ tenants │ ROLE           │ TENANT   │
+│         ├────────────────┼──────────┤
+│         │ admin          │ demo     │
+│         ├────────────────┼──────────┤
+│         │ platform-admin │ platform │
+└─────────┴────────────────┴──────────┘
+`
+	if got != want {
+		t.Errorf("got\n%s\nwant\n%s", got, want)
+	}
+	job := printed(t, "table", false, failedJob())
+	lines := strings.Split(strings.TrimSuffix(job, "\n"), "\n")
+	for _, l := range lines {
+		if width(l) != width(lines[0]) {
+			t.Errorf("a line of another width:\n%s", job)
+			break
+		}
 	}
 }
