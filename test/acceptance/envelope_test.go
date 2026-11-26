@@ -248,6 +248,7 @@ func TestEnvelopeCell(t *testing.T) {
 
 	// the injections: their elections are on purpose, never counted
 	injectEnd := time.Now().Add(inject)
+	lab := true // false: a lab failure invalidates the cell
 	if leader := l.Leader(); leader != "" {
 		t0 := time.Now()
 		l.Sh("db", "kill", leader[len("db-"):])
@@ -265,8 +266,14 @@ func TestEnvelopeCell(t *testing.T) {
 			}
 			time.Sleep(time.Second)
 		}
-		l.Sh("db", "start", leader[len("db-"):])
 		t.Logf("failover: %d s after killing %s", row.Failover, leader)
+		if out, err := l.TrySh("db", "start", leader[len("db-"):]); err != nil {
+			// the lab, not the product: the killed member did not rejoin in
+			// time over this WAN; the campaign waits for it before the next
+			// cell, and this one is run again
+			t.Logf("%s did not rejoin: %v: %s", leader, err, out)
+			lab = false
+		}
 	}
 	row.Adoption = adoption(t, l, tn, r)
 	if wait := time.Until(injectEnd); wait > 0 {
@@ -288,7 +295,7 @@ func TestEnvelopeCell(t *testing.T) {
 			row.HostLoad = load / max(cpus, 1)
 		}
 	}
-	row.Valid = row.HostLoad <= 1 && row.HostSteal <= 10 // decision 7
+	row.Valid = lab && row.HostLoad <= 1 && row.HostSteal <= 10 // decision 7
 	appendRow(t, results, row)
 	t.Logf("row: %+v", row)
 }

@@ -5,7 +5,7 @@
 # which appends its row to test/lab/.evidence/envelope/results.csv. The
 # plan and the report come from test/envelope.
 
-ENVELOPE_DIR="$LAB_DIR/.evidence/envelope"
+ENVELOPE_DIR="${LAB_ENVELOPE_DIR:-$LAB_DIR/.evidence/envelope}" # the smoke run (EN-T4) writes elsewhere
 
 envelope() { (cd "$REPO_DIR" && go run ./test/envelope/cmd/envelope "$@"); }
 
@@ -70,15 +70,16 @@ envelope_settle() {
 	return 1
 }
 
-# campaign_envelope DIR --phase A|B [--rtt R,R] [--dry-run] | --report
+# campaign_envelope DIR --phase A|B [--rtt R,R] [--only CELL] [--dry-run] | --report
 campaign_envelope() {
-	local dir="$1" phase="" rtts="" dry=false observe="${LAB_ENVELOPE_OBSERVE:-45m}" inject="${LAB_ENVELOPE_INJECT:-10m}"
+	local dir="$1" phase="" rtts="" only="" dry=false observe="${LAB_ENVELOPE_OBSERVE:-45m}" inject="${LAB_ENVELOPE_INJECT:-10m}"
 	shift
 	local results="$ENVELOPE_DIR/results.csv"
 	while (($#)); do
 		case "$1" in
 		--phase) phase="${2:?--phase: A or B}" && shift 2 ;;
 		--rtt) rtts="${2:?--rtt: ms,ms}" && shift 2 ;;
+		--only) only="${2:?--only: a cell}" && shift 2 ;;
 		--dry-run) dry=true && shift ;;
 		--report) envelope report --results "$results" && return ;;
 		*) die "usage: lab.sh campaign envelope --phase A|B [--rtt R,R] [--dry-run] | --report" ;;
@@ -87,6 +88,8 @@ campaign_envelope() {
 	[[ -n "$phase" ]] || die "campaign envelope: --phase A or B"
 	local plan
 	plan="$(envelope plan --phase "$phase" --rtt "$rtts" --results "$results")" || die "campaign envelope: no plan"
+	[[ -z "$only" ]] || plan="$(awk -v c="$only" '$1 == c' <<<"$plan")"
+	[[ -n "$plan" ]] || die "campaign envelope: no cell to run"
 	if $dry; then
 		echo "$plan"
 		return
@@ -97,6 +100,7 @@ campaign_envelope() {
 	while read -r id rtt link shifted profile; do
 		[[ -n "$id" ]] || continue
 		section "Cell $id ($profile, links $link$([[ "$shifted" == - ]] || echo ", then $shifted"))"
+		envelope_db_ready || die "campaign envelope: the database has not two streaming standbys"
 		db_profile "$rtt"
 		wan_set --link "a-b=$link" --link "a-c=$link" --link "b-c=$link" >/dev/null
 		if ! envelope_settle; then
@@ -106,16 +110,29 @@ campaign_envelope() {
 		fi
 		envelope_cell "$dir" "$id" "$rtt" "$shifted" "$profile" "$results" "$observe" "$inject"
 	done <<<"$plan"
-	db_profile
 	wan_set "$LAB_WAN_PROFILE" >/dev/null
-	envelope report --results "$results" | tee "$dir/report.md"
+	envelope_db_ready || warn "campaign envelope: the database is not back to two streaming standbys"
+	db_profile
+	envelope report --results "$results" --phase "$phase" | tee "$dir/report.md"
+}
+
+# envelope_db_ready: a leader and two streaming standbys, as a killed
+# member rejoins (a base backup over the cell's WAN can take long); 30
+# minutes at most.
+envelope_db_ready() {
+	local i
+	for i in $(seq 1 180); do
+		[[ "$(db_members 2>/dev/null | jq '[.[] | select(.State == "streaming")] | length' 2>/dev/null)" == 2 ]] && return 0
+		sleep 10
+	done
+	return 1
 }
 
 # envelope_cell DIR ID RTT SHIFTED PROFILE RESULTS OBSERVE INJECT: one cell's
 # measurements, by TestEnvelopeCell.
 envelope_cell() {
 	local dir="$1"
-	VEHO_ENVELOPE_CELL="$2" VEHO_ENVELOPE_RTT="$3" VEHO_ENVELOPE_SHIFT="$4" VEHO_ENVELOPE_PROFILE="$5" \
+	LAB_DB_REJOIN_WAIT=900 VEHO_ENVELOPE_CELL="$2" VEHO_ENVELOPE_RTT="$3" VEHO_ENVELOPE_SHIFT="$4" VEHO_ENVELOPE_PROFILE="$5" \
 		VEHO_ENVELOPE_RESULTS="$6" VEHO_ENVELOPE_OBSERVE="$7" VEHO_ENVELOPE_INJECT="$8" \
 		VEHO_ENVELOPE_INVALID="${ENVELOPE_INVALID:-}" \
 		campaign_go "$dir/$2" 2h -run 'TestEnvelopeCell$' >/dev/null 2>&1 ||
