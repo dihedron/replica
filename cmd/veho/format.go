@@ -8,8 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/table"
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -63,6 +61,9 @@ func (o *apiOptions) print(msg proto.Message, columns ...string) error {
 				rows = list
 			}
 		}
+		if o.Wide {
+			columns = allColumns(rows, columns)
+		}
 		_, err := fmt.Fprintln(w, p.list(rows, columns))
 		return err
 	}
@@ -70,73 +71,56 @@ func (o *apiOptions) print(msg proto.Message, columns ...string) error {
 	return err
 }
 
-// painter draws the tables, in colour when on.
+// painter turns JSON values into grids, coloured when on.
 type painter struct{ on bool }
 
-var (
-	headerColour = lipgloss.Color("6") // cyan
-	stateColours = map[string]string{
-		"SUCCEEDED": "2", "active": "2", "true": "2",
-		"FAILED": "1", "disabled": "1", "CANCELLED": "1",
-	}
-	pending = lipgloss.Color("3") // the other states of a job or transfer
+// The colours: bold cyan headers, green and red states, yellow the others
+// of a job or transfer.
+const (
+	headerColour  = "\x1b[1;36m"
+	pendingColour = "\x1b[33m"
 )
 
-// cell styles a cell of the column col: the header, and the states.
-func (p painter) style(header bool, col, value string) lipgloss.Style {
-	s := lipgloss.NewStyle().Padding(0, 1)
-	if !p.on {
-		return s
-	}
-	if header {
-		return s.Bold(true).Foreground(headerColour)
-	}
-	if col == "state" || col == "STATE" {
-		if c, ok := stateColours[value]; ok {
-			return s.Foreground(lipgloss.Color(c))
-		}
-		if value != "" && value != "-" {
-			return s.Foreground(pending)
-		}
-	}
-	return s
+var stateColours = map[string]string{
+	"SUCCEEDED": "\x1b[32m", "active": "\x1b[32m",
+	"FAILED": "\x1b[31m", "disabled": "\x1b[31m", "CANCELLED": "\x1b[31m",
 }
 
-func (p painter) table(headers []string, rows [][]string) string {
-	t := table.New().Border(lipgloss.RoundedBorder()).Headers(headers...).Rows(rows...)
-	if !p.on {
-		t = t.BorderStyle(lipgloss.NewStyle())
-	} else {
-		t = t.BorderStyle(lipgloss.NewStyle().Faint(true))
+// stateColour is the colour of a value of the field or column name.
+func stateColour(name, value string) string {
+	if name != "state" {
+		return ""
 	}
-	return t.StyleFunc(func(row, col int) lipgloss.Style {
-		if row == table.HeaderRow {
-			return p.style(true, "", "")
-		}
-		name := headers[col]
-		if name == "VALUE" { // a table of fields: the row's field names the value
-			name = rows[row][0]
-		}
-		return p.style(false, name, rows[row][col])
-	}).String()
+	if c, ok := stateColours[value]; ok {
+		return c
+	}
+	if value != "" && value != "-" {
+		return pendingColour
+	}
+	return ""
 }
 
-// list is a table of rows (JSON objects) in columns.
-func (p painter) list(rows []any, columns []string) string {
-	headers := make([]string, len(columns))
+func header(columns []string) []gridCell {
+	row := make([]gridCell, len(columns))
 	for i, c := range columns {
-		headers[i] = strings.ToUpper(c)
+		row[i] = gridCell{text: strings.ToUpper(c), colour: headerColour}
 	}
-	cells := make([][]string, 0, len(rows))
+	return row
+}
+
+// list is a table of rows (JSON objects) in columns: nested values are
+// tables in their cells, as in an object's.
+func (p painter) list(rows []any, columns []string) string {
+	g := &grid{rows: [][]gridCell{header(columns)}}
 	for _, r := range rows {
 		row, _ := r.(map[string]any)
-		line := make([]string, len(columns))
+		line := make([]gridCell, len(columns))
 		for i, c := range columns {
-			line[i] = text(row[c])
+			line[i] = p.value(c, row[c])
 		}
-		cells = append(cells, line)
+		g.rows = append(g.rows, line)
 	}
-	return p.table(headers, cells)
+	return g.render(p.on)
 }
 
 // first are the fields shown before the others, which are sorted.
@@ -160,29 +144,65 @@ func ordered(m map[string]any) []string {
 	return keys
 }
 
-// object is a table of an object's fields; each list of objects in it is a
-// table of its own, below.
+// object is a table of an object's fields under a FIELD/VALUE header.
 func (p painter) object(fields map[string]any) string {
-	var rows [][]string
-	var below []string
+	g := p.fields(fields)
+	g.rows = append([][]gridCell{header([]string{"field", "value"})}, g.rows...)
+	return g.render(p.on)
+}
+
+// fields is a grid of an object's fields and values.
+func (p painter) fields(fields map[string]any) *grid {
+	g := &grid{}
 	for _, k := range ordered(fields) {
-		if list, ok := fields[k].([]any); ok && len(list) > 0 && isObjects(list) {
-			cols := map[string]any{}
-			for _, r := range list {
-				for c := range r.(map[string]any) {
-					cols[c] = nil
-				}
-			}
-			below = append(below, strings.ToUpper(k)+"\n"+p.list(list, ordered(cols)))
-			continue
+		g.rows = append(g.rows, []gridCell{{text: k}, p.value(k, fields[k])})
+	}
+	return g
+}
+
+// value is the cell of a field: a nested object is a grid of its fields, a
+// list of objects a grid with a row per object under its columns' header,
+// and so on within them; anything else its text.
+func (p painter) value(name string, v any) gridCell {
+	switch x := v.(type) {
+	case map[string]any:
+		if len(x) > 0 {
+			return gridCell{sub: p.fields(x)}
 		}
-		rows = append(rows, []string{k, text(fields[k])})
+	case []any:
+		if len(x) > 0 && isObjects(x) {
+			columns := allColumns(x, nil)
+			g := &grid{rows: [][]gridCell{header(columns)}}
+			for _, e := range x {
+				row := make([]gridCell, len(columns))
+				for i, c := range columns {
+					row[i] = p.value(c, e.(map[string]any)[c])
+				}
+				g.rows = append(g.rows, row)
+			}
+			return gridCell{sub: g}
+		}
 	}
-	out := p.table([]string{"FIELD", "VALUE"}, rows)
-	for _, b := range below {
-		out += "\n" + b
+	t := text(v)
+	return gridCell{text: t, colour: stateColour(name, t)}
+}
+
+// allColumns are every field of rows, the main columns first in their
+// order, then the others as an object's fields are ordered (--wide).
+func allColumns(rows []any, main []string) []string {
+	seen, rest := map[string]bool{}, map[string]any{}
+	for _, c := range main {
+		seen[c] = true
 	}
-	return out
+	for _, r := range rows {
+		row, _ := r.(map[string]any)
+		for c := range row {
+			if !seen[c] {
+				rest[c] = nil
+			}
+		}
+	}
+	return append(append([]string{}, main...), ordered(rest)...)
 }
 
 func isObjects(list []any) bool {
