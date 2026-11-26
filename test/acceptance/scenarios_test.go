@@ -584,11 +584,19 @@ func TestAC20RollingUpgrade(t *testing.T) {
 	j2 := tn.Submit(upgraded, "a", "obj", tn.Policy("v2", cDest, nil))
 	settled(t, tn, tn.Wait(old, j1.GetId(), 15*time.Minute), want, "v1", cDest)
 	settled(t, tn, tn.Wait(upgraded, j2.GetId(), 15*time.Minute), want, "v2", cDest)
-	if n := l.Pending("1", j1.GetId()); n != 0 {
-		t.Fatalf("%d workflows of version 1 still pending after their job settled", n)
+	// a job settles a moment before DBOS records the end of its workflow
+	drained := func(version, job string) int {
+		n := l.Pending(version, job)
+		for deadline := time.Now().Add(30 * time.Second); n != 0 && time.Now().Before(deadline); n = l.Pending(version, job) {
+			time.Sleep(time.Second)
+		}
+		return n
 	}
-	if n := l.Pending("2", j2.GetId()); n != 0 {
-		t.Fatalf("%d workflows of version 2 still pending after their job settled", n)
+	if n := drained("1", j1.GetId()); n != 0 {
+		t.Fatalf("%d workflows of version 1 still pending 30 s after their job settled", n)
+	}
+	if n := drained("2", j2.GetId()); n != 0 {
+		t.Fatalf("%d workflows of version 2 still pending 30 s after their job settled", n)
 	}
 	// nothing of version 1 is left: the last old nodes can go
 	l.Sh(append([]string{"nodes", "deploy", "--workflow-version", "2"}, keep...)...)
