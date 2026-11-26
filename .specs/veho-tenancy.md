@@ -8,13 +8,13 @@ Status: draft, 2026-11-21, for review.
 
 - **SEC-1** Every persistent record and every workflow carries `tenant_id`.
   Workflow IDs and idempotency keys are namespaced by tenant.
-- **SEC-2** Tenant is derived **only** from the authenticated principal.
+- **SEC-2** Tenant is derived **only** from the authenticated principal: from its API key's service account, or from its entitlements, among which the caller names one (amended 2026-11-25, `veho-authentication.md` §4).
 - **SEC-3** A tenant owns: endpoints (with credential references), named
   policies, jobs/transfers, quotas, API keys / OIDC mapping.
 - **SEC-4** Roles per tenant: `admin` (endpoints, policies, keys, quotas
   within limits), `operator` (jobs: submit/cancel/retry/read), `viewer`
   (read-only). A role is the default; the right to submit a job under a given
-  policy is granted per policy (SEC-21). A global `platform-admin` role manages tenants and global
+  policy is granted per policy (SEC-21). `member` has only what its grants give, and `integrator` only manages the access it owns (amended 2026-11-25, `veho-authentication.md` §3.2, §9; to be implemented). A global `platform-admin` role manages tenants and global
   limits, and cannot read tenant data without an explicit audited
   break-glass action.
 
@@ -122,7 +122,7 @@ resources with the node's network position.
 
 - **SEC-15** TLS 1.2+ everywhere (API, Postgres, etcd, inter-node); mTLS for
   Postgres/etcd.
-- **SEC-16** API keys stored hashed, shown once: SHA-256 of a 256-bit random secret, without a pepper, since a slow hash protects guessable passwords, not random keys (`veho-api-server.md` §4.2).
+- **SEC-16** API keys stored hashed, shown once: SHA-256 of a 256-bit random secret, without a pepper, since a slow hash protects guessable passwords, not random keys (`veho-api-server.md` §4.2). Their expiry is mandatory, and a service account may have several (amended 2026-11-25, `veho-authentication.md` §8.3; to be implemented).
 - **SEC-23** The gRPC interface authenticates every call and every stream (API-11); authorization, quotas, rate limits and audit are the same interceptors for gRPC and for the REST gateway, so there is no path that skips them (T-36).
 - **SEC-20** Identity mechanisms accepted by the API, each mapped to a tenant
   and a role by an entitlement configured by a tenant admin (never by the
@@ -133,7 +133,8 @@ resources with the node's network position.
   a role in a tenant. The same mechanisms authenticate node-to-node calls.
 - **SEC-21** Policy permissions. A named policy carries grants: a principal or
   a group has `submit` (trigger jobs under it), `read` or `manage` (change it
-  and its grants). Submitting by reference requires `submit` on that policy;
+  and its grants), or `view` (see the jobs under it: amended 2026-11-25,
+  `veho-authentication.md` §3.3; to be implemented). Submitting by reference requires `submit` on that policy;
   submitting an ad-hoc (inline) policy requires the tenant setting
   `allow_inline_policies` and the permission `submit_inline`, so a tenant can
   force every job through governed policies. Authorization is checked on every
@@ -144,7 +145,9 @@ resources with the node's network position.
   code with PKCE; session cookie `HttpOnly`, `Secure`, `SameSite=Strict`;
   CSRF protection on every state-changing call; strict Content-Security-Policy
   (no inline script), `frame-ancestors 'none'`, no third-party assets; it never
-  displays a secret or a credential value.
+  displays a secret or a credential value. The cookie of a login in progress
+  is `SameSite=Lax`, and the session keeps the OIDC tokens envelope-encrypted
+  on the server (amended 2026-11-25, `veho-authentication.md` §6).
 - **SEC-17** Audit log, specified in `veho-audit-housekeeping.md` (append-only table, hash chain, signed checkpoints, log stream): tenant, principal,
   action, resource, result, request ID — for submissions, cancellations,
   endpoint and credential changes, break-glass.
@@ -157,5 +160,6 @@ resources with the node's network position.
 ## 7. Tenant lifecycle
 
 Create → active → suspended (no new jobs; running jobs continue or pause per
-flag) → deleted (cancel jobs, abort uploads, purge rows and secrets after
-retention). Destination data is never deleted by tenant deletion.
+flag) → deleting (accepted jobs drain, no new job) → removed for good, rows and
+secrets, once drained (amended 2026-11-25, `veho-authentication.md` §8.5; to be
+implemented). Destination data is never deleted by tenant deletion.
