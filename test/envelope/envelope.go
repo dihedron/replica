@@ -212,15 +212,16 @@ func Pass(c Cell, r Row) bool {
 
 // Report writes the Markdown table of the rows for the cells, then the
 // invalid and the missing cells.
-func Report(w io.Writer, rows []Row, cells []Cell) {
+func Report(w io.Writer, rows []Row, cells []Cell) error {
+	var b strings.Builder
 	by := map[string]Row{}
 	for _, r := range rows {
 		if r.Valid {
 			by[r.Cell] = r
 		}
 	}
-	fmt.Fprintln(w, "| Cell | Profile | Claimed | Spurious elections | Spurious demotions | Acceptance p50 (ms) | Acceptance p99 (ms) | Failover (s) | Adoption (s) | Verdict |")
-	fmt.Fprintln(w, "| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |")
+	b.WriteString("| Cell | Profile | Claimed | Spurious elections | Spurious demotions | Acceptance p50 (ms) | Acceptance p99 (ms) | Failover (s) | Adoption (s) | Verdict |" + "\n")
+	b.WriteString("| :--- | :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | :--- |" + "\n")
 	var missing []string
 	for _, c := range cells {
 		r, ok := by[c.ID()]
@@ -235,7 +236,7 @@ func Report(w io.Writer, rows []Row, cells []Cell) {
 				verdict = "pass"
 			}
 		}
-		fmt.Fprintf(w, "| %s | %s | %s | %d | %d | %d | %d | %d | %d | %s |\n", c.ID(), r.Profile, claimed, r.Elections, r.Demotions,
+		fmt.Fprintf(&b, "| %s | %s | %s | %d | %d | %d | %d | %d | %d | %s |\n", c.ID(), r.Profile, claimed, r.Elections, r.Demotions,
 			r.P50, r.P99, r.Failover, r.Adoption, verdict)
 	}
 	var invalid []string
@@ -245,9 +246,11 @@ func Report(w io.Writer, rows []Row, cells []Cell) {
 		}
 	}
 	if len(invalid) > 0 {
-		fmt.Fprintf(w, "\nInvalid (run again): %s\n", strings.Join(invalid, ", "))
+		fmt.Fprintf(&b, "\nInvalid (run again): %s\n", strings.Join(invalid, ", "))
 	}
 	if len(missing) > 0 {
-		fmt.Fprintf(w, "\nMissing: %s\n", strings.Join(missing, ", "))
+		fmt.Fprintf(&b, "\nMissing: %s\n", strings.Join(missing, ", "))
 	}
+	_, err := io.WriteString(w, b.String())
+	return err
 }

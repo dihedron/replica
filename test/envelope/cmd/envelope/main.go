@@ -38,7 +38,7 @@ func results(path string) ([]envelope.Row, error) {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: envelope plan|profile|report ...")
+		return errors.New("usage: envelope plan|profile|report [flags]")
 	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	phase := fs.String("phase", "", "A or B (report: both when empty)")
@@ -96,7 +96,7 @@ func run(args []string) error {
 			c, _ := envelope.Plan(ph, nil, nil)
 			cells = append(cells, c...)
 		}
-		envelope.Report(os.Stdout, rows, cells)
+		return envelope.Report(os.Stdout, rows, cells)
 	default:
 		return fmt.Errorf("%q: want plan, profile or report", args[0])
 	}

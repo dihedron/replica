@@ -2,7 +2,7 @@
 
 This file specifies the lab campaign that measures the envelope of `veho-latency-envelope.md`: what inter-region round trip, jitter and packet loss the control plane supports, per profile, and how it degrades beyond. It turns that file's §3 estimates into measurements (LAT-1) and adds packet loss, which the envelope's sweep did not cover. It is part of `veho_specification.md`; the lab is `veho-lab.md`.
 
-Status: approved, 2026-11-25, as proposed; the runs are overnight only (decision 8).
+Status: approved, 2026-11-25, as proposed; the runs are overnight only (decision 8). Tooling implemented 2026-11-26 (§7); no row run yet.
 
 ## 1. Why
 
@@ -43,3 +43,11 @@ The campaign runs only in the lab and changes no product code; it adds no threat
 ## 6. Out of scope
 
 A chaos case with packet loss in the soak (1 to 5 % on one random link for 5 minutes, to check that jobs, leases and fencing ride out a degraded link): a separate backlog item (43). Bandwidth limits on the links. Asymmetric latency (one direction slower).
+
+## 7. Changes from the implementation (2026-11-26)
+
+- **The tooling**: `test/envelope` (the plan, the profiles, the links, `results.csv`, the report) and its command `test/envelope/cmd/envelope plan|profile|report`; `test/lab/lib/envelope.sh` (`lab.sh db profile [RTT]`, `lab.sh campaign envelope --phase A|B [--rtt R,R] [--only CELL] [--dry-run] | --report`); `TestEnvelopeCell` in `test/acceptance` (tags `acceptance campaign`). The results accumulate in `test/lab/.evidence/envelope/results.csv` across runs.
+- **`db profile` takes the round trip**, not a profile's name: the heartbeat follows the round trip within a profile's range (§4: heartbeat about R), so the name alone would not set it. Without one, it restores the lab's defaults.
+- **The injections' order**: the node holding a transfer is killed first (adoption, over the cell's WAN), then the Patroni leader (failover); the killed member then rejoins over the lab's usual WAN. Over a lossy link its rejoin is a base backup at about 150 kB/s (100 ms with 1 % loss), hours long, and not what a cell measures. A member that does not rejoin in 15 minutes even so invalidates the cell (decision 7); before each cell the campaign waits for two streaming standbys.
+- **The smoke cell (EN-T4)**, `B-rtt100-l1` shortened to 2 + 6 + 2 minutes, wrote a valid row: no spurious election or demotion, acceptance p50 2.4 s and p99 3.8 s, failover 61 s, adoption 63 s. The acceptance figures are a first finding: at 100 ms with 1 % loss the commit waits for retransmissions, far above NFR-4's 1 s; that cell is outside the profiles' claims (it has loss), and the full phase B will say from where loss matters.
+- Tests: EN-T1, EN-T2, EN-T5 (`test/envelope`), EN-T3 (the 200 ms profile applied by a rolling etcd restart and read back, then the defaults), EN-T4 as above.

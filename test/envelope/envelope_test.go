@@ -100,7 +100,9 @@ func TestReport(t *testing.T) {
 	}
 	var out bytes.Buffer
 	cells, _ := Plan("A", []int{25, 50, 800}, nil)
-	Report(&out, rows, cells)
+	if err := Report(&out, rows, cells); err != nil {
+		t.Fatal(err)
+	}
 	r := out.String()
 	for _, want := range []string{
 		"| A-rtt25-j0 | regional | yes | 0 | 0 | 12 | 40 | 35 | 70 | pass |",
