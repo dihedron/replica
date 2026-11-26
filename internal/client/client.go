@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -46,6 +47,8 @@ type Options struct {
 	Tenant string
 	// REST selects REST instead of gRPC.
 	REST bool
+	// Anonymous allows no credential, for the public methods (GetConfig).
+	Anonymous bool
 }
 
 // Client calls the API.
@@ -64,6 +67,17 @@ type Error struct {
 	Message   string
 	RequestID string
 	Retryable bool
+	// Metadata is the problem's detail: acr_values and max_age of
+	// step_up_required.
+	Metadata map[string]string
+}
+
+// StepUp is the acr_values and max_age that a step_up_required asks for.
+func (e *Error) StepUp() (acrValues, maxAge string, ok bool) {
+	if e.Code != "step_up_required" {
+		return "", "", false
+	}
+	return e.Metadata["acr_values"], e.Metadata["max_age"], true
 }
 
 func (e *Error) Error() string {
@@ -106,7 +120,7 @@ func New(o Options) (*Client, error) {
 		}
 		tc.Certificates = []tls.Certificate{cert}
 	}
-	if token == "" && o.CertFile == "" {
+	if token == "" && o.CertFile == "" && !o.Anonymous {
 		return nil, errors.New("client: no credential: set VEHO_TOKEN or --token-file, or give --cert-file and --key-file")
 	}
 	c := &Client{rest: o.REST, base: u, token: strings.TrimSpace(token), tenant: o.Tenant}
@@ -259,7 +273,7 @@ func grpcError(err error) error {
 	e := &Error{Code: strings.ToLower(st.Code().String()), Message: st.Message()}
 	for _, d := range st.Details() {
 		if info, ok := d.(*errdetails.ErrorInfo); ok {
-			e.Code, e.Retryable = info.Reason, info.Metadata["retryable"] == "true"
+			e.Code, e.Retryable, e.Metadata = info.Reason, info.Metadata["retryable"] == "true", info.Metadata
 		}
 	}
 	if e.Code == "not_modified" {
@@ -375,9 +389,25 @@ func (c *Client) restCall(ctx context.Context, m protoreflect.MethodDescriptor, 
 			return &Error{Code: strings.ToLower(strings.ReplaceAll(http.StatusText(resp.StatusCode), " ", "_")), Message: strings.TrimSpace(string(b)),
 				RequestID: resp.Header.Get("X-Request-Id")}
 		}
-		return &Error{Code: p.Code, Message: p.Detail, Retryable: p.Retryable, RequestID: resp.Header.Get("X-Request-Id")}
+		return &Error{Code: p.Code, Message: p.Detail, Retryable: p.Retryable, RequestID: resp.Header.Get("X-Request-Id"),
+			Metadata: authParams(resp.Header.Get("WWW-Authenticate"))}
 	}
 	return read(resp.Body)
+}
+
+// authParam is a quoted parameter of a WWW-Authenticate challenge.
+var authParam = regexp.MustCompile(`([a-z_]+)="([^"]*)"`)
+
+// authParams reads a Bearer challenge's parameters (RFC 6750, RFC 9470).
+func authParams(h string) map[string]string {
+	if !strings.HasPrefix(h, "Bearer ") {
+		return nil
+	}
+	out := map[string]string{}
+	for _, m := range authParam.FindAllStringSubmatch(h, -1) {
+		out[m[1]] = m[2]
+	}
+	return out
 }
 
 // DefaultTimeout bounds a call when the context has no deadline.

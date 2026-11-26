@@ -16,6 +16,7 @@ type Command struct {
 	Endpoint       EndpointCommand       `command:"endpoint" description:"Manage the tenant's storage endpoints"`
 	Secret         SecretCommand         `command:"secret" description:"Manage the tenant's secrets (write-only)"`
 	Webhook        WebhookCommand        `command:"webhook" description:"Manage the tenant's webhooks for job completion"`
+	Auth           AuthCommand           `command:"auth" description:"Sign in with your identity provider (OIDC), and see who you are"`
 	ServiceAccount ServiceAccountCommand `command:"serviceaccount" description:"Manage the service accounts, whose API keys rotate under their grants"`
 	APIKey         APIKeyCommand         `command:"apikey" description:"Manage the service accounts' API keys"`
 	Entitlement    EntitlementCommand    `command:"entitlement" description:"Manage the entitlements of OIDC and SPIFFE identities in the tenant"`

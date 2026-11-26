@@ -90,3 +90,21 @@ func TestTokenFile(t *testing.T) {
 		t.Error("no credential: no error")
 	}
 }
+
+// A step-up challenge's parameters (RFC 9470).
+func TestAuthParams(t *testing.T) {
+	m := authParams(`Bearer error="insufficient_user_authentication", acr_values="2 3", max_age="600"`)
+	if m["error"] != "insufficient_user_authentication" || m["acr_values"] != "2 3" || m["max_age"] != "600" {
+		t.Errorf("params: %v", m)
+	}
+	if authParams(`Basic realm="x"`) != nil || authParams("") != nil {
+		t.Error("a challenge that is not Bearer")
+	}
+	e := &Error{Code: "step_up_required", Metadata: m}
+	if acr, age, ok := e.StepUp(); !ok || acr != "2 3" || age != "600" {
+		t.Errorf("StepUp: %q %q %v", acr, age, ok)
+	}
+	if _, _, ok := (&Error{Code: "unauthenticated"}).StepUp(); ok {
+		t.Error("StepUp of another error")
+	}
+}

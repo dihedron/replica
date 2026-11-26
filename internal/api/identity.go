@@ -31,10 +31,14 @@ import (
 
 // identity is a verified OIDC or SPIFFE identity, before its entitlements.
 type identity struct {
-	kind    string // oidc, spiffe
+	kind    string // oidc, spiffe; api_key in a Principal
 	issuer  string // the OIDC issuer, or the SPIFFE trust domain
 	subject string
 	groups  []string
+	// an OIDC token's acr and auth_time, and its issuer's step-up
+	acr      string
+	authTime time.Time
+	stepUp   *config.StepUp
 }
 
 // name is the identity's name (veho-authentication.md §3.1).
@@ -191,7 +195,11 @@ func (ids *Identities) bearer(ctx context.Context, token string) (identity, erro
 	if err := tok.Claims(&all); err != nil {
 		return identity{}, errBadKey
 	}
-	id := identity{kind: "oidc", issuer: tok.Issuer, subject: tok.Subject}
+	id := identity{kind: "oidc", issuer: tok.Issuer, subject: tok.Subject, stepUp: iss.conf.StepUp}
+	id.acr, _ = all["acr"].(string)
+	if at, ok := all["auth_time"].(float64); ok {
+		id.authTime = time.Unix(int64(at), 0)
+	}
 	if gs, ok := all[iss.conf.GroupsClaim].([]any); ok {
 		for _, g := range gs {
 			if s, ok := g.(string); ok {
@@ -232,7 +240,16 @@ func (ids *Identities) svid(chain []*x509.Certificate) (identity, error) {
 // entitle maps an identity to its principal through its entitlements in the
 // tenant it names (veho-authentication.md §4); the highest role applies.
 func entitle(ctx context.Context, pool *pgxpool.Pool, id identity, tenant string) (Principal, error) {
-	p := Principal{Name: id.name()}
+	p := Principal{Name: id.name(), id: id}
+	for _, g := range id.groups {
+		p.Groups = append(p.Groups, id.issuer+"#"+g)
+	}
+	if tenant == "" && id.kind == "oidc" && ctx.Value(noTenantKey{}) != nil {
+		// WhoAmI: who it is, everywhere; a SPIFFE identity's patterns would
+		// have to be matched in every tenant, so it names one
+		p.Role = roleIdentified
+		return p, nil
+	}
 	if tenant == "" {
 		return p, errTenantRequired
 	}
@@ -260,10 +277,7 @@ func entitle(ctx context.Context, pool *pgxpool.Pool, id identity, tenant string
 			best = b
 		}
 	}
-	for _, g := range id.groups {
-		p.Groups = append(p.Groups, id.issuer+"#"+g)
-	}
-	p.Role, p.Tenant = best.Role, best.Tenant
+	p.Role, p.Tenant, p.TenantName = best.Role, best.Tenant, tenant
 	return p, nil
 }
 

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"slices"
 	"strings"
+	"time"
 	"uuid"
 
 	"github.com/dihedron/veho/internal/audit"
@@ -79,13 +81,56 @@ var roles = map[string]string{
 	"/veho.v1.AdminService/DeleteEntitlement":     RoleAdmin,
 	"/veho.v1.AdminService/GetSettings":           RoleAdmin,
 	"/veho.v1.AdminService/UpdateSettings":        RoleAdmin,
+
+	"/veho.v1.IdentityService/WhoAmI": roleIdentified,
+}
+
+// noTenant methods may be called by an OIDC identity that names no tenant.
+var noTenant = map[string]bool{"/veho.v1.IdentityService/WhoAmI": true}
+
+type noTenantKey struct{}
+
+// sensitive methods need a recent, strong enough login of an issuer with
+// step_up (veho-authentication.md §5): those that change a tenant's
+// configuration or access. Ending an access is not one, so that containment
+// is never delayed.
+var sensitive = map[string]bool{
+	"/veho.v1.EndpointService/CreateEndpoint":     true,
+	"/veho.v1.EndpointService/UpdateEndpoint":     true,
+	"/veho.v1.EndpointService/DeleteEndpoint":     true,
+	"/veho.v1.SecretService/PutSecret":            true,
+	"/veho.v1.SecretService/DeleteSecret":         true,
+	"/veho.v1.WebhookService/CreateWebhook":       true,
+	"/veho.v1.WebhookService/UpdateWebhook":       true,
+	"/veho.v1.WebhookService/RotateWebhookSecret": true,
+	"/veho.v1.WebhookService/DeleteWebhook":       true,
+	"/veho.v1.TenantService/CreateTenant":         true,
+	"/veho.v1.TenantService/UpdateTenant":         true,
+	"/veho.v1.AdminService/CreateServiceAccount":  true,
+	"/veho.v1.AdminService/EnableServiceAccount":  true,
+	"/veho.v1.AdminService/CreateKey":             true,
+	"/veho.v1.AdminService/CreateEntitlement":     true,
+	"/veho.v1.AdminService/UpdateSettings":        true,
+	"/veho.v1.PolicyService/SetGrants":            true,
+}
+
+// steppedUp is false when p's issuer asks for step-up and p's login is not
+// one of its acr_values, or older than its max_age (RFC 9470).
+func steppedUp(p Principal, now time.Time) bool {
+	su := p.id.stepUp
+	if p.id.kind != "oidc" || su == nil {
+		return true
+	}
+	at := p.id.authTime
+	return slices.Contains(su.ACRValues, p.id.acr) && !at.IsZero() && !at.After(now.Add(tokenSkew)) && now.Sub(at) <= su.MaxAge
 }
 
 // public methods need no credential.
 var public = map[string]bool{
-	"/grpc.health.v1.Health/Check": true,
-	"/grpc.health.v1.Health/Watch": true,
-	"/grpc.health.v1.Health/List":  true,
+	"/veho.v1.AuthService/GetConfig": true,
+	"/grpc.health.v1.Health/Check":   true,
+	"/grpc.health.v1.Health/Watch":   true,
+	"/grpc.health.v1.Health/List":    true,
 }
 
 type requestIDKey struct{}
@@ -213,6 +258,9 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	if s.failures.Empty("ip:"+addr, s.failRate) {
 		return nil, fail(pRateLimited, "too many refused credentials from this address")
 	}
+	if noTenant[method] {
+		ctx = context.WithValue(ctx, noTenantKey{}, true)
+	}
 	check, err := s.credential(ctx)
 	if err != nil {
 		s.failures.Allow("ip:"+addr, s.failRate)
@@ -226,6 +274,10 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	need, known := roles[method]
 	if !known || !p.may(need) {
 		return nil, fail(pPermission, "not allowed")
+	}
+	if sensitive[method] && !steppedUp(p, time.Now()) {
+		s.refused.add(refusal{address: addr, kind: "jwt", principal: p.Name, reason: "step_up_required"})
+		return nil, failStepUp(p.id.stepUp)
 	}
 	if p.Tenant != nil && !s.calls.Allow("t:"+p.Tenant.String(), s.tenantRate) {
 		return nil, fail(pRateLimited, "the tenant's rate limit")

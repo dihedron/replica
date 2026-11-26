@@ -12,6 +12,8 @@ The API accepts three kinds of credential, all over TLS 1.3:
 
 An API key belongs to one tenant. The others name the tenant of each call, and an entitlement in that tenant must map them: the name only selects among the entitlements, which a tenant's administrators give, so that an entitlement in one tenant cannot change or block what an identity does in another. An identity has one name, with its issuer (`oidc:<issuer>#<subject>`, the SPIFFE ID, `key:<name>`), in grants, rate limits, jobs and the audit. An OIDC issuer that is down stops neither the node nor the other credentials: its own tokens are answered `unavailable` until it is reached.
 
+People sign in from the CLI with the authorization code flow and PKCE on a loopback port, or the device flow, against the issuer that `AuthService.GetConfig` (public) names; the tokens are cached per API URL and refreshed under a file lock, so that two processes never present a rotated refresh token twice. `IdentityService.WhoAmI` answers who the caller is and its roles in every tenant, without naming one. An issuer with `step_up` makes the sensitive methods, those that change a tenant's configuration or access, require a token whose `acr` is one of its values and whose `auth_time` is recent (RFC 9470); ending an access never does, so that containment is never delayed.
+
 ## Authorisation
 
 - **Roles** per tenant: `viewer` (reads), `operator` (also submits, cancels, retries), `admin` (also manages endpoints, secrets, policies, keys, entitlements and the tenant's settings). **Platform administrators** manage tenants and their quotas, and have no access to what is inside a tenant.
