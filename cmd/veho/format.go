@@ -108,16 +108,15 @@ func header(columns []string) []gridCell {
 	return row
 }
 
-// list is a table of rows (JSON objects) in columns, one line each: nested
-// values are their text.
+// list is a table of rows (JSON objects) in columns: nested values are
+// tables in their cells, as in an object's.
 func (p painter) list(rows []any, columns []string) string {
 	g := &grid{rows: [][]gridCell{header(columns)}}
 	for _, r := range rows {
 		row, _ := r.(map[string]any)
 		line := make([]gridCell, len(columns))
 		for i, c := range columns {
-			t := text(row[c])
-			line[i] = gridCell{text: t, colour: stateColour(c, t)}
+			line[i] = p.value(c, row[c])
 		}
 		g.rows = append(g.rows, line)
 	}

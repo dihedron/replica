@@ -74,7 +74,7 @@ func TestFormatTable(t *testing.T) {
 	if err := o.print(&vehov1.ListJobsResponse{Jobs: []*vehov1.Job{failedJob()}}, "id", "state"); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"ID", "STATE", "SOURCE", "LABELS", "TRANSFERS", "endpoint=a-source path=demo/big.bin"} {
+	for _, want := range []string{"ID", "STATE", "SOURCE", "LABELS", "TRANSFERS", "│ endpoint │ a-source"} {
 		if !strings.Contains(wide.String(), want) {
 			t.Errorf("--wide lacks %q:\n%s", want, wide.String())
 		}
