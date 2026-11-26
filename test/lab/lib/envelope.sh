@@ -97,7 +97,9 @@ campaign_envelope() {
 	mkdir -p "$dir" "$ENVELOPE_DIR"
 	section "Campaign envelope: phase $phase, $(wc -l <<<"$plan") cells"
 	local id rtt link shifted profile
-	while read -r id rtt link shifted profile; do
+	# the plan on fd 3: a cell's commands (go test, lxc exec) read stdin, and
+	# took the rest of the plan when it was the loop's (the first night)
+	while read -r id rtt link shifted profile <&3; do
 		[[ -n "$id" ]] || continue
 		section "Cell $id ($profile, links $link$([[ "$shifted" == - ]] || echo ", then $shifted"))"
 		envelope_db_ready || die "campaign envelope: the database has not two streaming standbys"
@@ -105,11 +107,11 @@ campaign_envelope() {
 		wan_set --link "a-b=$link" --link "a-c=$link" --link "b-c=$link" >/dev/null
 		if ! envelope_settle; then
 			warn "cell $id: no 5 quiet minutes in 20: recorded invalid"
-			ENVELOPE_INVALID=1 envelope_cell "$dir" "$id" "$rtt" "$shifted" "$profile" "$results" 0s 0s
+			ENVELOPE_INVALID=1 envelope_cell "$dir" "$id" "$rtt" "$shifted" "$profile" "$results" 0s 0s </dev/null
 			continue
 		fi
-		envelope_cell "$dir" "$id" "$rtt" "$shifted" "$profile" "$results" "$observe" "$inject"
-	done <<<"$plan"
+		envelope_cell "$dir" "$id" "$rtt" "$shifted" "$profile" "$results" "$observe" "$inject" </dev/null
+	done 3<<<"$plan"
 	wan_set "$LAB_WAN_PROFILE" >/dev/null
 	envelope_db_ready || warn "campaign envelope: the database is not back to two streaming standbys"
 	db_profile
