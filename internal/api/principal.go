@@ -38,6 +38,11 @@ type Principal struct {
 	// Tenant is nil for a platform administrator.
 	Tenant *uuid.UUID
 	Role   string
+	// TenantName is the tenant's name, platform for none, or empty when the
+	// call named none (WhoAmI).
+	TenantName string
+	// The verified identity behind it, for WhoAmI and step-up.
+	id identity
 }
 
 // roleScopeAdmin, in the methods' roles, is a tenant's admin in its tenant
@@ -45,9 +50,15 @@ type Principal struct {
 // service accounts and keys.
 const roleScopeAdmin = "scope-admin"
 
+// roleIdentified, in the methods' roles, is any verified identity: WhoAmI's,
+// which may name no tenant.
+const roleIdentified = "identified"
+
 // may is true when p holds role in its tenant.
 func (p Principal) may(role string) bool {
 	switch role {
+	case roleIdentified:
+		return true
 	case RolePlatformAdmin:
 		return p.Role == RolePlatformAdmin
 	case roleScopeAdmin:
@@ -141,7 +152,9 @@ func authenticate(ctx context.Context, pool *pgxpool.Pool, token, named string) 
 	if subtle.ConstantTimeCompare(given[:], sum) != 1 || !valid {
 		return Principal{}, errBadKey
 	}
+	p.id = identity{kind: "api_key", subject: p.Name}
 	p.Name = "key:" + p.Name
+	p.TenantName = tenant
 	if named != "" && named != tenant {
 		return Principal{Name: p.Name}, errNotEntitled
 	}

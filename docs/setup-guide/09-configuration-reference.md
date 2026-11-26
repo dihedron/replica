@@ -47,11 +47,16 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `api.tls.cert_file` | (required) | The API's certificate (PEM, with its chain) |
 | `api.tls.key_file` | (required) | The certificate's key |
 | `api.max_watches` | `1000` | Streams (`WatchJob`) open at once on this node |
+| `api.oidc[].name` | (required with an issuer) | The issuer's short name, `[a-z0-9-]`, unique: what `veho auth login --issuer` takes |
 | `api.oidc[].issuer` | none | An OIDC issuer whose tokens the API accepts: an `https` URL, once each |
 | `api.oidc[].audience` | (required with an issuer) | The audience the tokens must carry |
 | `api.oidc[].groups_claim` | `groups` | The claim listing the user's groups, for entitlements and policy grants to groups |
 | `api.oidc[].max_token_lifetime` | `1h` | The longest lifetime of a token, from its `iat`, which is required, to its `exp`; at most 24h |
 | `api.oidc[].ca_file` | the system's roots | The CA that verifies the issuer's TLS |
+| `api.oidc[].cli_client_id` | none (no CLI login) | The public client of `veho auth login`; it must differ from every issuer's `audience` |
+| `api.oidc[].scopes` | `openid offline_access` | The scopes the CLI asks for; `offline_access` gives the refresh token |
+| `api.oidc[].step_up.acr_values` | none (no step-up) | The `acr` values one of which a token needs to call a sensitive method (changing secrets, endpoints, webhooks, entitlements, service accounts and keys, grants, settings, tenants) |
+| `api.oidc[].step_up.max_age` | (required with `acr_values`) | How old the token's `auth_time` may be for a sensitive method |
 | `api.spiffe.trust_domain` | none (SPIFFE off) | The SPIFFE trust domain whose SVIDs the API accepts |
 | `api.spiffe.x509_bundle_file` | none | The trust domain's X.509 bundle: clients authenticate with an X.509-SVID |
 | `api.spiffe.jwt_bundle_file` | none | The trust domain's JWT bundle: clients authenticate with a JWT-SVID |

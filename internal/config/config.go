@@ -95,6 +95,9 @@ type RateLimit struct {
 
 // OIDC is an issuer whose bearer tokens the API accepts (§4.4).
 type OIDC struct {
+	// Name names the issuer to the CLI (veho auth login --issuer) and in
+	// the UI's callback path: [a-z0-9-], unique.
+	Name        string `yaml:"name"`
 	Issuer      string `yaml:"issuer"`
 	Audience    string `yaml:"audience"`
 	GroupsClaim string `yaml:"groups_claim"`
@@ -103,6 +106,21 @@ type OIDC struct {
 	// MaxTokenLifetime bounds the lifetime of a token, from its iat to its
 	// exp (veho-authentication.md §5).
 	MaxTokenLifetime time.Duration `yaml:"max_token_lifetime"`
+	// CLIClientID is the public client of veho auth login; without it the
+	// CLI is not offered this issuer (veho-authentication.md §7).
+	CLIClientID string `yaml:"cli_client_id"`
+	// Scopes are asked for at login; default openid offline_access.
+	Scopes []string `yaml:"scopes"`
+	// StepUp, when set, is what the sensitive methods need of a token of
+	// this issuer (§5, RFC 9470).
+	StepUp *StepUp `yaml:"step_up"`
+}
+
+// StepUp is a token's acr, one of ACRValues, and its auth_time, at most
+// MaxAge old.
+type StepUp struct {
+	ACRValues []string      `yaml:"acr_values"`
+	MaxAge    time.Duration `yaml:"max_age"`
 }
 
 // SPIFFE is the trust domain whose SVIDs the API accepts (§4.4); an empty
@@ -172,6 +190,9 @@ type Housekeeping struct {
 
 // validDriverName is a driver's name, also the suffix of its plugin binary.
 var validDriverName = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+// issuerName is an OIDC issuer's name (api.oidc[].name).
+var issuerName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 
 // Driver enables a storage driver (veho-plugin-distribution.md §2): a
 // built-in one, a plugin installed from its package (no Path), or a plugin
@@ -352,9 +373,24 @@ func (c *Config) validate() error {
 		"api.keys: default_lifetime must be positive and at most max_lifetime")
 	rl := c.API.RateLimit
 	check(rl.TenantPerSecond > 0 && rl.PrincipalPerSecond > 0 && rl.Burst >= 1 && rl.FailuresPerMinute > 0, "api.rate_limit: the rates must be positive and the burst at least 1")
-	issuers := map[string]bool{}
+	issuers, names, clients := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, o := range c.API.OIDC {
+		if o.CLIClientID != "" {
+			clients[o.CLIClientID] = true
+		}
+	}
 	for i := range c.API.OIDC {
 		o := &c.API.OIDC[i]
+		if len(o.Scopes) == 0 {
+			o.Scopes = []string{"openid", "offline_access"}
+		}
+		check(issuerName.MatchString(o.Name) && !names[o.Name], "api.oidc[%d].name %q: [a-z0-9-], up to 32, required and unique", i, o.Name)
+		names[o.Name] = true
+		// an ID token, whose aud is a client ID, is then never a bearer token (§5)
+		check(!clients[o.Audience], "api.oidc[%d].audience %q is a client ID: it must differ from every cli_client_id", i, o.Audience)
+		if su := o.StepUp; su != nil {
+			check(len(su.ACRValues) > 0 && su.MaxAge > 0, "api.oidc[%d].step_up: acr_values and a positive max_age are required", i)
+		}
 		if o.GroupsClaim == "" {
 			o.GroupsClaim = "groups"
 		}

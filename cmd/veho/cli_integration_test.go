@@ -22,7 +22,7 @@ import (
 )
 
 // node starts veho serve on the lab and returns its URL and CA file.
-func node(t *testing.T) (string, string) {
+func node(t *testing.T, api ...string) (string, string) {
 	t.Helper()
 	if os.Getenv("VEHO_TEST_DATABASE_URL") == "" {
 		t.Skip("VEHO_TEST_DATABASE_URL is not set: run with test/lab/lab.sh test")
@@ -72,7 +72,7 @@ drivers: [{name: file, settings: {roots: ["`+filepath.Clean(os.TempDir())+`"]}}]
 engine: {part_size_mib: 5}
 metrics: {listen: "off"}
 notifications: {enabled: true, allow_cidrs: [127.0.0.0/8]}
-api: {listen: "127.0.0.1:18445", tls: {cert_file: "`+crt+`", key_file: "`+keyFile+`"}}
+api: {listen: "127.0.0.1:18445", tls: {cert_file: "`+crt+`", key_file: "`+keyFile+`"}`+strings.Join(append([]string{""}, api...), ", ")+`}
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}

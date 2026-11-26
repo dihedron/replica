@@ -1,0 +1,61 @@
+// Who calls veho, and how a person signs in (.specs/veho-authentication.md
+// §4, §7).
+//
+// Generate with: make proto
+syntax = "proto3";
+
+package veho.v1;
+
+option go_package = "github.com/dihedron/veho/api/veho/v1;vehov1";
+
+import "google/api/annotations.proto";
+
+// AuthService tells a client how to sign in; it needs no credential.
+service AuthService {
+  rpc GetConfig(GetConfigRequest) returns (AuthConfig) {
+    option (google.api.http) = {get: "/v1/auth/config"};
+  }
+}
+
+message GetConfigRequest {}
+
+message AuthConfig {
+  // The OIDC issuers that offer the CLI's login.
+  repeated AuthIssuer issuers = 1;
+}
+
+message AuthIssuer {
+  string name = 1;
+  string issuer = 2;
+  // The CLI's public client.
+  string cli_client_id = 3;
+  repeated string scopes = 4;
+}
+
+// IdentityService tells a caller who it is.
+service IdentityService {
+  // WhoAmI needs no tenant, except of a SPIFFE identity.
+  rpc WhoAmI(WhoAmIRequest) returns (Identity) {
+    option (google.api.http) = {get: "/v1/whoami"};
+  }
+}
+
+message WhoAmIRequest {}
+
+message Identity {
+  // The identity's name: key:<service account>, oidc:<issuer>#<sub> or a
+  // SPIFFE ID.
+  string name = 1;
+  // api_key, oidc or spiffe.
+  string kind = 2;
+  string issuer = 3;
+  string subject = 4;
+  repeated string groups = 5;
+  // Its roles: one per tenant it is entitled in, platform included.
+  repeated TenantRole tenants = 6;
+}
+
+message TenantRole {
+  string tenant = 1;
+  string role = 2;
+}

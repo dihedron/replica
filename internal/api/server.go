@@ -147,6 +147,8 @@ func New(o Options) (*Server, error) {
 	vehov1.RegisterWebhookServiceServer(s.grpc, webhooks{s: s})
 	vehov1.RegisterTenantServiceServer(s.grpc, tenants{s: s})
 	vehov1.RegisterAdminServiceServer(s.grpc, admin{s: s})
+	vehov1.RegisterAuthServiceServer(s.grpc, authService{s: s})
+	vehov1.RegisterIdentityServiceServer(s.grpc, identityService{s: s})
 	healthpb.RegisterHealthServer(s.grpc, s.health)
 
 	s.pipe = bufconn.Listen(1 << 20)
@@ -197,6 +199,7 @@ func New(o Options) (*Server, error) {
 	for _, register := range []func(context.Context, *runtime.ServeMux, *grpc.ClientConn) error{
 		vehov1.RegisterPolicyServiceHandler, vehov1.RegisterEndpointServiceHandler, vehov1.RegisterSecretServiceHandler,
 		vehov1.RegisterTenantServiceHandler, vehov1.RegisterAdminServiceHandler, vehov1.RegisterWebhookServiceHandler,
+		vehov1.RegisterAuthServiceHandler, vehov1.RegisterIdentityServiceHandler,
 	} {
 		if err := register(context.Background(), mux, conn); err != nil {
 			return nil, fmt.Errorf("api: gateway: %w", err)

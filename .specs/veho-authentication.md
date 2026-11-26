@@ -88,6 +88,7 @@ Within the named tenant, the highest of the matching entitlements' roles applies
 - **An issuer that is down does not stop a node.** Discovery is tried at start and retried in the background with back-off. Until it succeeds, the tokens of that issuer get `503 unavailable`; everything else works.
 - **Step-up.** With `step_up: {acr_values, max_age}` on an issuer, the methods marked *sensitive* need a token whose `acr` is in the list and whose `auth_time` is at most `max_age` old. Otherwise the answer is `401 step_up_required` with `WWW-Authenticate: Bearer error="insufficient_user_authentication"` and the values (RFC 9470); the UI and the CLI then sign in again with them. It applies to every token of that issuer, client credentials included: automation that administers veho uses SPIFFE or an API key, or an issuer without step-up.
 - Sensitive: creating or changing secrets, endpoints, webhooks, entitlements, API keys, grants, settings, tenants, local users. Deleting a tenant is sensitive too. Revoking, disabling and deleting an access are **not**, so that containment is never delayed.
+- **Implemented (A4a, 2026-11-26):** the set is `sensitive` in `internal/api/interceptors.go`, checked by `TestSensitiveMethods`. Deleting a secret, an endpoint or a webhook counts as changing them; `CreateServiceAccount`, `EnableServiceAccount`, `CreateKey`, `RotateWebhookSecret` and `SetGrants` are sensitive; `RevokeKey`, `DisableServiceAccount`, `DeleteServiceAccount` and `DeleteEntitlement` are not. The gRPC error's `ErrorInfo` carries `acr_values` and `max_age` (seconds); REST adds them to `WWW-Authenticate`. An issuer's configuration is `api.oidc[].step_up: {acr_values, max_age}`; its `name`, `cli_client_id` and `scopes` serve §7. Decided with the maintainer: the target identity provider is **Keycloak** (§15), run in the lab (A4b).
 
 ## 6. Web UI sessions
 
@@ -121,6 +122,7 @@ Within the named tenant, the highest of the matching entitlements' roles applies
 - Tokens are cached per API URL in `$XDG_CONFIG_HOME/veho/credentials.json` (0600, its directory 0700, refused otherwise as C8-3), written by rename, and refreshed under a file lock. They are sent to that API URL only.
 - `VEHO_TOKEN`, `--token-file` and a client certificate take precedence over the cache. `--tenant` (`VEHO_TENANT`) names the tenant, and `auth login --tenant` stores a default.
 - On `step_up_required` in a terminal, the CLI signs in again with the required values and repeats the call once. Elsewhere it fails with the code.
+- **Implemented (A4a, 2026-11-26):** `cmd/veho/auth.go` and `credentials.go`, with `golang.org/x/oauth2`. The cache's lock is `flock(2)` on `credentials.lock` (the release targets are Linux only); a refresh re-reads the cache under it. `--idp-ca-file` (`VEHO_IDP_CA_FILE`) trusts an identity provider whose CA is not the system's, and is kept with the login for its refreshes. `veho auth logout` revokes the refresh token where the issuer publishes a `revocation_endpoint`.
 
 ## 8. Applications
 
@@ -250,7 +252,7 @@ Applied on 2026-11-25, at the approval; the amended texts say that the implement
 | **A2** | Service accounts and keys (G-5). Implemented 2026-11-26 with AU-T9 (§8.3) | A1 |
 | **A3** | `member`, `view`, patterns, several trust domains, `integrator`, `ManagedAccessService` | A1 |
 | **A3b** | Administration by automation: `initial_admins`, entitlement keys, `LocationService`, `DeleteTenant` (G-10, G-11); before backlog 35 | A1 |
-| **A4** | `GetConfig`, `WhoAmI`, CLI login, step-up | A1 |
+| **A4** | `GetConfig`, `WhoAmI`, CLI login, step-up. A4a (the code, against a test IdP) implemented 2026-11-26 with AU-T8 and AU-T17; A4b, Keycloak in the lab, next | A1 |
 | **A5** | UI login and sessions | A4; with backlog 19 |
 
 ## 14. Acceptance

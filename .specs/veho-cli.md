@@ -2,7 +2,7 @@
 
 **Status:** decided under the overnight delegation of 2026-11-22, for review; implemented 2026-11-22 (`internal/client`, `cmd/veho/cli*.go`). Requirements: `veho-api.md` §4 (the command table, API-9), `AGENTS.md` (the `veho <object> <verb>` convention, `show` to display), `veho-api-server.md` (the services the client calls).
 
-**Amended** 2026-11-25 by `veho-authentication.md`, to be implemented: §1 (`veho auth login|logout|status`, `veho serviceaccount`, `veho tenant delete`), §2 (the sign-in, the token cache, `--tenant`), its §7, §8.
+**Amended** 2026-11-25 by `veho-authentication.md`; `veho serviceaccount` implemented with A2 and `veho auth login|logout|status` with A4a (2026-11-26), `veho tenant delete` to be: §1 (`veho auth login|logout|status`, `veho serviceaccount`, `veho tenant delete`), §2 (the sign-in, the token cache, `--tenant`), its §7, §8.
 
 ## 1. Commands
 

@@ -30,6 +30,26 @@ func TestDefaults(t *testing.T) {
 }
 
 // Webhooks are off by default (veho-webhooks.md §2).
+// An issuer's CLI client and scopes (veho-authentication.md §7).
+func TestOIDCDefaults(t *testing.T) {
+	c, err := Parse([]byte(`
+node: {id: veho-a1, region: region-a}
+secrets: {unwrap_key: "file:/etc/veho/unwrap.key"}
+api:
+  tls: {cert_file: /etc/veho/api.crt, key_file: /etc/veho/api.key}
+  oidc: [{name: corp, issuer: "https://idp.example", audience: veho-api, cli_client_id: veho-cli,
+    step_up: {acr_values: ["2"], max_age: 10m}}]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := c.API.OIDC[0]
+	if o.Name != "corp" || o.CLIClientID != "veho-cli" || strings.Join(o.Scopes, " ") != "openid offline_access" ||
+		o.StepUp == nil || o.StepUp.MaxAge != 10*time.Minute || o.StepUp.ACRValues[0] != "2" {
+		t.Errorf("oidc: %+v", o)
+	}
+}
+
 func TestNotificationsDefaults(t *testing.T) {
 	c, err := Parse([]byte(minimal))
 	if err != nil {
@@ -99,6 +119,10 @@ func TestRefused(t *testing.T) {
 		"checks.clock":            node + key + "checks: {clock: maybe}\n",
 		"max_clock_offset":        node + key + "checks: {max_clock_offset: -1s}\n",
 		"field schema":            node + key + "checks: {schema: warn}\n",
+		"oidc[0].name":            node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, oidc: [{issuer: \"https://i.example\", audience: a}]}\n",
+		"oidc[1].name":            node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, oidc: [{name: i, issuer: \"https://i.example\", audience: a}, {name: i, issuer: \"https://j.example\", audience: b}]}\n",
+		"a client ID":             node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, oidc: [{name: i, issuer: \"https://i.example\", audience: a}, {name: j, issuer: \"https://j.example\", audience: b, cli_client_id: a}]}\n",
+		"step_up":                 node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, oidc: [{name: i, issuer: \"https://i.example\", audience: a, step_up: {max_age: 5m}}]}\n",
 		"api.keys":                node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, keys: {default_lifetime: 2400h}}\n",
 		"allow_cidrs":             node + key + "notifications: {enabled: true, allow_cidrs: [nonsense]}\n",
 		"delivered_retention":     node + key + "notifications: {delivered_retention: 1s}\n",

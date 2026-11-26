@@ -26,6 +26,22 @@ The two retry bounds keep a tenant's policies from hammering a shared storage sy
 
 A platform administrator sees tenants, never what is inside them.
 
+## Signing in (people)
+
+People sign in with the identity provider the API trusts, rather than with API keys:
+
+```bash
+export VEHO_API_URL=https://veho.example:8443 VEHO_CA_FILE=/etc/veho/ca.crt
+veho auth login --tenant acme      # opens the browser; --device on a host without one
+veho auth status                   # who you are, your roles in each tenant, the login's expiry
+veho job list                      # the tenant given at login is the default; --tenant changes it
+veho auth logout                   # revokes the refresh token and forgets the login
+```
+
+`veho auth login` prints the identity provider's host before it opens the browser: check it. With `--device` it prints a code to enter on another device; never enter a code that somebody else sent you. The tokens are cached for that API URL only, in `~/.config/veho/credentials.json`, which must stay private to you (mode 0600, its directory 0700): `veho` refuses a cache others can read. `VEHO_TOKEN`, `--token-file` and a client certificate take precedence over the cache. The access token is refreshed by itself; when the identity provider refuses the refresh, sign in again.
+
+When an issuer has `step_up`, changing secrets, endpoints, webhooks, entitlements, service accounts and keys, grants, settings or tenants needs a recent login of the required strength (for example with a second factor). In a terminal `veho` signs you in again with what is asked for, and repeats the command once; in a script it fails with `step_up_required`. Revoking keys, disabling or deleting service accounts and deleting entitlements never need it, so that an access can always be ended at once.
+
 ## People and applications (tenant administrators)
 
 ```bash

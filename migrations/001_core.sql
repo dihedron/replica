@@ -531,6 +531,23 @@ REVOKE ALL ON FUNCTION veho.entitlements_for(text, text, text, text, text[]) FRO
 GRANT EXECUTE ON FUNCTION veho.entitlements_for(text, text, text, text, text[]) TO veho_api;
 GRANT SELECT, INSERT, DELETE ON veho.entitlements TO veho_api;
 
+-- entitlements_of returns an identity's entitlements in every active tenant,
+-- by the tenant's name, 'platform' for its platform-admin ones: what WhoAmI
+-- answers (veho-authentication.md §4). The caller keeps each tenant's
+-- highest role.
+CREATE FUNCTION veho.entitlements_of(p_kind text, p_issuer text, p_subject text, p_groups text[])
+RETURNS TABLE (tenant text, role text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = veho, pg_temp
+AS $$
+	SELECT coalesce(t.name, 'platform'), e.role FROM veho.entitlements e LEFT JOIN veho.tenants t ON t.id = e.tenant_id
+	 WHERE e.kind = p_kind AND e.issuer = p_issuer
+	   AND (e.subject = p_subject OR e."group" = ANY (p_groups))
+	   AND (e.tenant_id IS NULL OR t.state = 'active')
+	 ORDER BY 1
+$$;
+REVOKE ALL ON FUNCTION veho.entitlements_of(text, text, text, text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION veho.entitlements_of(text, text, text, text[]) TO veho_api;
+
 -- ---------------------------------------------------------------------------
 -- Grants on named policies (.specs/veho-api-server.md §5.1, SEC-21): a
 -- grantee (an identity name or a group, veho-authentication.md §3.1) gets submit,

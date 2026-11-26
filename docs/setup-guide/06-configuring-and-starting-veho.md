@@ -34,6 +34,26 @@ Every node must list the same drivers: a transfer runs on any node.
 
 The node logs the SHA-256 of `veho.yaml` at start, so that an unexpected change of configuration shows in the logs. Unknown keys are refused, and so are invalid values, each named in the error.
 
+### An identity provider
+
+People sign in with an OIDC identity provider (`veho auth login`, the Operator's Guide). veho accepts its access tokens, as JWTs whose audience is veho's. With Keycloak, in the realm of your users:
+
+1. A client scope with an **Audience** mapper adding `veho-api` to access tokens, assigned to the client below.
+2. A **public** client `veho-cli`: standard flow and **OAuth 2.0 Device Authorization Grant** on, PKCE method `S256`, valid redirect URI `http://127.0.0.1/*`.
+3. For step-up, the realm's **ACR to LoA mapping** (for example `1` a password, `2` a password and a one-time code) and an authentication flow that honours it.
+
+```yaml
+api:
+  oidc:
+    - name: corp
+      issuer: https://keycloak.example/realms/corp
+      audience: veho-api
+      cli_client_id: veho-cli
+      step_up: {acr_values: ["2"], max_age: 15m}   # optional
+```
+
+Then entitle people or groups: `veho bootstrap entitlement --kind oidc --issuer https://keycloak.example/realms/corp --group storage-admins --tenant acme --role admin`.
+
 ## veho.env
 
 ```bash

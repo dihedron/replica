@@ -31,6 +31,8 @@ type apiOptions struct {
 	Timeout   time.Duration `long:"timeout" default:"30s" description:"The timeout of each call"`
 
 	out io.Writer // tests only; default os.Stdout
+	// cached is the login whose token the last client used, if any
+	cached *login
 }
 
 func (o *apiOptions) stdout() io.Writer {
@@ -40,13 +42,63 @@ func (o *apiOptions) stdout() io.Writer {
 	return os.Stdout
 }
 
+// client connects with the caller's credential: VEHO_TOKEN, --token-file
+// or a certificate first, else the login cached for this API URL
+// (veho-authentication.md §7), whose tenant is the default.
 func (o *apiOptions) client() (*client.Client, error) {
-	return client.New(client.Options{URL: o.URL, CAFile: o.CAFile, TokenFile: o.TokenFile, Token: os.Getenv("VEHO_TOKEN"),
-		CertFile: o.CertFile, KeyFile: o.KeyFile, Tenant: o.Tenant, REST: o.API == "rest"})
+	opts := client.Options{URL: o.URL, CAFile: o.CAFile, TokenFile: o.TokenFile, Token: os.Getenv("VEHO_TOKEN"),
+		CertFile: o.CertFile, KeyFile: o.KeyFile, Tenant: o.Tenant, REST: o.API == "rest"}
+	o.cached = nil
+	if opts.Token == "" && opts.TokenFile == "" && opts.CertFile == "" {
+		ctx, cancel := context.WithTimeout(context.Background(), o.Timeout)
+		defer cancel()
+		token, l, err := cachedToken(ctx, o.URL)
+		if err != nil {
+			return nil, err
+		}
+		if l != nil {
+			opts.Token, o.cached = token, l
+			if opts.Tenant == "" {
+				opts.Tenant = l.Tenant
+			}
+		}
+	}
+	return client.New(opts)
 }
 
-// call calls method (veho.v1.JobService.GetJob) once.
+// interactive says whether the CLI may sign the person in again; a
+// variable for the tests.
+var interactive = func() bool {
+	fi, err := os.Stdin.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// call calls method (veho.v1.JobService.GetJob) once; a cached login that
+// the method finds too weak or too old is signed in again, in a terminal,
+// and the call repeated once (step-up, RFC 9470).
 func (o *apiOptions) call(method string, req, resp proto.Message, headers ...string) error {
+	err := o.callOnce(method, req, resp, headers...)
+	e, ok := errors.AsType[*client.Error](err)
+	if !ok || o.cached == nil || !interactive() {
+		return err
+	}
+	acr, maxAge, stepUp := e.StepUp()
+	if !stepUp {
+		return err
+	}
+	l := o.cached
+	ctx, cancel := context.WithTimeout(context.Background(), loginTimeout+time.Minute)
+	defer cancel()
+	if err := signIn(ctx, l, o.stderr(), acr, maxAge); err != nil {
+		return err
+	}
+	if err := storeLogin(o.URL, l); err != nil {
+		return err
+	}
+	return o.callOnce(method, req, resp, headers...)
+}
+
+func (o *apiOptions) callOnce(method string, req, resp proto.Message, headers ...string) error {
 	c, err := o.client()
 	if err != nil {
 		return err

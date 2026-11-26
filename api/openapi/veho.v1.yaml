@@ -39,6 +39,18 @@ info:
      administrator calling for the platform manages the platform's service
      accounts and keys.
 
+    ## veho.v1.AuthService
+
+
+    AuthService tells a client how to sign in; it needs no credential.
+
+
+    ## veho.v1.IdentityService
+
+
+    IdentityService tells a caller who it is.
+
+
     ## veho.v1.JobService
 
 
@@ -141,6 +153,37 @@ components:
           title: last_used_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
       title: ApiKey
+      additionalProperties: false
+    veho.v1.AuthConfig:
+      type: object
+      properties:
+        issuers:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.AuthIssuer'
+          title: issuers
+          description: The OIDC issuers that offer the CLI's login.
+      title: AuthConfig
+      additionalProperties: false
+    veho.v1.AuthIssuer:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+        issuer:
+          type: string
+          title: issuer
+        cli_client_id:
+          type: string
+          title: cli_client_id
+          description: The CLI's public client.
+        scopes:
+          type: array
+          items:
+            type: string
+          title: scopes
+      title: AuthIssuer
       additionalProperties: false
     veho.v1.Copies:
       type: object
@@ -469,6 +512,38 @@ components:
             $ref: '#/components/schemas/veho.v1.Grant'
           title: grants
       title: Grants
+      additionalProperties: false
+    veho.v1.Identity:
+      type: object
+      properties:
+        name:
+          type: string
+          title: name
+          description: |-
+            The identity's name: key:<service account>, oidc:<issuer>#<sub> or a
+             SPIFFE ID.
+        kind:
+          type: string
+          title: kind
+          description: api_key, oidc or spiffe.
+        issuer:
+          type: string
+          title: issuer
+        subject:
+          type: string
+          title: subject
+        groups:
+          type: array
+          items:
+            type: string
+          title: groups
+        tenants:
+          type: array
+          items:
+            $ref: '#/components/schemas/veho.v1.TenantRole'
+          title: tenants
+          description: 'Its roles: one per tenant it is entitled in, platform included.'
+      title: Identity
       additionalProperties: false
     veho.v1.Job:
       type: object
@@ -838,6 +913,17 @@ components:
           title: created_at
           $ref: '#/components/schemas/google.protobuf.Timestamp'
       title: Tenant
+      additionalProperties: false
+    veho.v1.TenantRole:
+      type: object
+      properties:
+        tenant:
+          type: string
+          title: tenant
+        role:
+          type: string
+          title: role
+      title: TenantRole
       additionalProperties: false
     veho.v1.TenantSettings:
       type: object
@@ -1286,6 +1372,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/veho.v1.TenantSettings'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
+  /v1/auth/config:
+    get:
+      tags:
+        - veho.v1.AuthService
+      summary: GetConfig
+      operationId: veho.v1.AuthService.GetConfig
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.AuthConfig'
         "4XX":
           $ref: '#/components/responses/Problem'
         "5XX":
@@ -2334,6 +2437,24 @@ paths:
           $ref: '#/components/responses/Problem'
         "5XX":
           $ref: '#/components/responses/Problem'
+  /v1/whoami:
+    get:
+      tags:
+        - veho.v1.IdentityService
+      summary: WhoAmI
+      description: WhoAmI needs no tenant, except of a SPIFFE identity.
+      operationId: veho.v1.IdentityService.WhoAmI
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/veho.v1.Identity'
+        "4XX":
+          $ref: '#/components/responses/Problem'
+        "5XX":
+          $ref: '#/components/responses/Problem'
 tags:
   - name: veho.v1.PolicyService
     description: PolicyService manages named policies and who may use them.
@@ -2349,6 +2470,10 @@ tags:
        their API keys, its entitlements and its settings. A platform
        administrator calling for the platform manages the platform's service
        accounts and keys.
+  - name: veho.v1.AuthService
+    description: AuthService tells a client how to sign in; it needs no credential.
+  - name: veho.v1.IdentityService
+    description: IdentityService tells a caller who it is.
   - name: veho.v1.JobService
     description: JobService accepts, shows, cancels and retries replication jobs.
   - name: veho.v1.WebhookService

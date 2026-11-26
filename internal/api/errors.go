@@ -4,9 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
+	"time"
 
+	"github.com/dihedron/veho/internal/config"
 	"github.com/dihedron/veho/internal/engine"
 	"github.com/dihedron/veho/internal/policy"
 	"github.com/dihedron/veho/internal/secrets"
@@ -69,7 +74,7 @@ var httpByReason = func() map[string]int {
 		m[c.p.reason] = c.p.http
 	}
 	for _, p := range []problem{pUnauthenticated, pPermission, pInvalid, pWatches, pNotModified, pUnavailable, pInternal, pInlineRefused, pRateLimited,
-		pTenantRequired, pNotEntitled} {
+		pTenantRequired, pNotEntitled, pStepUp} {
 		m[p.reason] = p.http
 	}
 	return m
@@ -101,7 +106,20 @@ var (
 	pRateLimited     = problem{codes.ResourceExhausted, http.StatusTooManyRequests, "rate_limited", true}
 	pTenantRequired  = problem{codes.InvalidArgument, http.StatusBadRequest, "tenant_required", false}
 	pNotEntitled     = problem{codes.PermissionDenied, http.StatusForbidden, "not_entitled", false}
+	pStepUp          = problem{codes.Unauthenticated, http.StatusUnauthorized, "step_up_required", false}
 )
+
+// failStepUp asks for a login with one of su's acr_values within its
+// max_age; the client reads them from the ErrorInfo, or from REST's
+// WWW-Authenticate (RFC 9470).
+func failStepUp(su *config.StepUp) error {
+	st := status.New(pStepUp.code, "this method needs a stronger or more recent login")
+	md := map[string]string{"retryable": "false", "acr_values": strings.Join(su.ACRValues, " "), "max_age": strconv.Itoa(int(su.MaxAge / time.Second))}
+	if d, err := st.WithDetails(&errdetails.ErrorInfo{Reason: pStepUp.reason, Domain: "veho", Metadata: md}); err == nil {
+		return d.Err()
+	}
+	return st.Err()
+}
 
 // toStatus is the status of a handler's error: already a status, it stays;
 // otherwise it is classified, and an internal one logged, not returned
@@ -132,6 +150,10 @@ func problemJSON(ctx context.Context, _ *runtime.ServeMux, _ runtime.Marshaler, 
 	for _, d := range st.Details() {
 		if info, ok := d.(*errdetails.ErrorInfo); ok {
 			reason, retryable = info.Reason, info.Metadata["retryable"] == "true"
+			if reason == pStepUp.reason {
+				w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer error="insufficient_user_authentication", acr_values=%q, max_age=%q`,
+					info.Metadata["acr_values"], info.Metadata["max_age"]))
+			}
 		}
 	}
 	if c, ok := httpByReason[reason]; ok {

@@ -9,6 +9,7 @@ The gRPC API answers errors with a status and an `ErrorInfo` detail (domain `veh
 | Code | gRPC | HTTP | Retryable | Meaning, and what to do |
 | :------------------------ | :------------------- | :--- | :-------- | :------------------------------------------------------------------- |
 | `unauthenticated` | `UNAUTHENTICATED` | 401 | no | No credential, or one that is unknown, expired or revoked |
+| `step_up_required` | `UNAUTHENTICATED` | 401 | no | The method is sensitive and the login is not strong or recent enough for the issuer's `step_up`: sign in again with the `acr_values` and `max_age` the error carries (REST: in `WWW-Authenticate`). `veho` does it by itself in a terminal |
 | `permission_denied` | `PERMISSION_DENIED` | 403 | no | The principal's role, or its policy grants, do not allow the call |
 | `tenant_required` | `INVALID_ARGUMENT` | 400 | no | The caller has an OIDC token or an SVID and named no tenant: `X-Veho-Tenant`, or `--tenant` |
 | `not_entitled` | `PERMISSION_DENIED` | 403 | no | The identity is verified, and has no entitlement in the tenant it named, or that tenant does not exist or is suspended; or an API key named a tenant that is not its own |
