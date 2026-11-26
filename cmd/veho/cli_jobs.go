@@ -216,7 +216,7 @@ func (cmd *JobWatchCommand) Execute([]string) error {
 	}
 	return c.Stream(context.Background(), m, &vehov1.JobRef{Id: cmd.Args.ID}, func() proto.Message { return &vehov1.Job{} }, func(msg proto.Message) error {
 		j := msg.(*vehov1.Job)
-		if cmd.Output == "json" {
+		if cmd.machine() {
 			return cmd.print(j)
 		}
 		_, err := fmt.Fprintf(cmd.stdout(), "%s %s copies %d/%d progress %.0f%%\n", time.Now().Format(time.TimeOnly), j.GetState(),
