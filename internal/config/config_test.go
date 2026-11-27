@@ -50,6 +50,18 @@ api:
 	}
 }
 
+// FW-T7: a node that forwards, and one that is only a target.
+func TestForward(t *testing.T) {
+	for _, doc := range []string{
+		"api: {tls: {cert_file: /c, key_file: /k}, advertise_url: \"https://veho-a1.example:8443\", forward: {peer_ca_file: /ca}}\n",
+		"api: {tls: {cert_file: /c, key_file: /k}, advertise_url: \"https://10.0.0.1:8443/\"}\n",
+	} {
+		if _, err := Parse([]byte("node: {id: a, region: b}\nsecrets: {unwrap_key: \"file:/k\"}\n" + doc)); err != nil {
+			t.Errorf("%s: %v", doc, err)
+		}
+	}
+}
+
 func TestNotificationsDefaults(t *testing.T) {
 	c, err := Parse([]byte(minimal))
 	if err != nil {
@@ -128,7 +140,12 @@ func TestRefused(t *testing.T) {
 		"delivered_retention":     node + key + "notifications: {delivered_retention: 1s}\n",
 		"abandoned_retention":     node + key + "notifications: {abandoned_retention: 1s}\n",
 		"network_checks.interval": node + key + "network_checks: {interval: 30m}\n",
-		"network_checks.per_pass": node + key + "network_checks: {per_pass: 5000}\n",
+		// FW-T7: the forwarding's URL and CA
+		"advertise_url \"http://a:1\"":  node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, advertise_url: \"http://a:1\"}\n",
+		"advertise_url \"https://:1\"":  node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, advertise_url: \"https://:1\"}\n",
+		"advertise_url \"https://a/x\"": node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, advertise_url: \"https://a/x\"}\n",
+		"peer_ca_file needs":            node + "secrets: {unwrap_key: \"file:/k\"}\napi: {tls: {cert_file: /c, key_file: /k}, forward: {peer_ca_file: /ca}}\n",
+		"network_checks.per_pass":       node + key + "network_checks: {per_pass: 5000}\n",
 	} {
 		if _, err := Parse([]byte(doc)); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v", want, err)

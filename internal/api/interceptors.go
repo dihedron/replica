@@ -149,7 +149,9 @@ const tenantMD = "x-veho-tenant"
 // again to re-authorise its caller.
 func (s *Server) credential(ctx context.Context) (func(context.Context) (Principal, error), error) {
 	tenant := first(ctx, tenantMD)
-	if chain := peerChain(ctx); len(chain) > 0 && s.ids != nil && s.ids.x509 != nil {
+	// a forwarded call authenticates by its bearer token: its certificate
+	// is the peer node's (veho-forwarding.md §2.2)
+	if chain := peerChain(ctx); len(chain) > 0 && s.ids != nil && s.ids.x509 != nil && first(ctx, forwardedMD) == "" {
 		return func(ctx context.Context) (Principal, error) {
 			id, err := s.ids.svid(chain)
 			if err != nil {
@@ -176,10 +178,14 @@ func (s *Server) credential(ctx context.Context) (func(context.Context) (Princip
 	}, nil
 }
 
-// clientAddr is the client's address: the TCP peer's, or for REST the last
+// clientAddr is the client's address: the one a peer node forwarded the
+// call for (veho-forwarding.md §2.4), the TCP peer's, or for REST the last
 // X-Forwarded-For entry, which the gateway appends and only the pipe from
 // it carries (§5.2).
-func clientAddr(ctx context.Context) string {
+func (s *Server) clientAddr(ctx context.Context) string {
+	if addr, ok := s.forwardedFor(ctx); ok {
+		return addr
+	}
 	p, ok := peer.FromContext(ctx)
 	if !ok || p.Addr == nil {
 		return ""
@@ -254,7 +260,7 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 	if public[method] {
 		return ctx, nil
 	}
-	addr := clientAddr(ctx)
+	addr := s.clientAddr(ctx)
 	if s.failures.Empty("ip:"+addr, s.failRate) {
 		return nil, fail(pRateLimited, "too many refused credentials from this address")
 	}
@@ -299,7 +305,7 @@ func (s *Server) admit(ctx context.Context, method string) (context.Context, err
 func (s *Server) credentialKind(ctx context.Context) string {
 	token, ok := strings.CutPrefix(first(ctx, "authorization"), "Bearer ")
 	switch {
-	case s.ids != nil && s.ids.x509 != nil && len(peerChain(ctx)) > 0:
+	case s.ids != nil && s.ids.x509 != nil && len(peerChain(ctx)) > 0 && first(ctx, forwardedMD) == "":
 		return "certificate"
 	case ok && strings.HasPrefix(token, keyPrefix):
 		return "api_key"

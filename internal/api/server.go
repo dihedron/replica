@@ -73,6 +73,9 @@ type Options struct {
 	Keys config.Keys
 	// Audit records the refused credentials.
 	Audit audit.Auditor
+	// Forward, when set, forwards unary calls to the node nearest the
+	// state store (veho-forwarding.md).
+	Forward *Forward
 }
 
 // Server is the API of a node.
@@ -98,6 +101,7 @@ type Server struct {
 	tenantRate, principalRate, failRate ratelimit.Rate
 	pipe                                *bufconn.Listener
 	client                              *grpc.ClientConn
+	fw                                  *forwarder
 }
 
 // New builds the gRPC server, and the REST gateway that reaches it through
@@ -132,8 +136,15 @@ func New(o Options) (*Server, error) {
 		fails = 30
 	}
 	s.failRate = ratelimit.Rate{PerSecond: fails / 60, Burst: fails}
+	if o.Forward != nil {
+		s.fw = &forwarder{o: *o.Forward, api: o.API}
+		if s.fw.o.Every <= 0 {
+			s.fw.o.Every = 10 * time.Second
+		}
+	}
 	s.grpc = grpc.NewServer(
-		grpc.ChainUnaryInterceptor(s.deadline, s.unary),
+		// forward before admit: a forwarded call touches no database here
+		grpc.ChainUnaryInterceptor(s.deadline, s.forward, s.unary),
 		grpc.ChainStreamInterceptor(s.stream),
 		grpc.MaxRecvMsgSize(maxMessage), grpc.MaxSendMsgSize(maxMessage),
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 30 * time.Second, PermitWithoutStream: false}),
@@ -279,6 +290,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 		ErrorLog: slog.NewLogLogger(slog.Default().Handler(), slog.LevelWarn),
 	}
 	go s.refused.run(ctx, s.audit)
+	if s.fw != nil {
+		go s.fw.run(ctx)
+	}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
@@ -294,6 +308,9 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener, cert tls.Certificat
 
 // Close stops the gRPC server and the gateway's connection.
 func (s *Server) Close() {
+	if s.fw != nil {
+		s.fw.close()
+	}
 	_ = s.client.Close()
 	s.grpc.Stop()
 }

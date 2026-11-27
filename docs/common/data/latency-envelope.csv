@@ -9,3 +9,13 @@ commit,version,date,cell,phase,rtt_ms,jitter,loss_pct,profile,claimed,verdict,sp
 0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-j25,A,50,25,0,regional,yes,fail,0,0,1169,1335,39,63,306,0
 0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-j50,A,50,50,0,regional,no,outside the claims,0,0,1147,1641,30,64,154,0
 0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-jshift,A,50,shift,0,regional,no,outside the claims,0,0,1217,1594,28,59,376,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt25-j0,A,25,0,0,regional,yes,pass,0,0,62,123,41,56,442,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt25-j10,A,25,10,0,regional,yes,pass,0,0,63,120,27,59,450,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt25-j25,A,25,25,0,regional,yes,pass,0,0,63,126,28,62,411,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt25-j50,A,25,50,0,regional,no,outside the claims,0,0,65,650,33,58,166,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt25-jshift,A,25,shift,0,regional,no,outside the claims,0,0,75,151,30,57,405,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt50-j0,A,50,0,0,regional,yes,pass,0,0,111,212,43,62,327,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt50-j10,A,50,10,0,regional,yes,pass,0,0,111,178,33,56,331,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt50-j25,A,50,25,0,regional,yes,pass,0,0,114,247,36,64,266,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt50-j50,A,50,50,0,regional,no,outside the claims,0,0,116,425,41,57,112,0
+afcc920633287f39dde110db67804243d028c2b9,0.3.0-SNAPSHOT-afcc920,2026-11-27,A-rtt50-jshift,A,50,shift,0,regional,no,outside the claims,0,0,114,255,31,58,306,0

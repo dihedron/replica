@@ -17,6 +17,7 @@ type metrics struct {
 	expiredLeases prometheus.Gauge
 	webhooks      *prometheus.CounterVec
 	unreachable   prometheus.Gauge
+	dbRTT         prometheus.Gauge
 }
 
 func newMetrics() *metrics {
@@ -30,13 +31,15 @@ func newMetrics() *metrics {
 		expiredLeases: prometheus.NewGauge(prometheus.GaugeOpts{Name: "veho_expired_leases", Help: "Transfers whose lease expired, at the last housekeeping pass."}),
 		unreachable: prometheus.NewGauge(prometheus.GaugeOpts{Name: "veho_endpoints_unreachable",
 			Help: "Endpoints whose latest complete network check has a flow unreachable from some node, at the last housekeeping pass."}),
+		dbRTT: prometheus.NewGauge(prometheus.GaugeOpts{Name: "veho_db_rtt_seconds",
+			Help: "This node's round trip to the state store, at the last heartbeat (the least of three select 1)."}),
 	}
 }
 
 // Register adds the engine's metrics to reg: its own, the heartbeat's age,
 // and the jobs and transfers by state, counted at each scrape.
 func (e *Engine) Register(reg prometheus.Registerer) error {
-	for _, c := range []prometheus.Collector{e.metrics.bytes, e.metrics.attempts, e.metrics.adoptions, e.metrics.expiredLeases, e.metrics.webhooks, e.metrics.unreachable,
+	for _, c := range []prometheus.Collector{e.metrics.bytes, e.metrics.attempts, e.metrics.adoptions, e.metrics.expiredLeases, e.metrics.webhooks, e.metrics.unreachable, e.metrics.dbRTT,
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "veho_webhook_outbox_pending", Help: "Webhook events waiting for delivery."}, e.pendingWebhooks),
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "veho_heartbeat_age_seconds", Help: "Time since this node's last successful heartbeat."},
 			func() float64 {

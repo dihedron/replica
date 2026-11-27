@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -74,6 +75,17 @@ type API struct {
 	SPIFFE     SPIFFE    `yaml:"spiffe"`
 	RateLimit  RateLimit `yaml:"rate_limit"`
 	Keys       Keys      `yaml:"keys"`
+	// AdvertiseURL is how the other nodes reach this one's API
+	// (https://host:port); without it, no call is forwarded to it.
+	AdvertiseURL string  `yaml:"advertise_url"`
+	Forward      Forward `yaml:"forward"`
+}
+
+// Forward is the forwarding of API calls to the node nearest the primary
+// (veho-forwarding.md): on when PeerCAFile, the CA of the nodes' API
+// certificates, is set.
+type Forward struct {
+	PeerCAFile string `yaml:"peer_ca_file"`
 }
 
 // Keys bounds the lifetime of API keys (veho-authentication.md §8.3): a key
@@ -369,6 +381,12 @@ func (c *Config) validate() error {
 	check(err == nil, "api.listen %q: want host:port", c.API.Listen)
 	check(c.API.TLS.CertFile != "" && c.API.TLS.KeyFile != "", "api.tls.cert_file and api.tls.key_file are required")
 	check(c.API.MaxWatches > 0, "api.max_watches must be positive")
+	if a := c.API.AdvertiseURL; a != "" {
+		u, err := url.Parse(a)
+		check(err == nil && u.Scheme == "https" && u.Host != "" && u.Hostname() != "" && (u.Path == "" || u.Path == "/") && u.RawQuery == "" && u.User == nil,
+			"api.advertise_url %q: want https://host:port", a)
+	}
+	check(c.API.Forward.PeerCAFile == "" || c.API.AdvertiseURL != "", "api.forward.peer_ca_file needs api.advertise_url")
 	check(c.API.Keys.DefaultLifetime > 0 && c.API.Keys.DefaultLifetime <= c.API.Keys.MaxLifetime,
 		"api.keys: default_lifetime must be positive and at most max_lifetime")
 	rl := c.API.RateLimit

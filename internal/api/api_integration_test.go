@@ -192,12 +192,22 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 		t.Fatal(err)
 	}
 
+	if ids != nil {
+		o.Identities = ids(f)
+	}
+	c, roots := cert(t)
+	_, f.addr, _ = f.start(t, o, c)
+	f.roots = roots
+	return f
+}
+
+// start serves another API server on the fixture's database and engine, with
+// certificate c; stop ends it before the test does.
+func (f *fixture) start(t *testing.T, o Options, c tls.Certificate) (srv *Server, addr string, stop func()) {
+	t.Helper()
 	o.Engine, o.API, o.Secrets = f.e, f.api, f.secrets
 	if o.Audit == nil {
 		o.Audit = &audit.Recorder{}
-	}
-	if ids != nil {
-		o.Identities = ids(f)
 	}
 	if o.MaxWatches == 0 {
 		o.MaxWatches = 10
@@ -209,17 +219,24 @@ api: {tls: {cert_file: /unused, key_file: /unused}}
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, roots := cert(t)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	sctx, stop := context.WithCancel(ctx)
+	sctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- srv.Serve(sctx, ln, c) }()
-	t.Cleanup(func() { stop(); <-done; srv.Close() })
-	f.addr, f.roots = ln.Addr().String(), roots
-	return f
+	var once bool
+	stop = func() {
+		if !once {
+			once = true
+			cancel()
+			<-done
+			srv.Close()
+		}
+	}
+	t.Cleanup(stop)
+	return srv, ln.Addr().String(), stop
 }
 
 // running inserts a RUNNING job of tenant with no workflow: it never

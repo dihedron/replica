@@ -16,7 +16,7 @@ A cell is *claimed* when its profile promises to hold it: no packet loss and jit
 
 ![Acceptance latency by round trip and jitter, for the latest version measured.](latency-envelope-acceptance.pdf){width=100%}
 
-At a given round trip, the latency does not depend much on jitter: it grows with the round trip itself. A job's acceptance is one transaction, committed synchronously to a standby in another region. A node outside the primary's region pays a round trip for every statement it sends, not only for the commit.
+At a given round trip, the latency does not depend much on jitter: it grows with the round trip itself. A job's acceptance is one transaction, committed synchronously to a standby in another region. Up to 0.3.0, a node outside the primary's region paid a round trip for every statement it sent, about 25 per submission. From the version that forwards API calls to the node nearest the primary, a submission costs about two round trips through any node.
 
 ## Throughput
 
