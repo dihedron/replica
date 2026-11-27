@@ -101,7 +101,7 @@ The envelope had assumed one round trip, the commit. So NFR-4 fails from 50 ms.
 | ID | Test | Kind |
 | :--- | :--- | :--- |
 | FW-T1 | `choose`: the 5 ms and quarter thresholds, dead, self, no URL and no RTT excluded, ties by ID | unit |
-| FW-T2 | Two servers on one database. A's RTT is set to 50 ms, B's to 0.3 ms. `CreateJob`, `GetJob` and `ListJobs` through A, over gRPC and REST, run on B. Answers are those of B called directly: `202` with `Location`, `ETag`, `X-Request-Id`, `permission_denied`, step-up's `401` with `WWW-Authenticate` and `ErrorInfo`. | integration |
+| FW-T2 | Two servers on one database. A's RTT is set to 50 ms, B's to 0.3 ms. `CreateJob`, `GetJob` and `ListJobs` through A, over gRPC and REST, run on B. Answers are those of B called directly: `202` with `Location`, `ETag`, `X-Request-Id`; `permission_denied` with the same `ErrorInfo` and message. Step-up's `WWW-Authenticate` is made by the REST side from the `ErrorInfo`, which comes back whole; `TestStepUp` covers the header. | integration |
 | FW-T3 | A call with the marker is not forwarded | integration |
 | FW-T4 | B down: A serves locally. `CreateJob` failing after it was sent: one job, by the key | integration |
 | FW-T5 | A call with an X.509-SVID is not forwarded | integration |
@@ -109,3 +109,28 @@ The envelope had assumed one round trip, the commit. So NFR-4 fails from 50 ms.
 | FW-T7 | The configuration's checks | unit |
 | FW-T8 | Fuzz: the metadata filter keeps no transport, pipe or forwarded-for key | fuzz |
 | FW-T9 | Lab: `CreateJob` through `veho-b1` at a 50 ms round trip takes about 2R; then AC-24 phase A at 25 and 50 ms (overnight), published | lab |
+
+## 5. Implemented (2026-11-27)
+
+**Code:**
+- `internal/api/forward.go`: `choose`, the forwarder, the `forward` interceptor between `deadline` and `unary`, and `fromPeer`.
+- `internal/engine/heartbeat.go`: `dbRTT`, and the `api_url` and `db_rtt_us` columns written by the heartbeat.
+- `cmd/veho/serve.go`: the configuration, and `api.Register` for the metric.
+- The lab issues the nodes' certificates with `clientAuth` (again for older ones, at every deploy) and configures `advertise_url` and `peer_ca_file`.
+
+**What reading the code showed:**
+- **The response type.** An interceptor has no empty response to fill, so the forwarder finds the method's output type in the protobuf registry (`responseOf`).
+- **Errors arrive in trailers.** An error alone comes back as trailers only, so "the peer answered" means headers *or* trailers. With headers only, a `permission_denied` from the peer would have become `unavailable`.
+
+**Tests:**
+- unit: FW-T1, FW-T5, FW-T7 and FW-T8 (fuzzed, about 800k executions);
+- integration on the CI database: FW-T2, FW-T3, FW-T4 and FW-T6.
+
+**FW-T9 in the lab** (leader db-b; `CreateJob` p50 through each node, 10 calls each after 2 of warm-up):
+
+| WAN | b1, b2 (primary's region) | c1, c2 | a1, a2 |
+| :--- | ---: | ---: | ---: |
+| fiber1 (RTT a-b 19.2 ms, b-c 8.6 ms) | 17 ms | 27 ms | 38 ms |
+| 50 ms on every link | 59 ms | 110 ms | 110 ms |
+
+A far node pays one round trip more than a near one, as designed (2R + about 10 ms of local work). The first night measured p50 1170 ms at 50 ms through a far node.

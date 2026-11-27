@@ -113,4 +113,6 @@ func TestForwardKeepsLocal(t *testing.T) {
 	}
 }
 
-func count(outcome string) float64 { return testutil.ToFloat64(forwardedTotal.WithLabelValues(outcome)) }
+func count(outcome string) float64 {
+	return testutil.ToFloat64(forwardedTotal.WithLabelValues(outcome))
+}

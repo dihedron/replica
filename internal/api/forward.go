@@ -351,7 +351,7 @@ func (s *Server) forward(ctx context.Context, req any, info *grpc.UnaryServerInf
 	// else may not have reached it
 	if err == nil || header.Len() > 0 || trailer.Len() > 0 {
 		_ = grpc.SetHeader(ctx, passBack(header))
-		grpc.SetTrailer(ctx, passBack(trailer))
+		_ = grpc.SetTrailer(ctx, passBack(trailer))
 		forwardedTotal.WithLabelValues("forwarded").Inc()
 		return resp, err
 	}

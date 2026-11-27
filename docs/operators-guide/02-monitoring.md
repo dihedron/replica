@@ -24,6 +24,8 @@ Each node serves Prometheus metrics on `metrics.listen` (default `127.0.0.1:9464
 | `veho_adoptions_total` | none | Workflows of dead nodes this node resumed |
 | `veho_expired_leases` | none | Transfers whose lease had expired at the last housekeeping pass: their owner is fenced, stuck or dead |
 | `veho_endpoints_unreachable` | none | Endpoints whose latest complete network check has a flow some node cannot reach, at the last housekeeping pass: a firewall rule missing in a region |
+| `veho_api_forwarded_total` | `outcome` | API calls this node sent to the node nearest the state store: `forwarded`, `fallback` (served here, the peer unreachable) or `failed` (answered `unavailable`) |
+| `veho_db_rtt_seconds` | none | This node's round trip to the state store at the last heartbeat; the nodes forward to the one where it is lowest |
 | `veho_heartbeat_age_seconds` | none | Seconds since this node last recorded its heartbeat; above half the lease (30 s) the node stops its own work |
 | `veho_webhook_deliveries_total` | `result` | Webhook deliveries by result: `success`, `failure` (retried later) or `abandoned` (after 12 attempts, or past the pending cap) |
 | `veho_webhook_outbox_pending` | none | Webhook events waiting for delivery, across tenants (the same on every node) |
@@ -38,6 +40,7 @@ The Go runtime's and the process's own metrics are not exported.
 
 | Alert | Condition | Means |
 | :------------------------ | :-------------------------------------------------- | :-------------------------------------------- |
+| Forwarding failing | `rate(veho_api_forwarded_total{outcome=~"fallback\|failed"}[5m]) > 0` for 10 minutes | The node cannot reach the node nearest the state store: submissions through it are slow or refused. Check the peer's `advertise_url`, its certificate and the firewall between them |
 | Node fenced | `veho_heartbeat_age_seconds > 30` for 2 minutes | The node cannot write to the state store: it has stopped its own work |
 | Leases expiring | `veho_expired_leases > 0` for 5 minutes | A node holds transfers it does not advance |
 | Endpoints unreachable | `veho_endpoints_unreachable > 0` | Some node cannot reach an endpoint's storage system: `veho endpoint list`, then `veho endpoint check NAME --wait` names the node and the flow |

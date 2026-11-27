@@ -120,7 +120,6 @@ func setupForwarding(t *testing.T) *forwarding {
 	return w
 }
 
-
 // FW-T2, FW-T3: calls through the far node run on the near one, and answer
 // as it does; a forwarded call is not forwarded again.
 func TestForwarding(t *testing.T) {

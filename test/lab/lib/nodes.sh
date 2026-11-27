@@ -115,6 +115,9 @@ drivers:
 api:
   listen: "$(inner_ip "$name"):$NODE_API_PORT"
   tls: {cert_file: /etc/veho/tls/server.crt, key_file: /etc/veho/tls/server.key}
+  # forwarding to the node nearest the primary (.specs/veho-forwarding.md)
+  advertise_url: "https://$(inner_ip "$name"):$NODE_API_PORT"
+  forward: {peer_ca_file: /etc/veho/tls/ca.crt}
 YAML
 	inner_exec "$name" chgrp veho /etc/veho/veho.yaml
 }
@@ -169,6 +172,12 @@ nodes_deploy() {
 		# the lab CA in the system's roots: S3 has no ca_cert (the outside S3)
 		inner_push "$LAB_STATE_DIR/pki/ca.crt" "$name" /usr/local/share/ca-certificates/veho-lab.crt 0644
 		inner_exec "$name" update-ca-certificates >/dev/null 2>&1
+		# the API certificate, issued again if it predates client
+		# authentication (forwarding)
+		pki_issue "$name" "DNS:$name.veho.lab,IP:$(inner_ip "$name"),IP:$(lxd_ip)"
+		inner_push "$LAB_STATE_DIR/pki/$name.crt" "$name" /etc/veho/tls/server.crt 0644
+		inner_push "$LAB_STATE_DIR/pki/$name.key" "$name" /etc/veho/tls/server.key 0640
+		inner_exec "$name" chgrp veho /etc/veho/tls/server.key
 		node_yaml "$name" "$s3sum"
 		inner_push "$REPO_DIR/packaging/veho.service" "$name" /usr/lib/systemd/system/veho.service 0644
 		# the AppArmor profiles, enforced, as the deb's postinstall loads them

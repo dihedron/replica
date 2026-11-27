@@ -47,6 +47,8 @@ Every key of `veho.yaml`. Durations are Go durations (`30s`, `168h`). A node ref
 | `api.tls.cert_file` | (required) | The API's certificate (PEM, with its chain) |
 | `api.tls.key_file` | (required) | The certificate's key |
 | `api.max_watches` | `1000` | Streams (`WatchJob`) open at once on this node |
+| `api.advertise_url` | none (never a forwarding target) | How the other nodes reach this node's API: `https://host:port`, the host named by the API certificate |
+| `api.forward.peer_ca_file` | none (forwarding off) | The CA of the nodes' API certificates. Set, the node forwards its API calls to the node nearest the state store, and believes the client address that a node with such a certificate forwards; it needs `api.advertise_url` |
 | `api.oidc[].name` | (required with an issuer) | The issuer's short name, `[a-z0-9-]`, unique: what `veho auth login --issuer` takes |
 | `api.oidc[].issuer` | none | An OIDC issuer whose tokens the API accepts: an `https` URL, once each |
 | `api.oidc[].audience` | (required with an issuer) | The audience the tokens must carry |

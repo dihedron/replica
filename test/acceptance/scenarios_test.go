@@ -16,6 +16,7 @@ import (
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
 	"github.com/dihedron/veho/test/labtest"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -497,22 +498,48 @@ func TestAC23Distribution(t *testing.T) {
 }
 
 // AC-25 (lab): each node writes the audit events of the requests it handles
-// to its own journal.
+// to its own journal. A call marked as forwarded is served where it lands
+// (veho-forwarding.md §2.2); an unmarked one may be forwarded to the node
+// nearest the primary, which then audits it, once.
 func TestAC25AuditJournal(t *testing.T) {
 	l := labtest.New(t)
 	tn := l.Tenant()
 	tn.Put("a", "obj", mib)
 	start := time.Now()
+	journal := func(n string) string {
+		return l.Sh("ssh", n, "journalctl", "-t", "veho-audit", "--since", "@"+itoa(start.Unix()), "--no-pager")
+	}
+	here := metadata.AppendToOutgoingContext(context.Background(), "x-veho-forwarded", "ac25")
 	for _, n := range []string{"veho-a1", "veho-b2", "veho-c1"} {
-		j := tn.Submit(tn.Clients(n), "a", "obj", tn.Policy("obj-"+n, cDest, nil))
+		j, err := tn.Clients(n).Jobs.CreateJob(here, &vehov1.CreateJobRequest{
+			Source: &vehov1.ObjectRef{Endpoint: "a-source", Path: tn.Prefix + "obj"}, Policy: tn.Policy("obj-"+n, cDest, nil)})
+		if err != nil {
+			t.Fatalf("%s: %v", n, err)
+		}
+		l.Track(j.GetId())
 		var log string
 		until(t, 30*time.Second, n+"'s audit event", func() bool {
-			log = l.Sh("ssh", n, "journalctl", "-t", "veho-audit", "--since", "@"+itoa(start.Unix()), "--no-pager")
+			log = journal(n)
 			return strings.Contains(log, j.GetId())
 		})
 		if !strings.Contains(log, `"action":"JOB_SUBMIT"`) {
 			t.Errorf("%s: no JOB_SUBMIT event:\n%s", n, log)
 		}
+	}
+	// unmarked: audited by exactly one node, wherever it ran
+	j := tn.Submit(tn.Clients("veho-a1"), "a", "obj", tn.Policy("obj-any", cDest, nil))
+	var where []string
+	until(t, 30*time.Second, "the audit event of a call through veho-a1", func() bool {
+		where = nil
+		for _, n := range l.Nodes() {
+			if strings.Contains(journal(n), j.GetId()) {
+				where = append(where, n)
+			}
+		}
+		return len(where) > 0
+	})
+	if len(where) != 1 {
+		t.Errorf("the submission through veho-a1 is audited on %v, want one node", where)
 	}
 }
 

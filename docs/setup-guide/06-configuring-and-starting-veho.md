@@ -26,9 +26,20 @@ api:
   tls:
     cert_file: /etc/veho/tls/server.crt
     key_file: /etc/veho/tls/server.key
+  advertise_url: https://veho-a1.example:8443   # how the other nodes reach this one
+  forward:
+    peer_ca_file: /etc/veho/tls/ca.crt         # the CA of the nodes' API certificates
 ```
 
 Every node must list the same drivers: a transfer runs on any node.
+
+**Forwarding.** A node far from the state store's primary forwards its API calls to the node nearest it, where the calls' statements do not cross the WAN. A submission then costs about two round trips between regions instead of about twenty-five. The nodes find the nearest one themselves, by measuring their round trip to the database at every heartbeat, and follow a failover within a heartbeat. For forwarding to work, on every node:
+
+- `api.advertise_url` is the URL the other nodes reach this node's API at;
+- `api.forward.peer_ca_file` is the CA of the nodes' API certificates;
+- the API certificate names the host of `advertise_url` and allows client authentication as well as server authentication (`extendedKeyUsage = serverAuth, clientAuth`): a node presents it when it forwards, and the receiver believes the client address it forwards only from such a certificate.
+
+Without `peer_ca_file` a node neither forwards nor believes forwarded addresses. Calls authenticated by an X.509-SVID, and `WatchJob` streams, are always served where they arrive.
 
 `node.id` must never change for a host and never be shared: housekeeping uses it to tell a dead node's work from a live one's. It defaults to the host name.
 
