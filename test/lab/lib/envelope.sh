@@ -70,7 +70,22 @@ envelope_settle() {
 	return 1
 }
 
-# campaign_envelope DIR --phase A|B [--rtt R,R] [--only CELL] [--dry-run] | --report
+# ENVELOPE_DATA is the documentation's data (docs/common/data), which
+# --publish merges the valid rows into.
+ENVELOPE_DATA=docs/common/data/latency-envelope.csv
+
+# envelope_build: ENVELOPE_COMMIT and ENVELOPE_VERSION, the nodes' build. A
+# row cites it, so that the documentation's data tells commits apart, and a
+# cell is done only on the commit it was measured on.
+envelope_build() {
+	local build
+	build="$(inner_exec veho-a1 veho version --verbose 2>/dev/null)" || die "campaign envelope: no veho version from veho-a1"
+	ENVELOPE_COMMIT="$(awk -F': ' '/Build Commit/ { print $2 }' <<<"$build")"
+	ENVELOPE_VERSION="$(awk -F': ' '/^ *- Version / { print $2 }' <<<"$build")"
+	[[ -n "$ENVELOPE_COMMIT" && -n "$ENVELOPE_VERSION" ]] || die "campaign envelope: no build commit or version from veho-a1"
+}
+
+# campaign_envelope DIR --phase A|B [--rtt R,R] [--only CELL] [--dry-run] | --report | --publish
 campaign_envelope() {
 	local dir="$1" phase="" rtts="" only="" dry=false observe="${LAB_ENVELOPE_OBSERVE:-45m}" inject="${LAB_ENVELOPE_INJECT:-10m}"
 	shift
@@ -82,12 +97,14 @@ campaign_envelope() {
 		--only) only="${2:?--only: a cell}" && shift 2 ;;
 		--dry-run) dry=true && shift ;;
 		--report) envelope report --results "$results" && return ;;
-		*) die "usage: lab.sh campaign envelope --phase A|B [--rtt R,R] [--dry-run] | --report" ;;
+		--publish) envelope publish --results "$results" --data "$ENVELOPE_DATA" && info "campaign envelope: $ENVELOPE_DATA updated" && return ;;
+		*) die "usage: lab.sh campaign envelope --phase A|B [--rtt R,R] [--dry-run] | --report | --publish" ;;
 		esac
 	done
 	[[ -n "$phase" ]] || die "campaign envelope: --phase A or B"
+	envelope_build
 	local plan
-	plan="$(envelope plan --phase "$phase" --rtt "$rtts" --results "$results")" || die "campaign envelope: no plan"
+	plan="$(envelope plan --phase "$phase" --rtt "$rtts" --results "$results" --commit "$ENVELOPE_COMMIT")" || die "campaign envelope: no plan"
 	[[ -z "$only" ]] || plan="$(awk -v c="$only" '$1 == c' <<<"$plan")"
 	[[ -n "$plan" ]] || die "campaign envelope: no cell to run"
 	if $dry; then
@@ -134,7 +151,7 @@ envelope_db_ready() {
 # measurements, by TestEnvelopeCell.
 envelope_cell() {
 	local dir="$1"
-	LAB_DB_REJOIN_WAIT=900 VEHO_ENVELOPE_RESTORE_PROFILE="$LAB_WAN_PROFILE" VEHO_ENVELOPE_CELL="$2" VEHO_ENVELOPE_RTT="$3" VEHO_ENVELOPE_SHIFT="$4" VEHO_ENVELOPE_PROFILE="$5" \
+	VEHO_ENVELOPE_COMMIT="$ENVELOPE_COMMIT" VEHO_ENVELOPE_VERSION="$ENVELOPE_VERSION" LAB_DB_REJOIN_WAIT=900 VEHO_ENVELOPE_RESTORE_PROFILE="$LAB_WAN_PROFILE" VEHO_ENVELOPE_CELL="$2" VEHO_ENVELOPE_RTT="$3" VEHO_ENVELOPE_SHIFT="$4" VEHO_ENVELOPE_PROFILE="$5" \
 		VEHO_ENVELOPE_RESULTS="$6" VEHO_ENVELOPE_OBSERVE="$7" VEHO_ENVELOPE_INJECT="$8" \
 		VEHO_ENVELOPE_INVALID="${ENVELOPE_INVALID:-}" \
 		campaign_go "$dir/$2" 2h -run 'TestEnvelopeCell$' >/dev/null 2>&1 ||

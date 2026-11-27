@@ -1,0 +1,11 @@
+commit,version,date,cell,phase,rtt_ms,jitter,loss_pct,profile,claimed,verdict,spurious_elections,spurious_demotions,accept_p50_ms,accept_p99_ms,failover_s,adoption_s,jobs_done,jobs_failed
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt25-j0,A,25,0,0,regional,yes,fail,0,0,592,1350,38,57,576,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt25-j10,A,25,10,0,regional,yes,pass,0,0,591,844,39,63,573,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt25-j25,A,25,25,0,regional,yes,pass,0,0,584,849,42,54,501,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt25-j50,A,25,50,0,regional,no,outside the claims,0,0,583,727,49,66,215,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt25-jshift,A,25,shift,0,regional,no,outside the claims,0,0,593,815,42,61,539,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-j0,A,50,0,0,regional,yes,fail,0,0,1170,1269,42,65,365,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-j10,A,50,10,0,regional,yes,fail,0,0,1186,1579,41,63,361,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-j25,A,50,25,0,regional,yes,fail,0,0,1169,1335,39,63,306,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-j50,A,50,50,0,regional,no,outside the claims,0,0,1147,1641,30,64,154,0
+0d84d64c66df10604696dfaccc3b9b6988d5d41f,0.3.0-SNAPSHOT-0d84d64,2026-11-26,A-rtt50-jshift,A,50,shift,0,regional,no,outside the claims,0,0,1217,1594,28,59,376,0

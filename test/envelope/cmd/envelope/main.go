@@ -1,12 +1,14 @@
 // Command envelope is the AC-24 campaign's planner and reporter, for
 // test/lab/lib/envelope.sh (.specs/veho-latency-campaign.md):
 //
-//	envelope plan --phase A [--rtt 25,50] [--results FILE]   one line per cell to run: ID RTT LINK SHIFTED PROFILE
+//	envelope plan --phase A [--rtt 25,50] [--results FILE] [--commit C]   one line per cell to run: ID RTT LINK SHIFTED PROFILE
 //	envelope profile --rtt N                                  the profile's settings, as shell assignments
 //	envelope report --results FILE [--phase A|B]              the Markdown report
+//	envelope publish --results FILE --data CSV                merges the valid rows into CSV, and its table into CSV's .md
 package main
 
 import (
+	"encoding/csv"
 	"errors"
 	"flag"
 	"fmt"
@@ -44,6 +46,8 @@ func run(args []string) error {
 	phase := fs.String("phase", "", "A or B (report: both when empty)")
 	rtts := fs.String("rtt", "", "round trips in ms, comma-separated (all when empty)")
 	path := fs.String("results", "", "results.csv")
+	commit := fs.String("commit", "", "plan: the nodes' build commit; cells done on another are run again")
+	data := fs.String("data", "", "publish: the documentation's CSV; its table goes beside it, as .md")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -64,7 +68,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		cells, err := envelope.Plan(*phase, rs, envelope.Done(rows))
+		cells, err := envelope.Plan(*phase, rs, envelope.Done(rows, *commit))
 		if err != nil {
 			return err
 		}
@@ -97,8 +101,50 @@ func run(args []string) error {
 			cells = append(cells, c...)
 		}
 		return envelope.Report(os.Stdout, rows, cells)
+	case "publish":
+		if *data == "" {
+			return errors.New("publish: --data")
+		}
+		return publish(*path, *data)
 	default:
-		return fmt.Errorf("%q: want plan, profile or report", args[0])
+		return fmt.Errorf("%q: want plan, profile, report or publish", args[0])
 	}
 	return nil
+}
+
+// publish merges results into the data CSV and rewrites its table.
+func publish(path, data string) error {
+	rows, err := results(path)
+	if err != nil {
+		return err
+	}
+	var old [][]string
+	if b, err := os.ReadFile(data); err == nil { //nolint:gosec // the repository's own file
+		recs, err := csv.NewReader(strings.NewReader(string(b))).ReadAll()
+		if err != nil {
+			return fmt.Errorf("%s: %w", data, err)
+		}
+		if len(recs) == 0 || strings.Join(recs[0], ",") != envelope.DataHeader {
+			return fmt.Errorf("%s: no header, or another one", data)
+		}
+		old = recs[1:]
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	merged, err := envelope.Publish(old, rows)
+	if err != nil {
+		return err
+	}
+	var b strings.Builder
+	w := csv.NewWriter(&b)
+	_ = w.Write(strings.Split(envelope.DataHeader, ","))
+	_ = w.WriteAll(merged)
+	if err := w.Error(); err != nil {
+		return err
+	}
+	if err := os.WriteFile(data, []byte(b.String()), 0o644); err != nil { //nolint:gosec // documentation
+		return err
+	}
+	table := strings.TrimSuffix(data, ".csv") + ".md"
+	return os.WriteFile(table, []byte(envelope.Table(merged)), 0o644) //nolint:gosec // documentation
 }
