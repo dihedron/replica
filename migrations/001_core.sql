@@ -141,7 +141,11 @@ CREATE TABLE veho.executors (
 	region      text NOT NULL,
 	app_version text NOT NULL,
 	started_at  timestamptz NOT NULL DEFAULT now(),
-	last_seen   timestamptz NOT NULL DEFAULT now()
+	last_seen   timestamptz NOT NULL DEFAULT now(),
+	-- how peers reach the node's API, and its round trip to the database:
+	-- the API forwards its calls to the nearest (veho-forwarding.md §2.1)
+	api_url     text CHECK (api_url LIKE 'https://%'),
+	db_rtt_us   integer CHECK (db_rtt_us >= 0)
 );
 
 -- Immutable columns (DP-9, STO-6): a job's identity, source and policy, a

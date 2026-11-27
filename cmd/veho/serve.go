@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -231,6 +232,9 @@ func serveMetrics(cfg *config.Config, e *engine.Engine, aud *audit.Logger) (func
 	if err := e.Register(reg); err != nil {
 		return nil, fmt.Errorf("serve: metrics: %w", err)
 	}
+	if err := api.Register(reg); err != nil {
+		return nil, fmt.Errorf("serve: metrics: %w", err)
+	}
 	reg.MustRegister(prometheus.NewCounterFunc(prometheus.CounterOpts{Name: "veho_audit_dropped_total", Help: "Audit events that could not be written."},
 		func() float64 { return float64(aud.Dropped()) }))
 	mux := http.NewServeMux()
@@ -259,8 +263,20 @@ func serveAPI(ctx context.Context, cfg *config.Config, e *engine.Engine, pool *p
 	if err != nil {
 		return nil, fmt.Errorf("serve: %w", err)
 	}
+	var fw *api.Forward
+	if ca := cfg.API.Forward.PeerCAFile; ca != "" {
+		pem, err := os.ReadFile(ca) //nolint:gosec // the operator's configuration
+		if err != nil {
+			return nil, fmt.Errorf("serve: api.forward.peer_ca_file: %w", err)
+		}
+		peers := x509.NewCertPool()
+		if !peers.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("serve: api.forward.peer_ca_file %s: no certificate", ca)
+		}
+		fw = &api.Forward{Node: cfg.Node.ID, PeerCAs: peers, Certificate: cert, Every: cfg.Engine.Heartbeat}
+	}
 	srv, err := api.New(api.Options{Engine: e, API: pool, MaxWatches: cfg.API.MaxWatches, Identities: ids, Secrets: secretStore,
-		RateLimit: cfg.API.RateLimit, Keys: cfg.API.Keys, Audit: aud, Ready: func(ctx context.Context) error {
+		RateLimit: cfg.API.RateLimit, Keys: cfg.API.Keys, Audit: aud, Forward: fw, Ready: func(ctx context.Context) error {
 			if e.Fenced() {
 				return engine.ErrFenced
 			}
