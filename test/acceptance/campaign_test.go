@@ -13,7 +13,9 @@ import (
 
 	vehov1 "github.com/dihedron/veho/api/veho/v1"
 	"github.com/dihedron/veho/test/labtest"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -231,15 +233,25 @@ func TestCampaignSoak(t *testing.T) {
 // waitAny follows a job through whichever node answers.
 func waitAny(tn *labtest.Tenant, l *labtest.Lab, id string, within time.Duration) *vehov1.Job {
 	deadline := time.Now().Add(within)
+	// the ETag of the last answer: without it GetJob answers at once, and
+	// the loop polls as fast as the API answers
+	etag := ""
 	for time.Now().Before(deadline) {
 		c := tn.Clients(l.Nodes()[rand.IntN(6)])
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		j, err := c.Jobs.GetJob(ctx, &vehov1.GetJobRequest{Id: id, Wait: 30})
+		if etag != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "if-none-match", etag)
+		}
+		var header metadata.MD
+		j, err := c.Jobs.GetJob(ctx, &vehov1.GetJobRequest{Id: id, Wait: 30}, grpc.Header(&header))
 		cancel()
+		if v := header.Get("etag"); len(v) > 0 {
+			etag = v[0]
+		}
 		if err == nil && j.GetSettledAt() != nil {
 			return j
 		}
-		if err != nil {
+		if err != nil && status.Code(err) != codes.Aborted { // not_modified: ask again
 			time.Sleep(5 * time.Second)
 		}
 	}
