@@ -16,7 +16,7 @@ Let R be the worst round trip between two control-plane members, R_q the round t
 
 | Mechanism | Depends on | Effect of growth |
 | :--- | :--- | :--- |
-| Job acceptance (one commit) | R_q (the synchronous standby) | Acceptance latency is about R_q plus the local and remote flush (a few ms): linear in R_q. NFR-4: p99 < 1 s up to 150 ms; best effort beyond. |
+| Job acceptance (one commit) | R_q (the synchronous standby) | Acceptance latency is about R_q plus the local and remote flush (a few ms): linear in R_q. NFR-4: p99 < 1 s up to 150 ms; best effort beyond. **Measured on 2026-11-26 (AC-24, `veho-latency-campaign.md` §8): about 24 R, not R_q,** through a node outside the primary's region, because each of the acceptance's 26 statements is a round trip to the primary (counted with `log_statement` on 0d84d64); NFR-4 fails from 50 ms. Cutting it to a few round trips is planned (2026-11-27). |
 | DBOS step and part checkpoints | R_q per commit | Each step is a commit. Part checkpoints are batched (`veho-job-lifecycle.md` §4, `copy_batch`), so the copy itself is not on the commit path; the checkpoint rate per transfer is at most 1/R_q per batch. |
 | etcd (Raft) | R and J | A write needs a majority round trip. A follower that hears no heartbeat for the election timeout E starts an election: J above E - H causes spurious elections, and the cluster has no leader for about E + R. |
 | Patroni (leader key in etcd) | the etcd outage, R | If etcd is unavailable for longer than the retry window, Patroni demotes the primary: a needless failover. Needed: `E + 2R <= retry_timeout` and `loop_wait + 2 x retry_timeout <= ttl`. |

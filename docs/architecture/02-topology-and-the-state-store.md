@@ -15,7 +15,7 @@ The only singleton activity, housekeeping, is guarded by a PostgreSQL advisory l
 - **Failover by Patroni**, with etcd (one member per region) as its store. A new primary needs an etcd majority and must be one of the synchronous standbys, so no committed transaction is lost and no two primaries accept writes.
 - **Consistency over availability.** A region cut off from the other two cannot commit, so it cannot accept jobs; the majority side fails over if needed and continues. This is deliberate: a job that is acknowledged is never lost and never forked.
 
-The cost is one inter-region round trip per commit. veho keeps commits few: it records progress per batch of parts, never per read, and a job's acceptance is a single transaction. At the target load (tens of transfers, a commit every few seconds per transfer) the cost is negligible; submission latency is about one round trip plus local work.
+The cost is one inter-region round trip per commit. veho keeps commits few: it records progress per batch of parts, never per read, and a job's acceptance is a single transaction. At the target load (tens of transfers, a commit every few seconds per transfer) the cost of the commits is negligible. Every statement also crosses the WAN, though, when the node that runs it is outside the primary's region. In this version a job's acceptance sends about 26 statements one after another, so through such a node it takes about 24 round trips, not one: about 0.6 s at a 25 ms round trip and 1.2 s at 50 ms. The Operator's Guide's chapter on the latency envelope has the measurements.
 
 veho checks this setup at every start: a node refuses to run against a standby, a pooler, a cluster without synchronous commit, or one whose standbys are not a quorum over other regions.
 

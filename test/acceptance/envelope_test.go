@@ -124,7 +124,8 @@ func TestEnvelopeCell(t *testing.T) {
 		t.Skip("run by lab.sh campaign envelope")
 	}
 	results := os.Getenv("VEHO_ENVELOPE_RESULTS")
-	row := envelope.Row{Cell: id, Profile: os.Getenv("VEHO_ENVELOPE_PROFILE")}
+	row := envelope.Row{Commit: os.Getenv("VEHO_ENVELOPE_COMMIT"), Version: os.Getenv("VEHO_ENVELOPE_VERSION"),
+		Date: time.Now().UTC().Format(time.DateOnly), Cell: id, Profile: os.Getenv("VEHO_ENVELOPE_PROFILE")}
 	if os.Getenv("VEHO_ENVELOPE_INVALID") != "" {
 		appendRow(t, results, row) // the cell never settled: invalid, run again
 		return

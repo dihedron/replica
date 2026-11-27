@@ -5,6 +5,7 @@
 package envelope
 
 import (
+	"cmp"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -139,6 +140,8 @@ func ProfileFor(rtt int) Profile {
 
 // Row is one cell's line of results.csv.
 type Row struct {
+	Commit, Version      string // the nodes' build, from veho version --verbose
+	Date                 string // the cell's day, YYYY-MM-DD
 	Cell, Profile        string
 	Valid                bool
 	Elections, Demotions int     // spurious, in the observation
@@ -149,12 +152,12 @@ type Row struct {
 }
 
 // Header is results.csv's first line.
-const Header = "cell,profile,valid,spurious_elections,spurious_demotions,accept_p50_ms,accept_p99_ms,failover_s,adoption_s,jobs_done,jobs_failed,host_load,host_steal_pct"
+const Header = "commit,version,date,cell,profile,valid,spurious_elections,spurious_demotions,accept_p50_ms,accept_p99_ms,failover_s,adoption_s,jobs_done,jobs_failed,host_load,host_steal_pct"
 
 // WriteRow appends a row.
 func WriteRow(w io.Writer, r Row) error {
 	cw := csv.NewWriter(w)
-	err := cw.Write([]string{r.Cell, r.Profile, strconv.FormatBool(r.Valid), strconv.Itoa(r.Elections), strconv.Itoa(r.Demotions),
+	err := cw.Write([]string{r.Commit, r.Version, r.Date, r.Cell, r.Profile, strconv.FormatBool(r.Valid), strconv.Itoa(r.Elections), strconv.Itoa(r.Demotions),
 		strconv.Itoa(r.P50), strconv.Itoa(r.P99), strconv.Itoa(r.Failover), strconv.Itoa(r.Adoption),
 		strconv.Itoa(r.JobsDone), strconv.Itoa(r.JobsFailed), num(r.HostLoad), num(r.HostSteal)})
 	cw.Flush()
@@ -172,9 +175,10 @@ func ReadResults(r io.Reader) ([]Row, error) {
 	}
 	var rows []Row
 	for i, f := range recs[1:] {
-		if len(f) != 13 {
+		if len(f) != 16 {
 			return nil, fmt.Errorf("results.csv line %d: %d fields", i+2, len(f))
 		}
+		m, f := f[:3], f[3:]
 		n := make([]int, 8)
 		for k := range n {
 			if n[k], err = strconv.Atoi(f[3+k]); err != nil {
@@ -186,17 +190,18 @@ func ReadResults(r io.Reader) ([]Row, error) {
 		if err := errors.Join(err1, err2); err != nil {
 			return nil, fmt.Errorf("results.csv line %d: %w", i+2, err)
 		}
-		rows = append(rows, Row{Cell: f[0], Profile: f[1], Valid: f[2] == "true", Elections: n[0], Demotions: n[1],
+		rows = append(rows, Row{Commit: m[0], Version: m[1], Date: m[2], Cell: f[0], Profile: f[1], Valid: f[2] == "true", Elections: n[0], Demotions: n[1],
 			P50: n[2], P99: n[3], Failover: n[4], Adoption: n[5], JobsDone: n[6], JobsFailed: n[7], HostLoad: load, HostSteal: steal})
 	}
 	return rows, nil
 }
 
-// Done is the valid cells of the rows, which a run skips.
-func Done(rows []Row) map[string]bool {
+// Done is the valid cells of the rows measured on commit, which a run
+// skips: another commit's are measured again.
+func Done(rows []Row, commit string) map[string]bool {
 	out := map[string]bool{}
 	for _, r := range rows {
-		if r.Valid {
+		if r.Valid && r.Commit == commit {
 			out[r.Cell] = true
 		}
 	}
@@ -253,4 +258,105 @@ func Report(w io.Writer, rows []Row, cells []Cell) error {
 	}
 	_, err := io.WriteString(w, b.String())
 	return err
+}
+
+// DataHeader is the first line of the documentation's data
+// (docs/common/data/latency-envelope.csv): every valid row of every
+// campaign, by the commit the nodes ran, so that a release replots it and
+// old commits can be dropped.
+const DataHeader = "commit,version,date,cell,phase,rtt_ms,jitter,loss_pct,profile,claimed,verdict,spurious_elections,spurious_demotions,accept_p50_ms,accept_p99_ms,failover_s,adoption_s,jobs_done,jobs_failed"
+
+// order is a cell's place in the campaign: phase A then B, in plan order.
+func order() map[string]int {
+	out := map[string]int{}
+	for _, ph := range []string{"A", "B"} {
+		cells, _ := Plan(ph, nil, nil)
+		for _, c := range cells {
+			out[c.ID()] = len(out)
+		}
+	}
+	return out
+}
+
+// cellOf is the cell an ID names.
+func cellOf(id string) (Cell, bool) {
+	for _, ph := range []string{"A", "B"} {
+		cells, _ := Plan(ph, nil, nil)
+		for _, c := range cells {
+			if c.ID() == id {
+				return c, true
+			}
+		}
+	}
+	return Cell{}, false
+}
+
+// Publish merges the valid rows into the data (its records, without the
+// header): a commit's cell measured again replaces the old one. The
+// result is ordered by commit, first measured first, then by cell.
+func Publish(data [][]string, rows []Row) ([][]string, error) {
+	by := map[string][]string{}
+	for i, r := range data {
+		if len(r) != strings.Count(DataHeader, ",")+1 {
+			return nil, fmt.Errorf("data line %d: %d fields", i+2, len(r))
+		}
+		by[r[0]+"/"+r[3]] = r
+	}
+	for _, r := range rows {
+		if !r.Valid {
+			continue
+		}
+		c, ok := cellOf(r.Cell)
+		if !ok || r.Commit == "" || r.Date == "" {
+			return nil, fmt.Errorf("%s: no such cell, or no commit or date", r.Cell)
+		}
+		claimed, verdict := "no", "outside the claims"
+		if c.Claimed() {
+			claimed, verdict = "yes", "fail"
+			if Pass(c, r) {
+				verdict = "pass"
+			}
+		}
+		by[r.Commit+"/"+r.Cell] = []string{r.Commit, r.Version, r.Date, r.Cell, c.Phase, strconv.Itoa(c.RTT), c.Jitter, num(c.Loss),
+			r.Profile, claimed, verdict, strconv.Itoa(r.Elections), strconv.Itoa(r.Demotions), strconv.Itoa(r.P50), strconv.Itoa(r.P99),
+			strconv.Itoa(r.Failover), strconv.Itoa(r.Adoption), strconv.Itoa(r.JobsDone), strconv.Itoa(r.JobsFailed)}
+	}
+	first, pos := map[string]string{}, order()
+	out := make([][]string, 0, len(by))
+	for _, r := range by {
+		if d, ok := first[r[0]]; !ok || r[2] < d {
+			first[r[0]] = r[2]
+		}
+		out = append(out, r)
+	}
+	slices.SortFunc(out, func(a, b []string) int {
+		return cmp.Or(strings.Compare(first[a[0]], first[b[0]]), strings.Compare(a[0], b[0]), pos[a[3]]-pos[b[3]])
+	})
+	return out, nil
+}
+
+// Table is the Markdown table of the data's last commit.
+func Table(data [][]string) string {
+	if len(data) == 0 {
+		return "No measurement yet.\n"
+	}
+	last := data[len(data)-1][0]
+	var b strings.Builder
+	var dates []string
+	for _, r := range data {
+		if r[0] == last && !slices.Contains(dates, r[2]) {
+			dates = append(dates, r[2])
+		}
+	}
+	slices.Sort(dates)
+	fmt.Fprintf(&b, "Measured on veho %s (commit `%s`), %s.\n\n", data[len(data)-1][1], last[:min(7, len(last))], strings.Join(dates, ", "))
+	// the dashes set the columns' relative widths (pandoc), for a landscape page
+	b.WriteString("| Cell | RTT (ms) | Jitter (%) | Loss (%) | Claimed | Spurious elections | Spurious demotions | Accept p50 (ms) | Accept p99 (ms) | Failover (s) | Adoption (s) | Jobs done | Verdict |\n")
+	b.WriteString("| :----------------- | ------: | -------: | -----: | :------ | ---------: | ---------: | ----------: | ----------: | --------: | --------: | -----: | :----------------- |\n")
+	for _, r := range data {
+		if r[0] == last {
+			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n", r[3], r[5], r[6], r[7], r[9], r[11], r[12], r[13], r[14], r[15], r[16], r[17], r[10])
+		}
+	}
+	return b.String()
 }

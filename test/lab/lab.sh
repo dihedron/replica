@@ -52,7 +52,7 @@ commands:
                             nodes deploy, then the daytime acceptance suite
                             (go test -tags acceptance ./test/acceptance)
   campaign soak [--duration D] [--jobs N] | wan24 [--hours H] | long
-  campaign envelope --phase A|B [--rtt R,R] [--dry-run] | --report
+  campaign envelope --phase A|B [--rtt R,R] [--dry-run] | --report | --publish
                             AC-24, one or two rows a night
                             (.specs/veho-latency-campaign.md)
                             the long campaigns (AC-17, AC-18, AC-1 at 4 GiB
