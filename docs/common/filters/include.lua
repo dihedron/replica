@@ -11,6 +11,12 @@
 --     ```{.yaml include="docs/planning-guide/examples/x.yaml" keys="realms governance"}
 --     ```
 --
+-- A block of class markdown is replaced by the file's content as Markdown,
+-- not shown as code:
+--
+--     ```{.markdown include="docs/common/data/latency-envelope.md"}
+--     ```
+--
 -- A missing file, or a key not in the file, fails the build.
 
 -- only keeps the top-level blocks of text whose key is in keys.
@@ -45,5 +51,9 @@ function CodeBlock(block)
     block.attributes.keys = nil
   end
   block.attributes.include = nil
+  -- a .markdown block is the file's text itself (a generated table)
+  if block.classes:includes("markdown") then
+    return pandoc.read(block.text, "markdown").blocks
+  end
   return block
 end
