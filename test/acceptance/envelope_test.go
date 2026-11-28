@@ -180,8 +180,12 @@ func TestEnvelopeCell(t *testing.T) {
 			got := waitAny(tn, l, j.GetId(), time.Hour)
 			took := int(time.Since(began).Milliseconds())
 			ok := got.GetState() == "SUCCEEDED"
+			var bad []string // destinations whose copy is not the source's
 			for _, d := range pair {
-				ok = ok && tn.SHA256(d.Region, d.Bucket, path) == sha
+				if ok && tn.SHA256(d.Region, d.Bucket, path) != sha {
+					ok = false
+					bad = append(bad, d.Region+"/"+d.Bucket)
+				}
 				tn.Delete(d.Region, d.Bucket, path)
 			}
 			mu.Lock()
@@ -190,6 +194,8 @@ func TestEnvelopeCell(t *testing.T) {
 				durations = append(durations, took)
 			} else {
 				failed++
+				t.Logf("load job %s failed after %d ms: state %s, last error %s %q, checksum differs at %v, cell ending %v",
+					got.GetId(), took, got.GetState(), got.GetLastError().GetCode(), got.GetLastError().GetMessage(), bad, ctx.Err() != nil)
 			}
 			mu.Unlock()
 		}

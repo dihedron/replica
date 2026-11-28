@@ -8,28 +8,29 @@ A client submits the URL of an object that is already available to the service (
 
 ## Status
 
-**0.3.0, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
+**0.3.1, a preview.** veho works end to end: six nodes in three regions accept, copy, resume and verify jobs, and the acceptance scenarios of the lab pass (node and region failures, a database failover, partitions, destination outages and refusals, corrupted parts, a changed source, cancels, quotas, the distribution policy, the audit and the secrets; `test/acceptance`, run by `test/lab/lab.sh acceptance`). The Setup Guide, the Operator's Guide and Architecture and Design are attached to each release.
 
-New in 0.3.0:
+New in 0.3.1:
 
-- **Sources and destinations.** HTTP (built in), SFTP and FTP sources; OpenStack Glance (`put`, `glance-direct` to chosen stores, and `web-download`, where Glance fetches the image itself from a presigned URL and veho reads it back before publishing) and Swift (static large objects) as sources and destinations, from Queens on, each feature at the release it needs; Sonatype Nexus 3 with its `raw`, `maven2`, `npm` and `pypi` formats. Every driver with dependencies is a plugin of its own.
-- **The dial guard on every driver, `s3` included.** A connection to a private, loopback or link-local address needs the driver's `allow_cidrs`, and the cloud metadata addresses are never reachable: an S3 service on a private network must now be listed (see below).
-- **A forward proxy for chosen names.** `s3`, `http` and `nexus` send `https` to the names the operator lists through a corporate proxy, unresolved by veho, TLS verified end to end: a backup from an on-premise source to AWS works where only the proxy reaches the Internet.
-- **Network checks.** `veho endpoint check` probes, from every executor, the connections an endpoint needs (and runs after every endpoint create and update), so a firewall rule missing in one region shows before a transfer fails there.
-- **A wrong copy is never left published.** A copy that fails its final verification is deleted, and a pulled copy is compared with the source before it becomes visible.
+- **API calls forwarded to a node near the primary.** A node far from the database's primary sends its unary calls to a peer near it, found by the round trip each node measures every heartbeat: accepting a job costs about two round trips instead of twenty-six (p50 62 ms instead of 592 ms at a 25 ms round trip, 111 ms instead of 1170 ms at 50 ms). On with `api.advertise_url` and `api.forward.peer_ca_file`; the nodes' API certificates need `clientAuth`.
+- **The latency envelope, measured and published.** Chapter 8 of the Operator's Guide charts acceptance, failover and throughput against the round trip, per commit, so every release is compared with the previous ones.
+- **Authentication.** OIDC and SPIFFE callers name their tenant (`X-Veho-Tenant`, `--tenant`, `VEHO_TENANT`); names are qualified by their issuer; service accounts with rotating API keys; `veho auth login`, `logout`, `status` and step-up in the CLI; refused credentials are audited.
+- **Endpoint configurations checked** against their driver's schema at create and update, plugins included; `endpoint list --invalid`.
+- **Periodic network checks** of every endpoint from every node.
+- **Hardened packages:** AppArmor profiles for veho and its plugins, enforced; firewalld rules.
+- **The CLI's output:** `--format` (`-F`) `table|json|yaml` replaces `--output`; `--wide` lists; nested values as tables.
 
-**Before upgrading from 0.2.0:** list every private S3 service in the `s3` driver's `allow_cidrs` (`drivers: [{name: s3, settings: {allow_cidrs: [10.20.0.0/16]}}]`), or its transfers fail with "the target address is not allowed"; `HTTP_PROXY` and `HTTPS_PROXY` are no longer used by any driver (use `proxy` in the driver's settings). The schema changed in place: start from an empty database.
+**Before upgrading from 0.3.0:** OIDC and SPIFFE callers must name their tenant, or get `400 tenant_required`; scripts using `--output` must use `--format`; to forward, reissue the nodes' API certificates with `extendedKeyUsage = serverAuth, clientAuth`. The schema changed in place: start from an empty database.
 
 Known limits of this version (numbers of `.specs/veho-backlog.md`):
 
 - No upgrade path for the schema: until a first deployment it is changed in place, and a new version may need an empty database.
 - The regions and zones of the topology are created with SQL (`veho.put_location`); no command manages them yet (17).
-- An endpoint's configuration is checked against its driver's schema only for built-in drivers (39).
-- Network checks run on demand and after changes only, not periodically (41).
 - The audit is lightweight: events go to the system log, are not tamper-evident and can be lost on a crash (32).
 - The unwrap key comes from a file or a systemd credential; Vault, HSM and Shamir unseal are planned (25, 26, 31).
-- The state store's stability over the real inter-region latency for 24 hours, the latency envelope and an eight-hour chaos soak are still to be run (3, 18, 28).
-- Packaging for Ubuntu and Rocky/Alma has no AppArmor or SELinux policy yet (27).
+- Streams (`WatchJob`) and X.509-SVID callers are not forwarded and pay every round trip to the primary (47).
+- The latency envelope is measured at 25 and 50 ms only; the state store's 24-hour stability over the real WAN and an eight-hour chaos soak are still to be run (3, 18, 28).
+- Packaging for Rocky/Alma has no SELinux policy yet (42).
 
 The work agreed for later is in `.specs/veho-backlog.md`.
 
