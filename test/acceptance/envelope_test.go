@@ -161,6 +161,7 @@ func TestEnvelopeCell(t *testing.T) {
 	// the light load: one 32 MiB job at a time to a pair of destinations
 	sha := tn.Put("a", "load", 32*mib)
 	var done, failed int
+	var durations []int // ms, from CreateJob to settled
 	var loadWG sync.WaitGroup
 	loadWG.Go(func() {
 		dests := all9()
@@ -169,6 +170,7 @@ func TestEnvelopeCell(t *testing.T) {
 			pair := []labtest.Dest{dests[first], dests[(first+1+r.IntN(len(dests)-1))%len(dests)]}
 			path := "l-" + strconv.Itoa(n)
 			c := tn.Clients(l.Nodes()[r.IntN(6)])
+			began := time.Now()
 			j, err := c.Jobs.CreateJob(ctx, &vehov1.CreateJobRequest{
 				Source: &vehov1.ObjectRef{Endpoint: "a-source", Path: tn.Prefix + "load"}, Policy: tn.Policy(path, pair, nil)})
 			if err != nil {
@@ -176,16 +178,24 @@ func TestEnvelopeCell(t *testing.T) {
 				continue
 			}
 			got := waitAny(tn, l, j.GetId(), time.Hour)
+			took := int(time.Since(began).Milliseconds())
 			ok := got.GetState() == "SUCCEEDED"
+			var bad []string // destinations whose copy is not the source's
 			for _, d := range pair {
-				ok = ok && tn.SHA256(d.Region, d.Bucket, path) == sha
+				if ok && tn.SHA256(d.Region, d.Bucket, path) != sha {
+					ok = false
+					bad = append(bad, d.Region+"/"+d.Bucket)
+				}
 				tn.Delete(d.Region, d.Bucket, path)
 			}
 			mu.Lock()
 			if ok {
 				done++
+				durations = append(durations, took)
 			} else {
 				failed++
+				t.Logf("load job %s failed after %d ms: state %s, last error %s %q, checksum differs at %v, cell ending %v",
+					got.GetId(), took, got.GetState(), got.GetLastError().GetCode(), got.GetLastError().GetMessage(), bad, ctx.Err() != nil)
 			}
 			mu.Unlock()
 		}
@@ -245,6 +255,8 @@ func TestEnvelopeCell(t *testing.T) {
 	row.Demotions = max(tl1-tl0, 0)
 	row.P50, row.P99 = percentile(latencies, 0.5), percentile(latencies, 0.99)
 	t.Logf("observed: %d samples, terms %v, %d probes, timelines %d to %d", len(samples), terms, len(latencies), tl0, tl1)
+	t.Logf("load in the observation: %d jobs, CreateJob to settled p50 %d p90 %d max %d ms", len(durations),
+		percentile(durations, 0.5), percentile(durations, 0.9), percentile(durations, 1))
 	mu.Unlock()
 
 	// the injections, the node first (its adoption over this cell's WAN),

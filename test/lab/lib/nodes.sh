@@ -115,9 +115,10 @@ drivers:
 api:
   listen: "$(inner_ip "$name"):$NODE_API_PORT"
   tls: {cert_file: /etc/veho/tls/server.crt, key_file: /etc/veho/tls/server.key}
-  # forwarding to the node nearest the primary (.specs/veho-forwarding.md)
+  # forwarding to the node nearest the primary (.specs/veho-forwarding.md);
+  # LAB_FORWARD=off turns it off, for comparisons
   advertise_url: "https://$(inner_ip "$name"):$NODE_API_PORT"
-  forward: {peer_ca_file: /etc/veho/tls/ca.crt}
+$([[ "${LAB_FORWARD:-on}" == off ]] || printf '  forward: {peer_ca_file: /etc/veho/tls/ca.crt}')
 YAML
 	inner_exec "$name" chgrp veho /etc/veho/veho.yaml
 }

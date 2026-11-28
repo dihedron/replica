@@ -134,3 +134,21 @@ The envelope had assumed one round trip, the commit. So NFR-4 fails from 50 ms.
 | 50 ms on every link | 59 ms | 110 ms | 110 ms |
 
 A far node pays one round trip more than a near one, as designed (2R + about 10 ms of local work). The first night measured p50 1170 ms at 50 ms through a far node.
+
+**Throughput, A/B (night of 2026-11-28, commit `4f78c8e`).** The forwarding night (`afcc920`) did 9–27% fewer load jobs than the first (`0d84d64`). The load generator then polled `GetJob` without the `ETag`, so each poll was answered at once and the loop ran as fast as the API answered; forwarding made the answers faster. With the generator long-polling on the `ETag`, phase A at 25 and 50 ms, forwarding on and off:
+
+| Cell | Commit, forwarding | Acceptance p50 / p99 (ms) | Load jobs done |
+| :--- | :--- | ---: | ---: |
+| A-rtt25-j0 | `0d84d64`, off, polling | 592 / 1350 | 576 |
+| | `afcc920`, on, polling | 62 / 123 | 442 |
+| | `4f78c8e`, on | 62 / 797 | 523 |
+| | `4f78c8e`, off | 615 / 955 | 530 |
+| A-rtt50-j0 | `0d84d64`, off, polling | 1170 / 1269 | 365 |
+| | `afcc920`, on, polling | 111 / 212 | 327 |
+| | `4f78c8e`, on | 111 / 218 | 397 |
+| | `4f78c8e`, off | 1216 / 1674 | 363 |
+
+- The drop came from the load generator: with the `ETag`, forwarding on does as many jobs as off at 25 ms (−1%) and more at 50 ms (+9%).
+- The remaining spread between nights (576 vs 530) is noise of about 9%; a job takes 7–9 s from `CreateJob` to settled in all four runs.
+- Forwarding off reproduces the first night's acceptance latency, so the tenfold gain is forwarding's.
+- Two points stay open: the p99 of 797 ms at 25 ms with forwarding on (2–3 probe samples, near the failover), and one failed load job at 50 ms, which the test did not then describe; it now logs each failed job's state, last error and checksum.
